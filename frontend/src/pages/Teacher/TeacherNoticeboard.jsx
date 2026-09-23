@@ -45,16 +45,18 @@ export default function TeacherNoticeboard() {
     targetStudentIds: []
   });
 
+  const currentUserId = userProfile?.id || userProfile?.userId || currentUser?.uid;
+
   // Automatically mark unread notices as viewed via REST API
   const markUnreadAsViewed = useCallback((noticesList) => {
-    if (!currentUser?.uid || !noticesList || !Array.isArray(noticesList)) return;
+    if (!currentUserId || !noticesList || !Array.isArray(noticesList)) return;
     noticesList.forEach((notice) => {
-      const alreadyViewed = notice.viewedBy?.some((v) => v.uid === currentUser.uid || v.userId === currentUser.uid);
+      const alreadyViewed = notice.viewedBy?.some((v) => v.uid === currentUserId || v.userId === currentUserId);
       if (!alreadyViewed && notice.id) {
         noticesApi.markNoticeViewed(notice.id).catch(() => {});
       }
     });
-  }, [currentUser?.uid]);
+  }, [currentUserId]);
 
   // Fetch notices from REST API
   const fetchNotices = useCallback(async () => {

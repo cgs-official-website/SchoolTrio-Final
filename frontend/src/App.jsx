@@ -11,7 +11,7 @@ const GlobalLoader = () => (
       <div className="absolute animate-ping w-16 h-16 rounded-full bg-primary-400 opacity-20"></div>
       <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary-600 border-t-transparent shadow-lg z-10"></div>
     </div>
-    <p className="mt-4 text-primary-600 font-bold tracking-widest text-sm uppercase animate-pulse">Loading Dashboard customization..</p>
+    <p className="mt-4 text-primary-600 font-bold tracking-widest text-sm uppercase animate-pulse">Loading Dashboard..</p>
   </div>
 );
 

@@ -171,6 +171,19 @@ export async function deleteFeeStructure(id) {
   });
 }
 
+/**
+ * Synchronizes active students with a fee structure to generate missing invoices.
+ * Calls POST /api/v1/fee-structures/:id/sync.
+ *
+ * @param {string} id - PostgreSQL FeeStructure UUID
+ * @returns {Promise<{ success: boolean, data: { feeStructureId: string, invoicesGenerated: number, totalStudentsInClass: number }, message?: string }>}
+ */
+export async function syncFeeStructure(id) {
+  return apiClient(`/api/v1/fee-structures/${encodeURIComponent(id)}/sync`, {
+    method: 'POST'
+  });
+}
+
 export const feesApi = {
   listCollectionPeriods,
   getCollectionPeriod,
@@ -181,7 +194,8 @@ export const feesApi = {
   getFeeStructure,
   createFeeStructure,
   updateFeeStructure,
-  deleteFeeStructure
+  deleteFeeStructure,
+  syncFeeStructure
 };
 
 export default feesApi;

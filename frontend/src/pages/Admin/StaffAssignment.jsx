@@ -729,7 +729,21 @@ export default function StaffAssignment() {
     }
 
     setAddStaffErrors(errors);
-    return Object.keys(errors).length === 0;
+    if (Object.keys(errors).length > 0) {
+      if (errors.staffId || errors.firstName || errors.lastName || errors.email || errors.mobileNumber || errors.emergencyContact) {
+        setAddStaffActiveTab('Personal');
+      } else if (errors.yearOfPassing) {
+        setAddStaffActiveTab('Educational');
+      } else if (errors.previousExperience) {
+        setAddStaffActiveTab('Professional');
+      } else if (errors.aadharNumber || errors.panNumber) {
+        setAddStaffActiveTab('Government & Identity');
+      } else if (errors.ifscCode || errors.bankAccountNumber) {
+        setAddStaffActiveTab('Banking');
+      }
+      return false;
+    }
+    return true;
   };
 
   const uploadStaffFile = async (file, path) => {
@@ -773,15 +787,9 @@ export default function StaffAssignment() {
         trimmed[k] = newStaff[k];
       }
     });
-    newStaff.staffId = trimmed.staffId;
-    newStaff.firstName = trimmed.firstName;
-    newStaff.lastName = trimmed.lastName;
-    newStaff.email = trimmed.email;
-    newStaff.mobileNumber = trimmed.mobileNumber;
-    newStaff.aadharNumber = trimmed.aadharNumber;
-    newStaff.panNumber = trimmed.panNumber;
-    newStaff.ifscCode = trimmed.ifscCode;
-    newStaff.bankAccountNumber = trimmed.bankAccountNumber;
+
+    const activeStaffData = { ...newStaff, ...trimmed };
+    setNewStaff(activeStaffData);
 
     if (!validateStaffForm(false)) {
       toast.error("Please resolve the validation errors first.");
@@ -791,65 +799,65 @@ export default function StaffAssignment() {
     setAddingStaff(true);
     const progressToastId = toast.loading("Uploading documents & saving staff member...");
     try {
-      const uploadedUrls = await uploadAllDocuments(newStaff.staffId);
-      const uploadedCustomData = await uploadCustomDataFiles(newStaff.customData, schoolId, 'staff');
+      const uploadedUrls = await uploadAllDocuments(activeStaffData.staffId);
+      const uploadedCustomData = await uploadCustomDataFiles(activeStaffData.customData, schoolId, 'staff');
 
-      const selectedRoleName = (newStaff.roles && newStaff.roles.length > 0) ? newStaff.roles[0] : (newStaff.role || 'Staffs');
-      const matchedRole = rolesList.find(r => r.name === selectedRoleName || r.slug === selectedRoleName || r.id === newStaff.roleId);
+      const selectedRoleName = (activeStaffData.roles && activeStaffData.roles.length > 0) ? activeStaffData.roles[0] : (activeStaffData.role || 'Staffs');
+      const matchedRole = rolesList.find(r => r.name === selectedRoleName || r.slug === selectedRoleName || r.id === activeStaffData.roleId);
 
       const staffPayload = {
-        firstName: newStaff.firstName,
-        lastName: newStaff.lastName || null,
-        email: newStaff.email.toLowerCase(),
-        phone: newStaff.mobileNumber || null,
-        employeeId: newStaff.staffId || null,
-        staffType: newStaff.staff_type || newStaff.staffType || 'teaching',
-        designation: newStaff.designation || selectedRoleName || null,
-        roleId: matchedRole ? matchedRole.id : (newStaff.roleId || null),
-        assignedClassId: newStaff.assignedClassId || null,
-        baseSalary: newStaff.baseSalary ? Number(newStaff.baseSalary) : null,
-        status: newStaff.status || 'Active',
-        dob: newStaff.dob || null,
-        gender: newStaff.gender || 'Male',
-        bloodGroup: newStaff.bloodGroup || null,
-        maritalStatus: newStaff.maritalStatus || 'Single',
-        nationality: newStaff.nationality || null,
-        address: newStaff.residentialAddress || null,
-        emergencyContact: newStaff.emergencyContact || null,
-        fatherGuardianName: newStaff.fatherGuardianName || newStaff.fatherName || null,
-        languagesKnown: newStaff.languagesKnown || null,
+        firstName: activeStaffData.firstName,
+        lastName: activeStaffData.lastName || null,
+        email: activeStaffData.email.toLowerCase(),
+        phone: activeStaffData.mobileNumber || null,
+        employeeId: activeStaffData.staffId || null,
+        staffType: activeStaffData.staff_type || activeStaffData.staffType || 'teaching',
+        designation: activeStaffData.designation || selectedRoleName || null,
+        roleId: matchedRole ? matchedRole.id : (activeStaffData.roleId || null),
+        assignedClassId: activeStaffData.assignedClassId || null,
+        baseSalary: activeStaffData.baseSalary ? Number(activeStaffData.baseSalary) : null,
+        status: activeStaffData.status || 'Active',
+        dob: activeStaffData.dob || null,
+        gender: activeStaffData.gender || 'Male',
+        bloodGroup: activeStaffData.bloodGroup || null,
+        maritalStatus: activeStaffData.maritalStatus || 'Single',
+        nationality: activeStaffData.nationality || null,
+        address: activeStaffData.residentialAddress || null,
+        emergencyContact: activeStaffData.emergencyContact || null,
+        fatherGuardianName: activeStaffData.fatherGuardianName || activeStaffData.fatherName || null,
+        languagesKnown: activeStaffData.languagesKnown || null,
         qualifications: {
-          highestQualification: newStaff.highestQualification || null,
-          degreeSpecialization: newStaff.degreeSpecialization || null,
-          universityName: newStaff.universityName || null,
-          yearOfPassing: newStaff.yearOfPassing || null,
-          certifications: newStaff.professionalCertifications || null
+          highestQualification: activeStaffData.highestQualification || null,
+          degreeSpecialization: activeStaffData.degreeSpecialization || null,
+          universityName: activeStaffData.universityName || null,
+          yearOfPassing: activeStaffData.yearOfPassing || null,
+          certifications: activeStaffData.professionalCertifications || null
         },
         experience: {
-          previousExperience: newStaff.previousExperience || null,
-          previousOrganization: newStaff.previousOrganization || null,
-          subjectSpecialization: newStaff.subjectSpecialization || null,
-          gradesClassesHandled: newStaff.gradesClassesHandled || null
+          previousExperience: activeStaffData.previousExperience || null,
+          previousOrganization: activeStaffData.previousOrganization || null,
+          subjectSpecialization: activeStaffData.subjectSpecialization || null,
+          gradesClassesHandled: activeStaffData.gradesClassesHandled || null
         },
         financial: {
-          panNumber: newStaff.panNumber || null,
-          pfNumber: newStaff.pfNumber || null,
-          esicNumber: newStaff.esicNumber || null,
-          uanNumber: newStaff.uanNumber || null,
-          taxIdDetails: newStaff.taxIdDetails || null,
-          bankName: newStaff.bankName || null,
-          bankAccountNumber: newStaff.bankAccountNumber || null,
-          branchName: newStaff.branchName || null,
-          ifscCode: newStaff.ifscCode || null
+          panNumber: activeStaffData.panNumber || null,
+          pfNumber: activeStaffData.pfNumber || null,
+          esicNumber: activeStaffData.esicNumber || null,
+          uanNumber: activeStaffData.uanNumber || null,
+          taxIdDetails: activeStaffData.taxIdDetails || null,
+          bankName: activeStaffData.bankName || null,
+          bankAccountNumber: activeStaffData.bankAccountNumber || null,
+          branchName: activeStaffData.branchName || null,
+          ifscCode: activeStaffData.ifscCode || null
         },
         documents: {
           ...uploadedUrls
         },
         customData: {
           ...(uploadedCustomData || {}),
-          aadharNumber: newStaff.aadharNumber || null,
-          govtIdNumber: newStaff.govtIdNumber || null,
-          govtIdType: newStaff.govtIdType || null
+          aadharNumber: activeStaffData.aadharNumber || null,
+          govtIdNumber: activeStaffData.govtIdNumber || null,
+          govtIdType: activeStaffData.govtIdType || null
         }
       };
 

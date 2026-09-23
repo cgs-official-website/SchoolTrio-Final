@@ -159,3 +159,18 @@ export async function deleteFeeStructure(req, res, next) {
     return next(error);
   }
 }
+
+/**
+ * Synchronizes student invoices for a fee structure.
+ * POST /api/v1/fee-structures/:id/sync
+ */
+export async function syncFeeStructure(req, res, next) {
+  try {
+    const schoolId = req.tenant.schoolId;
+    const actor = req.user || req.auth;
+    const result = await feeService.syncFeeStructureInvoices(schoolId, req.params.id, actor);
+    return ApiResponse.success(res, result, 'Fee invoices synchronized successfully');
+  } catch (error) {
+    return next(error);
+  }
+}

@@ -88,13 +88,13 @@ export const publicAdmissionSubmitSchema = {
     schoolId: uuidSchema
   }),
   body: z.object({
-    firstName: z.string().min(1, 'First name is required').max(100),
-    lastName: z.string().max(100).optional().nullable(),
+    firstName: z.string().max(100).optional().nullable().or(z.literal('')),
+    lastName: z.string().max(100).optional().nullable().or(z.literal('')),
     studentName: z.string().max(200).optional().nullable(),
-    dob: dateSchema,
+    dob: dateSchema.optional().nullable().or(z.literal('')),
     gender: z.string().max(20).optional().default('Male'),
-    classId: uuidSchema.optional().nullable(),
-    targetClassName: z.string().max(100).optional().nullable(),
+    classId: uuidSchema.optional().nullable().or(z.literal('')),
+    targetClassName: z.string().max(100).optional().nullable().or(z.literal('')),
     parentName: z.string().min(1, 'Parent/Guardian name is required').max(150),
     parentRelationship: z.string().max(50).optional().default('Father'),
     parentPhone: z.string().min(5, 'Parent phone must be at least 5 characters').max(20),

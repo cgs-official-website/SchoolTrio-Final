@@ -107,18 +107,6 @@ export default function TeacherDashboard() {
     setIsSidebarOpen(false);
   }, [location.pathname]);
 
-  useEffect(() => {
-    const matchedItem = navItems.find(item => location.pathname === item.path);
-    if (matchedItem && matchedItem.moduleKey) {
-      clearBadge(matchedItem.moduleKey);
-    }
-  }, [location.pathname, clearBadge]);
-
-  const handleLogout = async () => {
-    await logoutUser();
-    navigate('/login');
-  };
-
   const navItems = [
     { name: 'Dashboard', path: '/teacher', icon: Users, exact: true },
     { name: 'Noticeboard', path: '/teacher/notices', icon: Bell, moduleKey: 'noticeboard' },
@@ -137,6 +125,21 @@ export default function TeacherDashboard() {
     { name: 'Leave Requests', path: '/teacher/leaves', icon: Calendar, moduleKey: 'leaves' },
     { name: 'Profile', path: '/teacher/profile', icon: UserIcon },
   ];
+
+  useEffect(() => {
+    const matchedItem = navItems.find(item => 
+      location.pathname === item.path || 
+      (item.path !== '/teacher' && item.path !== '/' && location.pathname.startsWith(item.path))
+    );
+    if (matchedItem && matchedItem.moduleKey) {
+      clearBadge(matchedItem.moduleKey);
+    }
+  }, [location.pathname, clearBadge]);
+
+  const handleLogout = async () => {
+    await logoutUser();
+    navigate('/login');
+  };
 
   const filteredNavItems = navItems.filter(item => {
     if (!item.moduleKey) return true;
@@ -207,7 +210,7 @@ export default function TeacherDashboard() {
                     )}
                     <item.icon size={20} className="shrink-0" />
                     <span>{item.name}</span>
-                    {item.moduleKey && unreadCounts[item.moduleKey] > 0 && (
+                    {item.moduleKey && unreadCounts[item.moduleKey] > 0 && !isActive && (
                       <span className="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full select-none shrink-0 ml-auto animate-pulse">
                         {unreadCounts[item.moduleKey]}
                       </span>

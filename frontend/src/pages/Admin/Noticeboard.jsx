@@ -21,7 +21,8 @@ import ConfirmModal from '../../components/ConfirmModal';
 import usePermissions from '../../hooks/usePermissions';
 
 export default function Noticeboard() {
-  const { userProfile } = useAuth();
+  const { userProfile, currentUser } = useAuth();
+  const currentUserId = userProfile?.id || userProfile?.userId || currentUser?.uid;
   const schoolId = userProfile?.schoolId;
   const { canCreate, canEdit, canDelete } = usePermissions();
   const hasCreatePermission = userProfile?.role?.toLowerCase() === 'admin' || userProfile?.role?.toLowerCase() === 'superadmin' || canCreate('noticeboard');
@@ -49,15 +50,29 @@ export default function Noticeboard() {
     priority: 'normal'
   });
 
+  const markUnreadAsViewed = useCallback((noticesList) => {
+    if (!currentUserId || !noticesList || !Array.isArray(noticesList)) return;
+    noticesList.forEach((notice) => {
+      const alreadyViewed = notice.viewedBy?.some((v) => v.uid === currentUserId || v.userId === currentUserId);
+      if (!alreadyViewed && notice.id) {
+        noticesApi.markNoticeViewed(notice.id).catch(() => {});
+      }
+    });
+  }, [currentUserId]);
+
   const fetchNotices = useCallback(async () => {
     setLoading(true);
     try {
       if (activeTab === 'global') {
         const res = await noticesApi.listNotices({ type: 'global', limit: 100 });
-        setGlobalNotices(res.data || []);
+        const list = res.data || [];
+        setGlobalNotices(list);
+        markUnreadAsViewed(list);
       } else if (activeTab === 'class') {
         const res = await noticesApi.listNotices({ type: 'class', limit: 100 });
-        setClassNotices(res.data || []);
+        const list = res.data || [];
+        setClassNotices(list);
+        markUnreadAsViewed(list);
       }
     } catch (err) {
       console.error('Failed to load notices:', err);
@@ -65,7 +80,7 @@ export default function Noticeboard() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab]);
+  }, [activeTab, markUnreadAsViewed]);
 
   // Load Classes from REST API for display mapping
   useEffect(() => {

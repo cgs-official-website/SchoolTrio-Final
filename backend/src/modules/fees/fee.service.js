@@ -247,21 +247,21 @@ export async function createFeeStructure(schoolId, data, actor) {
   let createdFeeStructure = null;
   let generatedInvoicesCount = 0;
 
+  // 1. Verify Class belongs to tenant
+  const targetClass = await feeRepository.findClassInTenant(schoolId, data.classId);
+  if (!targetClass) {
+    throw new RelationshipConflictError('Target class does not exist in this school tenant');
+  }
+
+  // 2. Verify CollectionPeriod belongs to tenant (if provided)
+  if (data.collectionPeriodId) {
+    const period = await feeRepository.findPeriodById(schoolId, data.collectionPeriodId);
+    if (!period) {
+      throw new RelationshipConflictError('Fee collection period does not exist in this school tenant');
+    }
+  }
+
   await prisma.$transaction(async (tx) => {
-    // 1. Verify Class belongs to tenant
-    const targetClass = await feeRepository.findClassInTenant(schoolId, data.classId, tx);
-    if (!targetClass) {
-      throw new RelationshipConflictError('Target class does not exist in this school tenant');
-    }
-
-    // 2. Verify CollectionPeriod belongs to tenant (if provided)
-    if (data.collectionPeriodId) {
-      const period = await feeRepository.findPeriodById(schoolId, data.collectionPeriodId, tx);
-      if (!period) {
-        throw new RelationshipConflictError('Fee collection period does not exist in this school tenant');
-      }
-    }
-
     // 3. Create FeeStructure
     createdFeeStructure = await feeRepository.createFeeStructure(schoolId, data, tx);
 
@@ -289,7 +289,7 @@ export async function createFeeStructure(schoolId, data, actor) {
       const batchResult = await feeRepository.createInvoicesBatch(invoicesToCreate, tx);
       generatedInvoicesCount = batchResult.count;
     }
-  });
+  }, { maxWait: 15000, timeout: 30000 });
 
   // Post-commit aggregate audit log dispatch
   await createAuditLog({
@@ -456,4 +456,116 @@ export async function deleteFeeStructure(schoolId, id, actor) {
   });
 
   return { id, deleted: true };
+}
+
+/**
+ * Synchronizes a fee structure with active students in its assigned class, generating any missing invoices.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} id - FeeStructure UUID
+ * @param {Object} actor - Authenticated user context
+ * @returns {Promise<{ feeStructureId: string, invoicesGenerated: number, totalStudentsInClass: number }>}
+ */
+export async function syncFeeStructureInvoices(schoolId, id, actor = null) {
+  let createdFeeStructure = null;
+  let generatedInvoicesCount = 0;
+  let totalActive = 0;
+
+  await prisma.$transaction(async (tx) => {
+    createdFeeStructure = await feeRepository.findFeeStructureById(schoolId, id, tx);
+    if (!createdFeeStructure) {
+      throw new NotFoundError('Fee structure');
+    }
+
+    const activeStudents = await feeRepository.findActiveStudentsByClass(schoolId, createdFeeStructure.classId, tx);
+    totalActive = activeStudents.length;
+
+    const existingStudentIds = await feeRepository.findExistingInvoiceStudentIds(schoolId, createdFeeStructure.id, tx);
+    const eligibleStudents = activeStudents.filter(s => !existingStudentIds.has(s.id));
+
+    if (eligibleStudents.length > 0) {
+      const invoicesToCreate = eligibleStudents.map(student => ({
+        schoolId,
+        studentId: student.id,
+        feeStructureId: createdFeeStructure.id,
+        collectionPeriodId: createdFeeStructure.collectionPeriodId || null,
+        feeName: createdFeeStructure.name,
+        amount: createdFeeStructure.amount,
+        dueDate: createdFeeStructure.dueDate,
+        status: 'Pending',
+        customData: createdFeeStructure.customData ?? null
+      }));
+
+      const batchResult = await feeRepository.createInvoicesBatch(invoicesToCreate, tx);
+      generatedInvoicesCount = batchResult.count;
+    }
+  }, { maxWait: 15000, timeout: 30000 });
+
+  if (generatedInvoicesCount > 0) {
+    await createAuditLog({
+      schoolId,
+      entityType: 'FeeStructure',
+      entityId: id,
+      actionPerformed: 'SYNC_FEE_STRUCTURE_INVOICES',
+      userName: actor?.email || actor?.name || 'Administrator',
+      userRole: actor?.systemRole || actor?.role || null,
+      modifiedFields: {
+        invoicesGenerated: generatedInvoicesCount,
+        totalActiveStudents: totalActive
+      }
+    });
+  }
+
+  return {
+    feeStructureId: id,
+    invoicesGenerated: generatedInvoicesCount,
+    totalStudentsInClass: totalActive
+  };
+}
+
+/**
+ * Synchronizes all active fee structures for a class to a specific student.
+ * Automatically called when a student is created or enrolled in a class.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} studentId - Student UUID
+ * @param {string} classId - Class UUID
+ * @param {Object} [tx=prisma]
+ * @returns {Promise<number>} Number of invoices generated
+ */
+export async function syncStudentClassFeeInvoices(schoolId, studentId, classId, tx = prisma) {
+  if (!schoolId || !studentId || !classId) return 0;
+  const feeStructures = await tx.feeStructure.findMany({
+    where: { schoolId, classId }
+  });
+  if (!feeStructures || feeStructures.length === 0) return 0;
+
+  let createdCount = 0;
+  for (const fs of feeStructures) {
+    const existing = await tx.invoice.findFirst({
+      where: {
+        schoolId,
+        studentId,
+        feeStructureId: fs.id,
+        status: { not: 'Cancelled' }
+      }
+    });
+    if (!existing) {
+      await tx.invoice.create({
+        data: {
+          schoolId,
+          studentId,
+          feeStructureId: fs.id,
+          collectionPeriodId: fs.collectionPeriodId || null,
+          feeName: fs.name,
+          amount: fs.amount,
+          dueDate: fs.dueDate,
+          status: 'Pending',
+          customData: fs.customData ?? null
+        }
+      });
+      createdCount++;
+    }
+  }
+  return createdCount;
 }

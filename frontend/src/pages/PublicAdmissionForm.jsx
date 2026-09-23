@@ -235,15 +235,38 @@ export default function PublicAdmissionForm() {
       };
 
       const applicationPayload = {
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
         studentName: `${formData.firstName.trim()} ${formData.lastName.trim()}`.trim(),
         dob: formData.dob || undefined,
         gender: formData.gender,
-        parentName: formData.parentName.trim(),
-        parentPhone: formData.parentPhone.trim(),
-        parentEmail: formData.parentEmail.trim(),
-        address: formData.homeAddress.trim(),
-        photoUrl: photoUrl || undefined,
         classId: formData.targetClassId || undefined,
+        targetClassName: targetClassName || undefined,
+        parentName: formData.parentName.trim(),
+        parentRelationship: formData.parentRelationship || 'Father',
+        parentPhone: formData.parentPhone.trim(),
+        parentEmail: formData.parentEmail.trim() || undefined,
+        parentOccupation: formData.parentOccupation || undefined,
+        annualIncome: formData.annualIncome || undefined,
+        emergencyContact: formData.emergencyContact || formData.parentPhone.trim(),
+        siblingName: formData.siblingName || undefined,
+        homeAddress: formData.homeAddress.trim() || undefined,
+        address: formData.homeAddress.trim() || undefined,
+        city: formData.city || undefined,
+        state: formData.state || undefined,
+        pincode: formData.pincode || undefined,
+        photoUrl: photoUrl || undefined,
+        bloodGroup: formData.bloodGroup || undefined,
+        nationality: formData.nationality || undefined,
+        religion: formData.religion || undefined,
+        motherTongue: formData.motherTongue || undefined,
+        aadharNumber: formData.aadharNumber || undefined,
+        studentEmail: formData.studentEmail || undefined,
+        studentPhone: formData.studentPhone || undefined,
+        previousSchool: formData.previousSchool || undefined,
+        previousMarks: formData.previousMarks || undefined,
+        subjectsChosen: formData.subjectsChosen || undefined,
+        busRoute: formData.busRoute || undefined,
         customData: customDataPayload
       };
 
@@ -263,7 +286,10 @@ export default function PublicAdmissionForm() {
       toast.success("Admission application submitted successfully!");
     } catch (err) {
       console.error("Error submitting admission application:", err);
-      const errorMsg = err.response?.data?.message || err.message || "Failed to submit application. Please check your connection and try again.";
+      let errorMsg = err.response?.data?.message || err.message || "Failed to submit application. Please check your connection and try again.";
+      if (err.details && Array.isArray(err.details) && err.details.length > 0) {
+        errorMsg = err.details.map(d => `${d.field}: ${d.message}`).join(', ');
+      }
       toast.error(errorMsg);
       if (captchaRef.current) captchaRef.current.regenerate();
     } finally {

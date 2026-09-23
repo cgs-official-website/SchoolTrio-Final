@@ -225,7 +225,10 @@ export default function ParentDashboard() {
   }, [location.pathname]);
 
   useEffect(() => {
-    const matchedItem = NAV_ITEMS.find(item => location.pathname === item.path);
+    const matchedItem = NAV_ITEMS.find(item => 
+      location.pathname === item.path || 
+      (item.path !== '/parent' && item.path !== '/' && location.pathname.startsWith(item.path))
+    );
     if (matchedItem && matchedItem.moduleKey) {
       clearBadge(matchedItem.moduleKey);
     }
@@ -533,7 +536,7 @@ export default function ParentDashboard() {
                     }`}>
                       {hasOverdueFees ? `${unpaidFeeCount} Overdue` : `${unpaidFeeCount} Due`}
                     </span>
-                  ) : item.moduleKey && unreadCounts[item.moduleKey] > 0 ? (
+                  ) : item.moduleKey && unreadCounts[item.moduleKey] > 0 && !isActive ? (
                     <span className="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full select-none shrink-0 ml-auto animate-pulse">
                       {unreadCounts[item.moduleKey]}
                     </span>

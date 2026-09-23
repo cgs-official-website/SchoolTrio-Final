@@ -8,6 +8,7 @@ import {
   TenantAccessError
 } from '../../utils/app-error.js';
 import { parsePagination, buildPaginationMetadata } from '../../utils/pagination.js';
+import { syncStudentClassFeeInvoices } from '../fees/fee.service.js';
 
 /**
  * Student Business Logic Service Layer
@@ -168,6 +169,11 @@ export async function createStudent(schoolId, data, actor = null) {
       sectionId: created.sectionId
     }
   });
+
+  // Automatically generate invoices for active fee structures in this class
+  if (created.classId) {
+    syncStudentClassFeeInvoices(schoolId, created.id, created.classId).catch(() => {});
+  }
 
   return created;
 }
@@ -365,6 +371,11 @@ export async function updateStudent(schoolId, studentId, data, actor = null) {
     userRole: actor?.systemRole || null,
     modifiedFields
   });
+
+  // If class was updated, sync fee structures for the new class
+  if (data.classId && data.classId !== existingStudent.classId) {
+    syncStudentClassFeeInvoices(schoolId, studentId, data.classId).catch(() => {});
+  }
 
   return updated;
 }

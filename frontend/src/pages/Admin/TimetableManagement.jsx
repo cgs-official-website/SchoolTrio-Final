@@ -229,7 +229,7 @@ export default function TimetableManagement() {
         isCurrent = false;
       };
     } else {
-      setSchedule({ Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [] });
+      setSchedule({ Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [] });
     }
   }, [selectedClassId]);
 
@@ -251,6 +251,10 @@ export default function TimetableManagement() {
       teacher: teacherDisplayName,
       teacherId: newSlot.teacherId || null
     };
+
+    if (!newSchedule[activeDay]) {
+      newSchedule[activeDay] = [];
+    }
 
     if (editingSlotId) {
       newSchedule[activeDay] = newSchedule[activeDay].map(s => 
@@ -310,7 +314,7 @@ export default function TimetableManagement() {
     const { day, slotId } = confirmModalState;
     if (!day || !slotId) return;
     const newSchedule = { ...schedule };
-    newSchedule[day] = newSchedule[day].filter(s => s.id !== slotId);
+    newSchedule[day] = (newSchedule[day] || []).filter(s => s.id !== slotId);
     setSchedule(newSchedule);
     setConfirmModalState({ isOpen: false, day: null, slotId: null });
   };
@@ -524,12 +528,12 @@ export default function TimetableManagement() {
                   {/* Mobile Day Header (only visible on small screens) */}
                   <h3 className="font-bold text-slate-700 dark:text-slate-200 md:hidden mb-2 px-2">{day}</h3>
                   
-                  {schedule[day]?.length === 0 ? (
+                  {(!schedule[day] || schedule[day].length === 0) ? (
                     <div className="text-center p-4 text-sm text-slate-400 dark:text-slate-300 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl mx-2">
                       Free Day
                     </div>
                   ) : (
-                    schedule[day].map(slot => (
+                    (schedule[day] || []).map(slot => (
                       <div key={slot.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 shadow-sm hover:shadow-md transition-shadow group relative">
                         
                         <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">

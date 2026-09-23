@@ -106,6 +106,15 @@ feeStructureRoutes.delete(
   feeController.deleteFeeStructure
 );
 
+feeStructureRoutes.post(
+  '/:id/sync',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('fees', 'edit'),
+  validate(feeSchemas.feeStructureParamsSchema),
+  feeController.syncFeeStructure
+);
+
 export default {
   feeCollectionPeriodRoutes,
   feeStructureRoutes

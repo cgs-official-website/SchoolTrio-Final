@@ -148,11 +148,16 @@ export default function AdminDashboard() {
   }, [location.pathname, customNavItems]);
 
   useEffect(() => {
-    const matchedItem = allNavItems.find(item => location.pathname === item.path);
+    const combined = [...allNavItems, ...customNavItems];
+    const matchedItem = combined.find(item => 
+      location.pathname === item.path || 
+      (item.path !== '/admin' && item.path !== '/' && location.pathname.startsWith(item.path)) ||
+      item.subItems?.some(sub => location.pathname === sub.path || location.pathname.startsWith(sub.path))
+    );
     if (matchedItem && matchedItem.moduleKey) {
       clearBadge(matchedItem.moduleKey);
     }
-  }, [location.pathname, clearBadge]);
+  }, [location.pathname, customNavItems, clearBadge]);
 
   const handleLogout = async () => {
     await logoutUser();
@@ -297,7 +302,7 @@ export default function AdminDashboard() {
                             <item.icon size={20} className="shrink-0" />
                             <span>{item.name}</span>
                           </div>
-                          {unreadCounts[item.moduleKey] > 0 && (
+                          {unreadCounts[item.moduleKey] > 0 && !active && (
                             <span className="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full select-none shrink-0 ml-auto mr-1 animate-pulse">
                               {unreadCounts[item.moduleKey]}
                             </span>

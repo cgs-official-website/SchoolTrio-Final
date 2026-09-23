@@ -1,6 +1,6 @@
 import * as admissionsRepository from './admissions.repository.js';
 import { createAuditLog } from '../audit/audit.repository.js';
-import { prisma } from '../../database/prisma.client.js';
+import { prisma, runWithTenantContext } from '../../database/prisma.client.js';
 import {
   NotFoundError,
   ConflictError,
@@ -8,6 +8,7 @@ import {
   TenantAccessError
 } from '../../utils/app-error.js';
 import { parsePagination, buildPaginationMetadata } from '../../utils/pagination.js';
+import { syncStudentClassFeeInvoices } from '../fees/fee.service.js';
 
 /**
  * Admissions & Lead Management Service Layer
@@ -305,55 +306,59 @@ export async function deleteLeadForm(schoolId, id, actor = null) {
  * Retrieves public metadata for school admission page (school name, logo, active classes).
  */
 export async function getPublicSchoolAdmissionMeta(schoolId) {
-  const school = await admissionsRepository.findSchoolPublicMeta(schoolId);
-  if (!school) {
-    throw new NotFoundError('School not found or admission portal is currently inactive');
-  }
+  return runWithTenantContext({ schoolId, role: 'Public' }, async () => {
+    const school = await admissionsRepository.findSchoolPublicMeta(schoolId);
+    if (!school) {
+      throw new NotFoundError('School not found or admission portal is currently inactive');
+    }
 
-  return {
-    id: school.id,
-    schoolName: school.name,
-    code: school.code,
-    type: school.type,
-    logoUrl: school.logoUrl,
-    address: school.address,
-    email: school.email,
-    phone: school.phone,
-    classes: school.classes.map(c => ({
-      id: c.id,
-      name: c.name,
-      gradeLevel: c.gradeLevel,
-      sections: c.sections.map(s => ({ id: s.id, name: s.name }))
-    }))
-  };
+    return {
+      id: school.id,
+      schoolName: school.name,
+      code: school.code,
+      type: school.type,
+      logoUrl: school.logoUrl,
+      address: school.address,
+      email: school.email,
+      phone: school.phone,
+      classes: school.classes.map(c => ({
+        id: c.id,
+        name: c.name,
+        gradeLevel: c.gradeLevel,
+        sections: c.sections.map(s => ({ id: s.id, name: s.name }))
+      }))
+    };
+  });
 }
 
 /**
  * Retrieves public schema for an active lead form.
  */
 export async function getPublicLeadForm(schoolId, formId) {
-  const form = await admissionsRepository.findPublicLeadForm(schoolId, formId);
-  if (!form) {
-    throw new NotFoundError('Lead inquiry form not found or has been disabled');
-  }
-
-  const fieldsObj = (form.fields && typeof form.fields === 'object') ? form.fields : {};
-  const fieldList = Array.isArray(fieldsObj.fieldList) ? fieldsObj.fieldList : (Array.isArray(form.fields) ? form.fields : []);
-  const successMessage = fieldsObj.successMessage || 'Your enquiry has been successfully submitted. We will get back to you shortly.';
-
-  return {
-    id: form.id,
-    schoolId: form.schoolId,
-    title: form.title,
-    description: form.description,
-    successMessage,
-    fields: fieldList,
-    school: {
-      id: form.school?.id,
-      name: form.school?.name,
-      logoUrl: form.school?.logoUrl
+  return runWithTenantContext({ schoolId, role: 'Public' }, async () => {
+    const form = await admissionsRepository.findPublicLeadForm(schoolId, formId);
+    if (!form) {
+      throw new NotFoundError('Lead inquiry form not found or has been disabled');
     }
-  };
+
+    const fieldsObj = (form.fields && typeof form.fields === 'object') ? form.fields : {};
+    const fieldList = Array.isArray(fieldsObj.fieldList) ? fieldsObj.fieldList : (Array.isArray(form.fields) ? form.fields : []);
+    const successMessage = fieldsObj.successMessage || 'Your enquiry has been successfully submitted. We will get back to you shortly.';
+
+    return {
+      id: form.id,
+      schoolId: form.schoolId,
+      title: form.title,
+      description: form.description,
+      successMessage,
+      fields: fieldList,
+      school: {
+        id: form.school?.id,
+        name: form.school?.name,
+        logoUrl: form.school?.logoUrl
+      }
+    };
+  });
 }
 
 /**
@@ -361,149 +366,153 @@ export async function getPublicLeadForm(schoolId, formId) {
  * Validates submitted data against the stored dynamic form schema.
  */
 export async function submitPublicLead(schoolId, formId, submissionData) {
-  const form = await admissionsRepository.findPublicLeadForm(schoolId, formId);
-  if (!form) {
-    throw new NotFoundError('Form not found or has been disabled');
-  }
+  return runWithTenantContext({ schoolId, role: 'Public' }, async () => {
+    const form = await admissionsRepository.findPublicLeadForm(schoolId, formId);
+    if (!form) {
+      throw new NotFoundError('Form not found or has been disabled');
+    }
 
-  const rawData = submissionData.data || {};
-  const fieldsObj = (form.fields && typeof form.fields === 'object') ? form.fields : {};
-  const fieldList = Array.isArray(fieldsObj.fieldList) ? fieldsObj.fieldList : (Array.isArray(form.fields) ? form.fields : []);
+    const rawData = submissionData.data || {};
+    const fieldsObj = (form.fields && typeof form.fields === 'object') ? form.fields : {};
+    const fieldList = Array.isArray(fieldsObj.fieldList) ? fieldsObj.fieldList : (Array.isArray(form.fields) ? form.fields : []);
 
-  // 1. Server-side validation against dynamic form field requirements
-  const missingFields = [];
-  for (const field of fieldList) {
-    if (field.required) {
-      const val = rawData[field.id];
-      if (field.type === 'checkbox') {
-        if (!Array.isArray(val) || val.length === 0) {
-          missingFields.push(field.label || field.id);
-        }
-      } else {
-        if (val === undefined || val === null || String(val).trim() === '') {
-          missingFields.push(field.label || field.id);
+    // 1. Server-side validation against dynamic form field requirements
+    const missingFields = [];
+    for (const field of fieldList) {
+      if (field.required) {
+        const val = rawData[field.id];
+        if (field.type === 'checkbox') {
+          if (!Array.isArray(val) || val.length === 0) {
+            missingFields.push(field.label || field.id);
+          }
+        } else {
+          if (val === undefined || val === null || String(val).trim() === '') {
+            missingFields.push(field.label || field.id);
+          }
         }
       }
     }
-  }
 
-  if (missingFields.length > 0) {
-    throw new ValidationError(`Please provide required fields: ${missingFields.join(', ')}`);
-  }
-
-  // 2. Extract standard lead fields from form responses if available
-  let leadName = 'Prospective Student';
-  let leadPhone = null;
-  let leadEmail = null;
-  let gradeInterested = null;
-
-  for (const field of fieldList) {
-    const val = rawData[field.id];
-    if (!val) continue;
-
-    const lbl = (field.label || '').toLowerCase();
-    if (lbl.includes('name') && !leadName.includes(' ') && typeof val === 'string') {
-      leadName = val.trim();
+    if (missingFields.length > 0) {
+      throw new ValidationError(`Please provide required fields: ${missingFields.join(', ')}`);
     }
-    if ((lbl.includes('phone') || lbl.includes('mobile') || field.type === 'phone') && !leadPhone && typeof val === 'string') {
-      leadPhone = val.trim();
-    }
-    if ((lbl.includes('email') || field.type === 'email') && !leadEmail && typeof val === 'string') {
-      leadEmail = val.trim();
-    }
-    if ((lbl.includes('grade') || lbl.includes('class')) && !gradeInterested && typeof val === 'string') {
-      gradeInterested = val.trim();
-    }
-  }
 
-  // 3. Persist lead in database
-  const created = await admissionsRepository.createLead({
-    schoolId,
-    name: leadName.slice(0, 150),
-    phone: leadPhone ? leadPhone.slice(0, 20) : null,
-    email: leadEmail ? leadEmail.slice(0, 255) : null,
-    gradeInterested: gradeInterested ? gradeInterested.slice(0, 50) : null,
-    status: 'Cold', // Initial default lead status
-    customData: {
+    // 2. Extract standard lead fields from form responses if available
+    let leadName = 'Prospective Student';
+    let leadPhone = null;
+    let leadEmail = null;
+    let gradeInterested = null;
+
+    for (const field of fieldList) {
+      const val = rawData[field.id];
+      if (!val) continue;
+
+      const lbl = (field.label || '').toLowerCase();
+      if (lbl.includes('name') && !leadName.includes(' ') && typeof val === 'string') {
+        leadName = val.trim();
+      }
+      if ((lbl.includes('phone') || lbl.includes('mobile') || field.type === 'phone') && !leadPhone && typeof val === 'string') {
+        leadPhone = val.trim();
+      }
+      if ((lbl.includes('email') || field.type === 'email') && !leadEmail && typeof val === 'string') {
+        leadEmail = val.trim();
+      }
+      if ((lbl.includes('grade') || lbl.includes('class')) && !gradeInterested && typeof val === 'string') {
+        gradeInterested = val.trim();
+      }
+    }
+
+    // 3. Persist lead in database
+    const created = await admissionsRepository.createLead({
+      schoolId,
+      name: leadName.slice(0, 150),
+      phone: leadPhone ? leadPhone.slice(0, 20) : null,
+      email: leadEmail ? leadEmail.slice(0, 255) : null,
+      gradeInterested: gradeInterested ? gradeInterested.slice(0, 50) : null,
+      status: 'Cold', // Initial default lead status
+      customData: {
+        formId,
+        formTitle: form.title,
+        data: rawData
+      }
+    });
+
+    return {
+      id: created.id,
       formId,
-      formTitle: form.title,
-      data: rawData
-    }
+      status: created.status,
+      submittedAt: created.submittedAt
+    };
   });
-
-  return {
-    id: created.id,
-    formId,
-    status: created.status,
-    submittedAt: created.submittedAt
-  };
 }
 
 /**
  * Submits a public admission application.
  */
 export async function submitPublicAdmission(schoolId, data) {
-  // 1. Verify school status
-  const school = await prisma.school.findFirst({
-    where: {
-      id: schoolId,
-      status: 'approved'
-    }
-  });
-  if (!school) {
-    throw new NotFoundError('School not found or not currently accepting online admission applications');
-  }
-
-  // 2. Verify target class belongs to school if provided
-  if (data.classId) {
-    const classEntity = await prisma.class.findFirst({
+  return runWithTenantContext({ schoolId, role: 'Public' }, async () => {
+    // 1. Verify school status
+    const school = await prisma.school.findFirst({
       where: {
-        id: data.classId,
-        schoolId
+        id: schoolId,
+        status: 'approved'
       }
     });
-    if (!classEntity) {
-      throw new ValidationError('Selected class does not exist in this institution');
+    if (!school) {
+      throw new NotFoundError('School not found or not currently accepting online admission applications');
     }
-  }
 
-  // 3. Generate structured application reference number (e.g. ADM-2026-8421)
-  const year = new Date().getFullYear();
-  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-  const applicationNumber = `ADM-${year}-${randomSuffix}`;
+    // 2. Verify target class belongs to school if provided
+    if (data.classId) {
+      const classEntity = await prisma.class.findFirst({
+        where: {
+          id: data.classId,
+          schoolId
+        }
+      });
+      if (!classEntity) {
+        throw new ValidationError('Selected class does not exist in this institution');
+      }
+    }
 
-  const firstName = data.firstName.trim();
-  const lastName = data.lastName ? data.lastName.trim() : '';
-  const fullName = data.studentName?.trim() || `${firstName} ${lastName}`.trim();
+    // 3. Generate structured application reference number (e.g. ADM-2026-8421)
+    const year = new Date().getFullYear();
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const applicationNumber = `ADM-${year}-${randomSuffix}`;
 
-  // 4. Combine residential address fields if structured
-  let fullAddress = data.address?.trim() || data.homeAddress?.trim() || '';
-  if (data.city || data.state || data.pincode) {
-    const parts = [fullAddress, data.city, data.state, data.pincode].filter(Boolean);
-    fullAddress = parts.join(', ');
-  }
+    const firstName = (data.firstName || (data.studentName ? data.studentName.trim().split(' ')[0] : '') || 'Student').trim();
+    const lastName = (data.lastName || (data.studentName ? data.studentName.trim().split(' ').slice(1).join(' ') : '') || '').trim();
+    const fullName = data.studentName?.trim() || `${firstName} ${lastName}`.trim();
 
-  const created = await admissionsRepository.createApplication({
-    schoolId,
-    classId: data.classId || null,
-    studentName: fullName,
-    dob: data.dob,
-    gender: data.gender || 'Male',
-    parentName: data.parentName.trim(),
-    parentPhone: data.parentPhone.trim(),
-    parentEmail: data.parentEmail ? data.parentEmail.trim() : null,
-    address: fullAddress || null,
-    photoUrl: data.photoUrl ? data.photoUrl.trim() : null,
-    status: 'Pending'
+    // 4. Combine residential address fields if structured
+    let fullAddress = data.address?.trim() || data.homeAddress?.trim() || '';
+    if (data.city || data.state || data.pincode) {
+      const parts = [fullAddress, data.city, data.state, data.pincode].filter(Boolean);
+      fullAddress = parts.join(', ');
+    }
+
+    const created = await admissionsRepository.createApplication({
+      schoolId,
+      classId: data.classId && data.classId.trim() ? data.classId.trim() : null,
+      studentName: fullName,
+      dob: data.dob ? data.dob.slice(0, 10) : '2000-01-01',
+      gender: data.gender || 'Male',
+      parentName: data.parentName.trim(),
+      parentPhone: data.parentPhone.trim(),
+      parentEmail: data.parentEmail ? data.parentEmail.trim() : null,
+      address: fullAddress || null,
+      photoUrl: data.photoUrl ? data.photoUrl.trim() : null,
+      status: 'Pending'
+    });
+
+    return {
+      id: created.id,
+      applicationNumber,
+      studentName: created.studentName,
+      status: created.status,
+      submittedAt: created.submittedAt
+    };
   });
-
-  return {
-    id: created.id,
-    applicationNumber,
-    studentName: created.studentName,
-    status: created.status,
-    submittedAt: created.submittedAt
-  };
 }
 
 // =========================================================================
@@ -753,6 +762,11 @@ export async function enrollApplication(schoolId, id, enrollmentData, actor = nu
         }
       }
     });
+
+    // Automatically generate invoices for any existing fee structures in this class
+    if (newStudent.classId) {
+      await syncStudentClassFeeInvoices(schoolId, newStudent.id, newStudent.classId, tx);
+    }
 
     // 9. Mark AdmissionApplication as Approved
     const updatedApp = await tx.admissionApplication.update({

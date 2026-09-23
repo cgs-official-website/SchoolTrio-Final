@@ -2,7 +2,6 @@ import React from 'react';
 import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { LuAtom as Atom, LuLogOut as LogOut, LuLayoutDashboard as LayoutDashboard, LuBuilding2 as Building2, LuCreditCard as CreditCard, LuSettings as Settings } from 'react-icons/lu';
-import { LuAtom as Atom, LuLogOut as LogOut, LuLayoutDashboard as LayoutDashboard, LuBuilding2 as Building2, LuCreditCard as CreditCard, LuSettings as Settings } from 'react-icons/lu';
 import TopNavbar from '../../components/TopNavbar';
 
 export default function SuperAdminLayout() {

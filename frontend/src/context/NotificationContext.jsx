@@ -34,10 +34,32 @@ export const NotificationProvider = ({ children }) => {
   });
 
   const clearBadge = useCallback((moduleKey) => {
+    if (!moduleKey) return;
     const now = new Date().toISOString();
     localStorage.setItem(`lastViewed_${moduleKey}`, now);
     setLastViewed(prev => ({ ...prev, [moduleKey]: now }));
-  }, []);
+    setUnreadCounts(prev => ({ ...prev, [moduleKey]: 0 }));
+
+    const currentUserId = userProfile?.id || userProfile?.userId || userProfile?.uid || currentUser?.uid;
+
+    // Auto-mark unread notices as viewed for current user when noticeboard is opened
+    if (moduleKey === 'noticeboard' && currentUserId) {
+      noticesApi.listNotices({ limit: 100 }).then(res => {
+        const notices = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+        notices.forEach(n => {
+          const alreadyViewed = n.viewedBy?.some(v => v.uid === currentUserId || v.userId === currentUserId);
+          if (!alreadyViewed && n.id) {
+            noticesApi.markNoticeViewed(n.id).catch(() => {});
+          }
+        });
+      }).catch(() => {});
+    }
+
+    // Auto-mark personal notifications as read when notifications panel is opened
+    if (moduleKey === 'notifications') {
+      notificationsApi.markAllNotificationsRead().catch(() => {});
+    }
+  }, [userProfile?.id, userProfile?.userId, userProfile?.uid, currentUser?.uid]);
 
   useEffect(() => {
     if (!schoolId || !currentUser) {
@@ -56,15 +78,18 @@ export const NotificationProvider = ({ children }) => {
     let isMounted = true;
 
     // 1. Noticeboard Unread Fetch (REST API using authoritative PostgreSQL viewedBy)
-    const currentUserId = userProfile?.uid || userProfile?.id || currentUser?.uid || userProfile?.userId;
+    const currentUserId = userProfile?.id || userProfile?.userId || userProfile?.uid || currentUser?.uid;
 
     const fetchNoticeUnread = async () => {
       try {
         const res = await noticesApi.listNotices({ limit: 100 });
         if (!isMounted) return;
         const notices = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+        const lastViewedNotice = localStorage.getItem('lastViewed_noticeboard') || lastViewed.noticeboard;
         const count = notices.filter((n) => {
-          return !n.viewedBy?.some((v) => v.uid === currentUserId || v.userId === currentUserId);
+          const isViewed = n.viewedBy?.some((v) => v.uid === currentUserId || v.userId === currentUserId);
+          const isOlderThanViewed = lastViewedNotice && new Date(n.createdAt) <= new Date(lastViewedNotice);
+          return !isViewed && !isOlderThanViewed;
         }).length;
         if (!isMounted) return;
         setUnreadCounts(prev => ({ ...prev, noticeboard: count }));
@@ -192,7 +217,7 @@ export const NotificationProvider = ({ children }) => {
       window.removeEventListener('visibilitychange', handleFocus);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [schoolId, role, currentUser, userProfile?.id, userProfile?.uid, userProfile?.userId, lastViewed.noticeboard, lastViewed.homework]);
+  }, [schoolId, role, currentUser, userProfile?.id, userProfile?.uid, userProfile?.userId]);
 
   return (
     <NotificationContext.Provider value={{ unreadCounts, clearBadge, lastViewed }}>

@@ -19,7 +19,6 @@ import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import ConfirmModal from '../../components/ConfirmModal';
 import ImageCropper from '../../components/ImageCropper';
-import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
 import usePermissions from '../../hooks/usePermissions';
 import { sortClassesAscending } from '../../utils/classSorting';
 import { normalizeGender, isMale, isFemale } from '../../utils/genderUtils';
@@ -416,7 +415,7 @@ export default function StudentManagement() {
     const dobError = validateDateOfBirth(formData.dob, true);
     const bloodGroupError = validateBloodGroup(formData.bloodGroup, false);
     const aadhaarError = validateAadhaarNumber(formData.aadharNumber, false);
-    const parentPhoneError = validatePhone(formData.parentPhone, false);
+    const parentPhoneError = validatePhone(formData.parentPhone, true, 'Parent phone number');
     const parentEmailError = validateEmail(formData.parentEmail, false);
 
     let admissionNumberError = null;
@@ -880,7 +879,7 @@ export default function StudentManagement() {
     if (editStudentData.studentPhone?.trim() && !phoneRegex.test(editStudentData.studentPhone)) {
       errors.studentPhone = "Mobile number must be 10 digits";
     }
-    const parentPhoneError = validatePhone(editStudentData.parentPhone, false);
+    const parentPhoneError = validatePhone(editStudentData.parentPhone, true, 'Parent phone number');
     if (parentPhoneError) {
       errors.parentPhone = parentPhoneError;
     }
@@ -1582,9 +1581,13 @@ export default function StudentManagement() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Parent Phone Number</label>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">
+                    Parent Phone Number <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
+                    required
+                    placeholder="10-digit mobile number"
                     id="add-student-parentPhone"
                     value={formData.parentPhone}
                     onChange={(e) => {
@@ -1711,14 +1714,7 @@ export default function StudentManagement() {
               </div>
             </div>
 
-            <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-800">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Additional Details</h3>
-              <CustomFieldsRenderer
-                moduleKey="students"
-                customData={customData}
-                onChange={(k, v) => setCustomData(prev => ({...prev, [k]: v}))}
-              />
-            </div>
+
 
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3">
               <button 
@@ -2598,15 +2594,7 @@ export default function StudentManagement() {
                     </div>
                   </div>
 
-                  {/* Schema / Custom Fields */}
-                  <div className="bg-slate-50 dark:bg-slate-800 p-6 rounded-2xl border border-slate-200/60">
-                    <h4 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider mb-4 pb-2 border-b border-slate-200/80">Additional Details</h4>
-                    <CustomFieldsRenderer
-                      moduleKey="students"
-                      customData={selectedStudentToView.customData || {}}
-                      readOnly={true}
-                    />
-                  </div>
+
 
                   {/* Attendance Analytics */}
                   <div className="bg-slate-50 dark:bg-slate-800 p-6 rounded-2xl border border-slate-200/60 space-y-6">
@@ -2943,9 +2931,13 @@ export default function StudentManagement() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Father's Phone</label>
+                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">
+                            Father's Phone <span className="text-red-500">*</span>
+                          </label>
                           <input
                             type="text"
+                            required
+                            placeholder="10-digit mobile number"
                             id="edit-student-parentPhone"
                             value={editStudentData.parentPhone || ''}
                             onChange={e => handleEditFieldChange('parentPhone', e.target.value)}
@@ -3220,15 +3212,7 @@ export default function StudentManagement() {
                     </div>
                   </div>
 
-                  {/* Custom Fields Edit */}
-                  <div className="bg-slate-50/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
-                    <h4 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider mb-4 pb-2 border-b border-slate-200 dark:border-slate-700">Additional Details</h4>
-                    <CustomFieldsRenderer
-                      moduleKey="students"
-                      customData={editCustomData}
-                      onChange={(k, v) => setEditCustomData(prev => ({...prev, [k]: v}))}
-                    />
-                  </div>
+
 
                   {/* Read-Only System Metadata Section in Edit Mode */}
                   <div className="bg-slate-100/50 dark:bg-slate-700/50 p-4 rounded-2xl border border-slate-200/40 text-xs text-slate-400 dark:text-slate-300 space-y-1 select-none">

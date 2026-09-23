@@ -468,7 +468,9 @@ export async function findActiveStudentsByClass(schoolId, classId, tx = prisma) 
     where: {
       schoolId,
       classId,
-      status: 'Active'
+      status: {
+        in: ['Active', 'active', 'ACTIVE']
+      }
     },
     orderBy: {
       id: 'asc'

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getStudentInvoices, payInvoice } from '../../api/invoices';
 import { LuCreditCard as _CreditCard, LuReceipt as Receipt, LuCircleCheck as CheckCircle2, LuTrendingUp as TrendingUp, LuTriangleAlert as AlertTriangle, LuInfo as _Info } from 'react-icons/lu';
@@ -6,7 +7,8 @@ import toast from 'react-hot-toast';
 
 export default function ParentFees() {
   const { userProfile } = useAuth();
-  const studentId = userProfile?.linkedStudentId;
+  const outletContext = useOutletContext();
+  const studentId = outletContext?.activeStudentId || userProfile?.linkedStudentId;
 
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);

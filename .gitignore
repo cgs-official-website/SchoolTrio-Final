@@ -58,3 +58,4 @@ coverage/
 .system_generated/
 .gemini/
 .brain/
+.playwright-mcp/

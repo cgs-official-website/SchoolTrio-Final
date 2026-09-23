@@ -343,8 +343,8 @@ export async function createStaff(schoolId, data, actor = null) {
         await staffRepository.updateClassTeacher(schoolId, data.assignedClassId, profile.id, tx);
       }
 
-      return staffRepository.findStaffById(schoolId, profile.id, tx);
-    });
+      return profile;
+    }, { maxWait: 15000, timeout: 30000 });
   } catch (error) {
     if (error.code === 'P2002') {
       const target = error.meta?.target;
