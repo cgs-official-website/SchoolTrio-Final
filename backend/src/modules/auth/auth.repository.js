@@ -35,6 +35,34 @@ export const SAFE_USER_SELECT = Object.freeze({
       code: true,
       status: true
     }
+  },
+  roleAssignments: {
+    select: {
+      id: true,
+      schoolRoleId: true,
+      schoolRole: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          loginPanel: true
+        }
+      }
+    }
+  },
+  staffProfile: {
+    select: {
+      id: true,
+      name: true,
+      staffType: true,
+      designation: true
+    }
+  },
+  parentProfile: {
+    select: {
+      id: true,
+      name: true
+    }
   }
 });
 

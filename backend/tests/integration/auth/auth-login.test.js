@@ -55,7 +55,10 @@ describe('POST /api/v1/auth/login Integration', () => {
       id: mockUser.id,
       email: mockUser.email,
       schoolId: mockUser.schoolId,
-      systemRole: mockUser.systemRole
+      systemRole: mockUser.systemRole,
+      roleAssignments: [],
+      staffProfile: null,
+      parentProfile: null
     });
 
     // Verify critical redactions

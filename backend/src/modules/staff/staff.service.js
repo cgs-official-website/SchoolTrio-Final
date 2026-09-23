@@ -222,11 +222,19 @@ export async function createStaff(schoolId, data, actor = null) {
   let assignedRoleId = data.roleId || null;
   if (assignedRoleId) {
     const role = await prisma.schoolRole.findFirst({
-      where: { id: assignedRoleId, schoolId }
+      where: {
+        schoolId,
+        OR: [
+          { id: assignedRoleId },
+          { name: { equals: assignedRoleId, mode: 'insensitive' } },
+          { slug: { equals: assignedRoleId.toLowerCase(), mode: 'insensitive' } }
+        ]
+      }
     });
     if (!role) {
       throw new NotFoundError('School role');
     }
+    assignedRoleId = role.id;
   } else {
     const roleName = data.designation || 'Staffs';
     const fallbackRole = await prisma.schoolRole.findFirst({
@@ -234,6 +242,7 @@ export async function createStaff(schoolId, data, actor = null) {
         schoolId,
         OR: [
           { name: { equals: roleName, mode: 'insensitive' } },
+          { slug: { equals: roleName.toLowerCase(), mode: 'insensitive' } },
           { slug: 'staffs' }
         ]
       }
@@ -510,11 +519,19 @@ export async function updateStaff(schoolId, id, data, actor = null) {
   if (data.roleId !== undefined) {
     if (data.roleId) {
       const role = await prisma.schoolRole.findFirst({
-        where: { id: data.roleId, schoolId }
+        where: {
+          schoolId,
+          OR: [
+            { id: data.roleId },
+            { name: { equals: data.roleId, mode: 'insensitive' } },
+            { slug: { equals: data.roleId.toLowerCase(), mode: 'insensitive' } }
+          ]
+        }
       });
       if (!role) {
         throw new NotFoundError('School role');
       }
+      targetRoleId = role.id;
     } else if (data.designation || existingStaff.designation) {
       const roleName = data.designation || existingStaff.designation || 'Staffs';
       const fallbackRole = await prisma.schoolRole.findFirst({
@@ -522,6 +539,7 @@ export async function updateStaff(schoolId, id, data, actor = null) {
           schoolId,
           OR: [
             { name: { equals: roleName, mode: 'insensitive' } },
+            { slug: { equals: roleName.toLowerCase(), mode: 'insensitive' } },
             { slug: 'staffs' }
           ]
         }
@@ -539,6 +557,7 @@ export async function updateStaff(schoolId, id, data, actor = null) {
         schoolId,
         OR: [
           { name: { equals: roleName, mode: 'insensitive' } },
+          { slug: { equals: roleName.toLowerCase(), mode: 'insensitive' } },
           { slug: 'staffs' }
         ]
       }

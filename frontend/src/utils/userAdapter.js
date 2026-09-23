@@ -30,7 +30,6 @@ export const normalizeAuthUser = (backendUser) => {
       role = 'admin';
       break;
     case 'TEACHER':
-    case 'TENANT_USER':
       role = 'teacher';
       break;
     case 'PARENT':
@@ -40,9 +39,34 @@ export const normalizeAuthUser = (backendUser) => {
       role = 'student';
       break;
     case 'STAFF':
+    case 'TENANT_USER':
     default:
-      role = 'staff';
+      if (backendUser.staffProfile?.staffType === 'teaching') {
+        role = 'teacher';
+      } else {
+        role = 'staff';
+      }
       break;
+  }
+
+  // Extract role assignments and target loginPanel
+  const roleAssignments = Array.isArray(backendUser.roleAssignments) ? backendUser.roleAssignments : [];
+  const assignedRoles = roleAssignments.map(ra => ra.schoolRole?.name).filter(Boolean);
+  const primaryRoleAssignment = roleAssignments[0]?.schoolRole;
+
+  let loginPanel = primaryRoleAssignment?.loginPanel || null;
+  if (!loginPanel) {
+    if (role === 'admin' || role === 'superadmin') {
+      loginPanel = 'admin';
+    } else if (role === 'teacher' || role === 'staff') {
+      loginPanel = 'teacher';
+    } else if (role === 'parent') {
+      loginPanel = 'parent';
+    } else if (role === 'student') {
+      loginPanel = 'student';
+    } else {
+      loginPanel = 'teacher';
+    }
   }
 
   return {
@@ -52,6 +76,9 @@ export const normalizeAuthUser = (backendUser) => {
     name: backendUser.staffProfile?.name || backendUser.parentProfile?.name || backendUser.email?.split('@')[0] || 'User',
     role,
     systemRole: backendUser.systemRole,
+    loginPanel,
+    roles: assignedRoles.length > 0 ? assignedRoles : [backendUser.staffProfile?.designation || role],
+    roleAssignments,
     schoolId: backendUser.schoolId || null,
     schoolName: backendUser.school?.name || null,
     schoolCode: backendUser.school?.code || null,

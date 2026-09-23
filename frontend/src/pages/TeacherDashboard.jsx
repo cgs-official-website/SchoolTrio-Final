@@ -25,7 +25,7 @@ export default function TeacherDashboard() {
 
   // Fallback check to ensure role is correct
   useEffect(() => {
-    if (userProfile && userProfile.role !== 'teacher') {
+    if (userProfile && userProfile.role !== 'teacher' && userProfile.role !== 'staff') {
       navigate('/');
     } else if (userProfile?.schoolId) {
       // Fetch school info for branding/name dynamically via REST
@@ -36,7 +36,7 @@ export default function TeacherDashboard() {
       });
         
       // Also fetch teacher doc for profile completion via REST
-      if (userProfile.role === 'teacher') {
+      if (userProfile.role === 'teacher' || userProfile.role === 'staff') {
         staffApi.getStaffMe()
           .then(res => {
             if (res?.data) {

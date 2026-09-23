@@ -62,7 +62,10 @@ describe('POST /api/v1/auth/firebase-exchange Integration', () => {
       id: mockUser.id,
       email: mockUser.email,
       schoolId: mockUser.schoolId,
-      systemRole: mockUser.systemRole
+      systemRole: mockUser.systemRole,
+      roleAssignments: [],
+      staffProfile: null,
+      parentProfile: null
     });
 
     // Verify critical data redactions

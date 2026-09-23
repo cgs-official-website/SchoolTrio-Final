@@ -119,7 +119,11 @@ export const requireRole = (...allowedRoles) => {
     }
 
     // Expand teaching/staff role aliases for users with functional role assignments or staff profile
-    if (userRoles.some(r => ['TEACHER', 'STAFF'].includes(r)) || (user.roleAssignments && user.roleAssignments.length > 0)) {
+    if (
+      userRoles.some(r => ['TEACHER', 'STAFF'].includes(r)) ||
+      (user.roleAssignments && user.roleAssignments.length > 0) ||
+      user.staffProfile
+    ) {
       expandedUserRoles.add('TEACHER');
       expandedUserRoles.add('STAFF');
     }

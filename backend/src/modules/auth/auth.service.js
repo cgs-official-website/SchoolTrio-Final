@@ -100,7 +100,10 @@ export const login = async ({ identifier, password, ipAddress = null, deviceInfo
       id: user.id,
       email: user.email,
       schoolId: user.schoolId,
-      systemRole: user.systemRole
+      systemRole: user.systemRole,
+      roleAssignments: user.roleAssignments || [],
+      staffProfile: user.staffProfile || null,
+      parentProfile: user.parentProfile || null
     }
   };
 };
@@ -148,7 +151,10 @@ export const refresh = async ({ rawRefreshToken, ipAddress = null, deviceInfo = 
       id: user.id,
       email: user.email,
       schoolId: user.schoolId,
-      systemRole: user.systemRole
+      systemRole: user.systemRole,
+      roleAssignments: user.roleAssignments || [],
+      staffProfile: user.staffProfile || null,
+      parentProfile: user.parentProfile || null
     }
   };
 };
@@ -209,6 +215,9 @@ export const getCurrentUser = async ({ userId }) => {
     systemRole: user.systemRole,
     isActive: user.isActive,
     school: user.school || null,
+    roleAssignments: user.roleAssignments || [],
+    staffProfile: user.staffProfile || null,
+    parentProfile: user.parentProfile || null,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt
   };
@@ -336,7 +345,10 @@ export const firebaseExchange = async ({
       id: effectiveUser.id,
       email: effectiveUser.email,
       schoolId: effectiveUser.schoolId,
-      systemRole: effectiveUser.systemRole
+      systemRole: effectiveUser.systemRole,
+      roleAssignments: effectiveUser.roleAssignments || [],
+      staffProfile: effectiveUser.staffProfile || null,
+      parentProfile: effectiveUser.parentProfile || null
     }
   };
 };

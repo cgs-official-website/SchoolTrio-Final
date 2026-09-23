@@ -27,7 +27,9 @@ const ProtectedRoute = ({ children, allowedRoles, moduleKey }) => {
     const isCustomStaff = userRole !== 'teacher' && userRole !== 'parent' && userRole !== 'student' && userRole !== 'superadmin' && userRole !== 'admin';
     const effectiveRole = isCustomStaff ? 'staff' : userRole;
     
-    if (!allowedRoles.includes(effectiveRole)) {
+    const isAuthorized = allowedRoles.includes(effectiveRole) || (allowedRoles.includes('teacher') && effectiveRole === 'staff');
+    
+    if (!isAuthorized) {
       return <Navigate to="/unauthorized" replace />;
     }
   }

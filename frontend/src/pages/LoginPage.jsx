@@ -36,10 +36,13 @@ export default function LoginPage() {
     const r = role?.toLowerCase();
     switch (r) {
       case 'superadmin': navigate('/superadmin'); break;
-      case 'teacher': navigate('/teacher'); break;
+      case 'teacher':
+      case 'staff':
+        navigate('/teacher');
+        break;
       case 'parent': navigate('/parent'); break;
       case 'admin': navigate('/admin'); break;
-      default: navigate('/admin');
+      default: navigate('/teacher');
     }
   };
 
