@@ -1,0 +1,1002 @@
+{
+  "timestamp": "2026-09-21T15:49:16.393Z",
+  "counts": {
+    "fbSchoolDocs": 12,
+    "pgSchoolRecords": 5,
+    "fbAuthUsers": 208,
+    "fsRootUsers": 219,
+    "pgUsers": 690,
+    "grandTotalSubDocs": 1885,
+    "candidateSum": 768
+  },
+  "schools": [
+    {
+      "fbSchoolId": "SchoolS015",
+      "schoolName": "TrustITec College",
+      "pgSchoolId": "e2638de0-cf88-4cef-96db-74c353c6e43d",
+      "pgSchoolName": "TrustITec College",
+      "subDocs": 383,
+      "subColCounts": {
+        "classes": 2,
+        "formSchemas": 1,
+        "libraryCategories": 1,
+        "parents": 2,
+        "students": 375,
+        "subjects": 1,
+        "teachers": 1
+      },
+      "pgCounts": {
+        "users": 319,
+        "students": 375,
+        "parentProfiles": 317,
+        "staffProfiles": 1,
+        "classes": 2,
+        "subjects": 1
+      },
+      "status": "MAPPED_OPERATIONAL"
+    },
+    {
+      "fbSchoolId": "SchoolS019",
+      "schoolName": "Zuna International School",
+      "pgSchoolId": "4e2c7fdf-46c1-4bc7-927f-e3382e8c579d",
+      "pgSchoolName": "Zuna International School",
+      "subDocs": 401,
+      "subColCounts": {
+        "assessments": 3,
+        "attendance": 8,
+        "attendanceStats": 5,
+        "books": 1,
+        "canteen_requests": 3,
+        "chats": 4,
+        "classes": 5,
+        "dashboardStats": 7,
+        "exams": 1,
+        "feeStructures": 1,
+        "formSchemas": 1,
+        "homeworks": 2,
+        "invoices": 5,
+        "issuedBooks": 2,
+        "leaves": 6,
+        "lesson_plans": 1,
+        "notices": 3,
+        "notifications": 7,
+        "parents": 3,
+        "payroll": 1,
+        "ptms": 4,
+        "roles": 2,
+        "settings": 1,
+        "staff_audit_logs": 1,
+        "students": 290,
+        "subjects": 7,
+        "teachers": 21,
+        "timetables": 5,
+        "transportRoutes": 1
+      },
+      "pgCounts": {
+        "users": 0,
+        "students": 0,
+        "parentProfiles": 0,
+        "staffProfiles": 0,
+        "classes": 0,
+        "subjects": 0
+      },
+      "status": "MAPPED_EMPTY"
+    },
+    {
+      "fbSchoolId": "SchoolS020",
+      "schoolName": "CGS Matriculation Higher Secondary School",
+      "pgSchoolId": "UNMAPPED",
+      "pgSchoolName": "UNMAPPED",
+      "subDocs": 0,
+      "subColCounts": {},
+      "pgCounts": null,
+      "status": "UNMAPPED"
+    },
+    {
+      "fbSchoolId": "SchoolS022",
+      "schoolName": "XYZ MATRICULATION HIGHER SECONDARY SCHOOL",
+      "pgSchoolId": "UNMAPPED",
+      "pgSchoolName": "UNMAPPED",
+      "subDocs": 21,
+      "subColCounts": {
+        "chats": 2,
+        "classes": 1,
+        "homeworks": 1,
+        "parents": 2,
+        "ptms": 1,
+        "roles": 2,
+        "staff_audit_logs": 4,
+        "students": 3,
+        "subjects": 1,
+        "teachers": 4
+      },
+      "pgCounts": null,
+      "status": "UNMAPPED"
+    },
+    {
+      "fbSchoolId": "SchoolS023",
+      "schoolName": "Testing School",
+      "pgSchoolId": "UNMAPPED",
+      "pgSchoolName": "UNMAPPED",
+      "subDocs": 246,
+      "subColCounts": {
+        "assessments": 2,
+        "attendance": 5,
+        "attendanceStats": 9,
+        "books": 2,
+        "calendar": 1,
+        "canteen_requests": 6,
+        "chats": 13,
+        "classCategories": 3,
+        "classes": 1,
+        "config": 1,
+        "dashboardStats": 4,
+        "exams": 4,
+        "feeCollectionPeriods": 2,
+        "feeStructures": 7,
+        "formSchemas": 1,
+        "homeworks": 3,
+        "inventory": 4,
+        "inventory_audit_logs": 21,
+        "inventory_categories": 3,
+        "invoices": 32,
+        "issuedBooks": 5,
+        "lesson_plans": 3,
+        "notices": 4,
+        "notifications": 20,
+        "parents": 30,
+        "payroll": 5,
+        "ptms": 1,
+        "roles": 3,
+        "staff_audit_logs": 8,
+        "students": 26,
+        "subjects": 2,
+        "teachers": 10,
+        "timetables": 2,
+        "transportRoutes": 1,
+        "vehicles": 2
+      },
+      "pgCounts": null,
+      "status": "UNMAPPED"
+    },
+    {
+      "fbSchoolId": "SchoolS024",
+      "schoolName": "Spring Mount Valley School",
+      "pgSchoolId": "25e9637a-7fa4-4ac2-b43d-b4c0edcf2932",
+      "pgSchoolName": "Spring Mount Valley School",
+      "subDocs": 734,
+      "subColCounts": {
+        "calendar": 1,
+        "chats": 1,
+        "classes": 22,
+        "feeStructures": 7,
+        "invoices": 104,
+        "leads": 1,
+        "parents": 169,
+        "roles": 6,
+        "staff_audit_logs": 13,
+        "students": 340,
+        "subjects": 22,
+        "teachers": 46,
+        "timetables": 1,
+        "transportRoutes": 1
+      },
+      "pgCounts": {
+        "users": 367,
+        "students": 340,
+        "parentProfiles": 328,
+        "staffProfiles": 38,
+        "classes": 22,
+        "subjects": 22
+      },
+      "status": "MAPPED_OPERATIONAL"
+    },
+    {
+      "fbSchoolId": "SchoolS026",
+      "schoolName": "ABC",
+      "pgSchoolId": "UNMAPPED",
+      "pgSchoolName": "UNMAPPED",
+      "subDocs": 4,
+      "subColCounts": {
+        "classes": 1,
+        "staff_audit_logs": 1,
+        "students": 1,
+        "teachers": 1
+      },
+      "pgCounts": null,
+      "status": "UNMAPPED"
+    },
+    {
+      "fbSchoolId": "SchoolS027",
+      "schoolName": "xyz",
+      "pgSchoolId": "UNMAPPED",
+      "pgSchoolName": "UNMAPPED",
+      "subDocs": 14,
+      "subColCounts": {
+        "calendar": 1,
+        "classes": 1,
+        "formSchemas": 1,
+        "parents": 3,
+        "roles": 2,
+        "settings": 1,
+        "students": 2,
+        "subjects": 1,
+        "teachers": 2
+      },
+      "pgCounts": null,
+      "status": "UNMAPPED"
+    },
+    {
+      "fbSchoolId": "SchoolS028",
+      "schoolName": "Worlds Academy",
+      "pgSchoolId": "UNMAPPED",
+      "pgSchoolName": "UNMAPPED",
+      "subDocs": 56,
+      "subColCounts": {
+        "admissionApplications": 1,
+        "assessments": 1,
+        "attendance": 1,
+        "attendanceStats": 4,
+        "canteen_requests": 5,
+        "chats": 7,
+        "classes": 2,
+        "dashboardStats": 1,
+        "exams": 1,
+        "formSchemas": 1,
+        "notifications": 1,
+        "parents": 12,
+        "roles": 1,
+        "staff_audit_logs": 3,
+        "students": 10,
+        "subjects": 2,
+        "teachers": 3
+      },
+      "pgCounts": null,
+      "status": "UNMAPPED"
+    },
+    {
+      "fbSchoolId": "SchoolS029",
+      "schoolName": "Grace Matriculation Higher Secondary School",
+      "pgSchoolId": "UNMAPPED",
+      "pgSchoolName": "UNMAPPED",
+      "subDocs": 26,
+      "subColCounts": {
+        "classes": 1,
+        "feeCollectionPeriods": 1,
+        "parents": 9,
+        "roles": 2,
+        "staff_audit_logs": 3,
+        "students": 7,
+        "teachers": 3
+      },
+      "pgCounts": null,
+      "status": "UNMAPPED"
+    },
+    {
+      "fbSchoolId": "SchoolS030",
+      "schoolName": "Choco academic",
+      "pgSchoolId": "UNMAPPED",
+      "pgSchoolName": "UNMAPPED",
+      "subDocs": 0,
+      "subColCounts": {},
+      "pgCounts": null,
+      "status": "UNMAPPED"
+    },
+    {
+      "fbSchoolId": "SchoolS031",
+      "schoolName": "hihjl",
+      "pgSchoolId": "UNMAPPED",
+      "pgSchoolName": "UNMAPPED",
+      "subDocs": 0,
+      "subColCounts": {},
+      "pgCounts": null,
+      "status": "UNMAPPED"
+    }
+  ],
+  "pgOnlySchools": [
+    {
+      "id": "ce65c586-fe9e-4361-a0a9-d71a1dc9c66d",
+      "name": "NCT",
+      "code": "NCT-3970",
+      "counts": {
+        "users": 1,
+        "students": 0,
+        "parentProfiles": 0,
+        "staffProfiles": 0,
+        "classes": 0,
+        "subjects": 0
+      }
+    },
+    {
+      "id": "86e6e8b1-f3be-44fb-9759-268027ec2802",
+      "name": "System Institutional Template School",
+      "code": "SYSTEM_TEMPLATE",
+      "counts": {
+        "users": 0,
+        "students": 0,
+        "parentProfiles": 0,
+        "staffProfiles": 0,
+        "classes": 1,
+        "subjects": 1
+      }
+    }
+  ],
+  "authClassification": {
+    "NATIVE_POSTGRES": 1,
+    "TEMPORARY_PASSWORD": 2,
+    "HYBRID_BRIDGE": 38,
+    "DISABLED": 0,
+    "DEFERRED": 0,
+    "UNMAPPED": 167
+  },
+  "unmappedAuthUsers": [
+    {
+      "uid": "0HM1SL4yriRfRg8w1WM7lV2GTD52",
+      "email": "admin@springmount.com"
+    },
+    {
+      "uid": "0HOBLoJtt2SDWgviurObioBAWmP2",
+      "email": "pavithran@zit.com"
+    },
+    {
+      "uid": "0nb7z0zUrvfyMJ6Oqq0Xka0OkJa2",
+      "email": "staff@xyz.com"
+    },
+    {
+      "uid": "0ozUin8EAiTuB08P6tnkQ0EHyPi2",
+      "email": "126@parent.school.com"
+    },
+    {
+      "uid": "0whtMIglXaadscXIEvJSiu5N5nz2",
+      "email": "cms003@parent.zuna.com"
+    },
+    {
+      "uid": "1Xvq4m64Q5ZD34MpH1EpR9Zpdb33",
+      "email": "deepak001a@gmail.com"
+    },
+    {
+      "uid": "1oE9pMA9omg1myYkfxItkwafM1z1",
+      "email": "sana@abc.com"
+    },
+    {
+      "uid": "1seu1A7IFMSje27FhlaOGykTEeA2",
+      "email": "pavithran@smvt.com"
+    },
+    {
+      "uid": "25BHjZdVeGb9lDBv6B1ofIMCDmA3",
+      "email": "virat@abc.com"
+    },
+    {
+      "uid": "30EEnp8h00VlkIyPuXJ6rnBqf3Z2",
+      "email": "janewilliams.erd@springmount.co.in"
+    },
+    {
+      "uid": "3Mcg1LD3VJaqJZ3gnyV04j1uLAn1",
+      "email": "admin@mother.com"
+    },
+    {
+      "uid": "4KBcSFNSAMRKGZ61huWEieVrMYO2",
+      "email": "grace001@parent.zuna.com"
+    },
+    {
+      "uid": "4VZGppyX7LZCcMjzgxhTWi7Tk212",
+      "email": "laxmi23@gmail.com"
+    },
+    {
+      "uid": "4euaF9ZPiHaL4zJlV8ODVNz5V2M2",
+      "email": "anitha.kandasamy13@school.edu.in"
+    },
+    {
+      "uid": "4gjHoVKqE6XHbtYrPWLs78v9rlm1",
+      "email": "achu@goverment.com"
+    },
+    {
+      "uid": "4ueZS35xaYSRFfPJF7YzgcdX3ik1",
+      "email": "cgs@grace.com"
+    },
+    {
+      "uid": "5XkIpXEKneSms1TtrRE0h6TJnWR2",
+      "email": "amali45@gmail.com"
+    },
+    {
+      "uid": "5grOJ2m19vbVVfUI3cNdAV8M5Ax1",
+      "email": "carrezza@grace.com"
+    },
+    {
+      "uid": "5ixqKS7CeJMwQZsrV7nXLDGVPor2",
+      "email": "superadmin@zuna.com"
+    },
+    {
+      "uid": "69YFZnOwophWn6or9m3idICq5wy1",
+      "email": "janewilliams22@gmail.com"
+    },
+    {
+      "uid": "6VcqI0XyfzdxqOLGcFFstuK7vS93",
+      "email": "amd006@parent.school.com"
+    },
+    {
+      "uid": "6hrN3m7J8vdI81tz6wsJEiQ4hjh2",
+      "email": "achu@graceschool.com"
+    },
+    {
+      "uid": "7Ne0DEmja6g6DIdArG2EUDRPts32",
+      "email": "karthika44@gmail.com"
+    },
+    {
+      "uid": "7QkBE0D5WtYnaK5GWPaZ5amxSfu2",
+      "email": "mohamedasfaque123@gmail.com"
+    },
+    {
+      "uid": "7U8HzdPzvyTOhjZvtnLuDzk2GCv2",
+      "email": "pavithran@abc.com"
+    },
+    {
+      "uid": "7Z5fHQpj5BcyBuZyWKOFyCAraby1",
+      "email": "hari45@gmail.com"
+    },
+    {
+      "uid": "7kSQkhBs4Mb1k3t3GPAXyHxBgsm1",
+      "email": "hamnafathima@abc.com"
+    },
+    {
+      "uid": "7kmdJ4LzhHQpdEXA2lqIHE3OOMp2",
+      "email": "admin@graceschool.com"
+    },
+    {
+      "uid": "80sRiYsC0wQfj8EyTtWHysInzNq2",
+      "email": "cms041@parent.zuna.com"
+    },
+    {
+      "uid": "93Cdl7KK4AW1Ihq3GB4yVXS3Nj12",
+      "email": "john@gmail.com"
+    },
+    {
+      "uid": "9ta7ukKmL3XYJQuYSWGge9tEMYR2",
+      "email": "nandhini67@gmail.com"
+    },
+    {
+      "uid": "AJDx24AdBUSIAKit00Y3WF2bfx52",
+      "email": "malarvizhi45@gmail.com"
+    },
+    {
+      "uid": "BWdTxaLJQYh0EwjpNQwYsxdN4gx2",
+      "email": "jana@gmail.com"
+    },
+    {
+      "uid": "BpWZEUkacQeNDKueANHfxVAp2kt1",
+      "email": "amd0055@parent.school.com"
+    },
+    {
+      "uid": "BtBkGeWP3HhQ9yY4f0dyCeKdEDW2",
+      "email": "dinesh46@gmail.com"
+    },
+    {
+      "uid": "CaYNuGzFhJT6LcsAyozoY27AD4Q2",
+      "email": "padma.sivasamy34@school.edu.in"
+    },
+    {
+      "uid": "CbQ5vPXNtvONL9GY05NUddGnM1B3",
+      "email": "admin@salman.com"
+    },
+    {
+      "uid": "Ce9ZyoMCyKfqcpgpxcBe3tz2qlI2",
+      "email": "adm7@parent.school.com"
+    },
+    {
+      "uid": "DgcM7POxMtSNK609rIbyIkyZwIs2",
+      "email": "pragathipandiyan05@gmail.com"
+    },
+    {
+      "uid": "DjWHJK9XCMhOp7ZS8XPoSUOvz5B3",
+      "email": "revathi@springmount.com"
+    },
+    {
+      "uid": "EFstSJhLXzNecy9y6Vluh73EejB2",
+      "email": "tom009@parent.zuna.com"
+    },
+    {
+      "uid": "ET81sh7rbfd7UGbKBSW6GvFRVSi1",
+      "email": "admin@government.com"
+    },
+    {
+      "uid": "EdJv0majQRQ2zyA7ZxP3ECU6lAf1",
+      "email": "suba34@gmail.com"
+    },
+    {
+      "uid": "Em3cfMklMdfCGW11Rj2D8wAAJzk1",
+      "email": "10987@parent.school.com"
+    },
+    {
+      "uid": "FK6lCUyFG8cWH5BM3U9C2s4YH9n1",
+      "email": "elevenr31@gmail.com"
+    },
+    {
+      "uid": "FZcUZN6tsVV2NTler58noi83Nhd2",
+      "email": "test@school.com"
+    },
+    {
+      "uid": "FfGvOde4oKffLWPn7ufw61sAbyD2",
+      "email": "cms033@parent.zuna.com"
+    },
+    {
+      "uid": "Fs3vqJ3dAYdMtjikqqbSVN597rY2",
+      "email": "admin@mgs.com"
+    },
+    {
+      "uid": "GQmbMrdU0UbCEUMNgjx5u020GoJ2",
+      "email": "adm004@parent.school.com"
+    },
+    {
+      "uid": "GUb9u7wWy7WKm9tDOYSPfp9r7fu1",
+      "email": "carrezzaglobalsolutions@gmail.com"
+    },
+    {
+      "uid": "H2l34htyijeiWbAV82rzJ6KHYci1",
+      "email": "shifafathima@abc.com"
+    },
+    {
+      "uid": "H70aGcSqAHW12x48KaP0ewp7U7N2",
+      "email": "29832@parent.school.com"
+    },
+    {
+      "uid": "HIY8PkDu5xUrY1LkxM8LwZntFzo1",
+      "email": "john.doe@gmail.com"
+    },
+    {
+      "uid": "IIxDP3TFPuQ9Vcr7EnjDVjlSwt03",
+      "email": "002@parent.zuna.com"
+    },
+    {
+      "uid": "IVOhAI62F7VPqqnYmhSHtF8EGGg1",
+      "email": "0337@parent.school.com"
+    },
+    {
+      "uid": "IZ0cDEpWlbPA4Scq3shsW8mtMfK2",
+      "email": "ragu@gmail.com"
+    },
+    {
+      "uid": "In2IDmyUNCVwsehflk2iwI6IoUA2",
+      "email": "1059@parent.school.com"
+    },
+    {
+      "uid": "IzotUj0cmgbLswSvqfKzcYyyDt13",
+      "email": "mohammed@gmail.com"
+    },
+    {
+      "uid": "KOzaXR6smNeWZbYULNDK7Sx5u6p2",
+      "email": "cms021@parent.zuna.com"
+    },
+    {
+      "uid": "KTxQqi57zBg1AiGm6Kazqb2HzsF3",
+      "email": "siva@gmail.com"
+    },
+    {
+      "uid": "KWCpysaBq7SU86pDZoDTMNkdjjm1",
+      "email": "adm001a@parent.school.com"
+    },
+    {
+      "uid": "LS7M3dL3eSQZCLq4RKGAELWeXzA2",
+      "email": "mouni126@gmail.com"
+    },
+    {
+      "uid": "LmLuZN5GW9bvutw9k984ZXSAlAx2",
+      "email": "temp-seeder@test.com"
+    },
+    {
+      "uid": "MHnl6CGNCAgbn8fNBitCgrrnUuJ3",
+      "email": "mohamed@graceschool.com"
+    },
+    {
+      "uid": "MMo4y7yGrOMIKhtFWKDy1ClSFzU2",
+      "email": "cms043@parent.zuna.com"
+    },
+    {
+      "uid": "MVbVrtEfIMVDe00JII8b1yTEUPI3",
+      "email": "preethipandiyan05@gmail.com"
+    },
+    {
+      "uid": "Mxh7ldqFzSPyiTsbTMLBYESDozv1",
+      "email": "pthipandiyan05@gmail.com"
+    },
+    {
+      "uid": "NGLOHMJQtCeLkzhfC9ChX4Wf4qs1",
+      "email": "arun.sivasamy117@school.edu.in"
+    },
+    {
+      "uid": "OORSffpmmDdnwpXstqwJX48HN5D2",
+      "email": "admin@alameen.com"
+    },
+    {
+      "uid": "OPYlFeA4leeXqBMQ5pU7oeKIXkm1",
+      "email": "nandhitha34@gmail.com"
+    },
+    {
+      "uid": "P7NmvPDIv7aaXhUzFHOQlCiec903",
+      "email": "sin005@parent.zuna.com"
+    },
+    {
+      "uid": "PPbt3GdTNuNxtjILqcvWQNiPhAQ2",
+      "email": "9486@parent.school.com"
+    },
+    {
+      "uid": "Q2CA3mBxK0VOoHjubyCyq2nQp2Y2",
+      "email": "admin@mothers.com"
+    },
+    {
+      "uid": "QOMKITZZFLR3OZ7leI9ZEG5FaHy2",
+      "email": "zulfathima89@gmail.com"
+    },
+    {
+      "uid": "Qb8cOkp9AFcl1IY6AQqh3GUNgG73",
+      "email": "9009@parent.school.com"
+    },
+    {
+      "uid": "QvHmaCINcybXtVyKmRZ3EvetmWR2",
+      "email": "swa010@parent.zuna.com"
+    },
+    {
+      "uid": "RDKFp2q7rGPlt9UONf2VHaVocg12",
+      "email": "cms014@parent.zuna.com"
+    },
+    {
+      "uid": "RxBzoOSxx2RUK2yecZqcm9S7l5H2",
+      "email": "maheswari15@gmail.com"
+    },
+    {
+      "uid": "SYIhG9Dq1AhzvkzaJCkSL3a2nz03",
+      "email": "salman@zuna.com"
+    },
+    {
+      "uid": "SrKtm3gHTAMGcLtwOYmSCCehiNY2",
+      "email": "011@parent.school.com"
+    },
+    {
+      "uid": "T7TQ9aDA82hQ9Ka6usWUD15EtMo1",
+      "email": "john@abc.com"
+    },
+    {
+      "uid": "TiOFZHsgMqVwf3gQ9brlcUbgSPb2",
+      "email": "grace001@qdw39rkiegiueil9xois.parent.com"
+    },
+    {
+      "uid": "UPutuMTGqKTqT9jauCfXQaytxay1",
+      "email": "cms042@parent.zuna.com"
+    },
+    {
+      "uid": "W23mQtHKIzSFKl4AfcXWIrNZMLB2",
+      "email": "nandhini@mgs.com"
+    },
+    {
+      "uid": "WRNF5VRQNBV87hZ56nacbqyt0IR2",
+      "email": "rajeshwari15@gmail.com"
+    },
+    {
+      "uid": "X8frHeEJahO4nji3Y4hgQi8IWqr2",
+      "email": "adm001@parent.zuna.com"
+    },
+    {
+      "uid": "XGmeZcOTMPhud5qtLbBsbUQTkPG2",
+      "email": "127@parent.school.com"
+    },
+    {
+      "uid": "XQzBSgC9PtgldJhu8zkcEwEhmax2",
+      "email": "dharshini23@gmail.com"
+    },
+    {
+      "uid": "Xa4NBrAiHmMSV4RQCi4f5ABB59X2",
+      "email": "seniorcoordinator@springmount.co.in"
+    },
+    {
+      "uid": "XuNrliNS2fUwqSz3MoaCmhwjgcE2",
+      "email": "vt001@parent.school.com"
+    },
+    {
+      "uid": "ZMVyfImZcAR9A6tlVFuVdNcZSuj1",
+      "email": "cms003@parent.school.com"
+    },
+    {
+      "uid": "ZUXYuHr0tXPAyDPwKoch01i5azH2",
+      "email": "adm2026003@parent.school.com"
+    },
+    {
+      "uid": "ZckW6RG0bMcMVds2a9Fe46P1qLm1",
+      "email": "reethu12@gmail.com"
+    },
+    {
+      "uid": "ZeLGr3LcetZYn7Z6IKDT2M1337y1",
+      "email": "aaa001@parent.school.com"
+    },
+    {
+      "uid": "ZmxfduM6OFQT4IUsu5t8LSfE72Y2",
+      "email": "johnwilson@abc.com"
+    },
+    {
+      "uid": "a7CplC38paRrIKR6MsHcJH4tiOp1",
+      "email": "109@parent.zuna.com"
+    },
+    {
+      "uid": "a88d4yanu9TxvoJEacu4m6kE7Fn1",
+      "email": "adm005@parent.school.com"
+    },
+    {
+      "uid": "aM4AqfOMseNUQsgVElmqk2WIyQG2",
+      "email": "pavi@gmail.com"
+    },
+    {
+      "uid": "ahbDzMS4SHUGUDnEXKIQ99Kba0r2",
+      "email": "krishna76@gmail.com"
+    },
+    {
+      "uid": "b6L1ONSq1BOIEXDrqom3ypboHGm1",
+      "email": "smrohith4@gmail.com"
+    },
+    {
+      "uid": "ckki4c8yrNXua3PwJb1wW6qOO6d2",
+      "email": "897654@parent.school.com"
+    },
+    {
+      "uid": "coLobafEriTjdEHS5q9Vqlp9sKm2",
+      "email": "020@parent.zuna.com"
+    },
+    {
+      "uid": "dHbHdAXqemdzoIBtvadhfEWMbft2",
+      "email": "adm010@parent.school.com"
+    },
+    {
+      "uid": "dY54BSpMGPaG9GmyfGppbsjAqKi1",
+      "email": "kurt@abc.com"
+    },
+    {
+      "uid": "dwvhcw994sP6gaS8zzHEwLLsbx12",
+      "email": "03337@parent.school.com"
+    },
+    {
+      "uid": "esdO3etwnTUqajhHxlWDiiTVmPX2",
+      "email": "003@parent.zuna.com"
+    },
+    {
+      "uid": "f8UYp1rsquRLeDmCV63P6lFen5Q2",
+      "email": "kishore@gmail.com"
+    },
+    {
+      "uid": "fAKPm9QI2gNteMTmbV1Mur0PlLm2",
+      "email": "25pcs109@vcw.ac.in"
+    },
+    {
+      "uid": "gFfikZjZSLMArAaR7yf8UK5jvqk2",
+      "email": "asfaque@abc.com"
+    },
+    {
+      "uid": "iRXEFGzHE4NuzvIcVDlLcSUoRDa2",
+      "email": "cms026@parent.zuna.com"
+    },
+    {
+      "uid": "iXVLUKslvUSa0lrTi9gcjT442yS2",
+      "email": "001a@parent.school.com"
+    },
+    {
+      "uid": "iXcCXDxhmfZEJJC0Jfvhvv5TvSE3",
+      "email": "grc001@parent.zuna.com"
+    },
+    {
+      "uid": "it3sMvJCBmXnAhmmB5SaQC2Ecw63",
+      "email": "adm002@parent.school.com"
+    },
+    {
+      "uid": "j9DtL09fXZVylBsDClGKWfmT5Sn1",
+      "email": "madhi45@gmail.com"
+    },
+    {
+      "uid": "jUbwUWrmXeSENGqWQ1hGqVtMf3l2",
+      "email": "nasila@xyz.com"
+    },
+    {
+      "uid": "jjZ9z8sssKg1Z2lWFBCoBK7M1bK2",
+      "email": "cms013@parent.zuna.com"
+    },
+    {
+      "uid": "jmBUOellikaUCzDRYCgsaQx9QvF2",
+      "email": "gov001@parent.zuna.com"
+    },
+    {
+      "uid": "kgng3YyDVFfgl4US6HZNVwnbeFc2",
+      "email": "010@parent.zuna.com"
+    },
+    {
+      "uid": "kxu3lqU2jcVaz2BNNaivvWYO6Lm1",
+      "email": "mohamedasfaquea@gmail.com"
+    },
+    {
+      "uid": "lmj2vk8BCpVEeLVCwcD27fpiYDx1",
+      "email": "raguswetha2111@gmail.com"
+    },
+    {
+      "uid": "m1NJLyokg2gQ7gabFOtsUUeecFJ2",
+      "email": "km@gmail.com"
+    },
+    {
+      "uid": "mKR7lzRRqVhaQVi6vNC9SEPqtHm2",
+      "email": "selva@v.com"
+    },
+    {
+      "uid": "mN7YJ1EWQhZG9yUJsBWMziCIYAw2",
+      "email": "001@parent.zuna.com"
+    },
+    {
+      "uid": "mP1fElSeNERST7X3xWA3V81WQGz2",
+      "email": "nisha@abc.com"
+    },
+    {
+      "uid": "nkLmG2VHCvdBr81U0soZipe3x1O2",
+      "email": "vivek.anand.law@gmail.com"
+    },
+    {
+      "uid": "nq9acyCKA7gLPRpQthYcpD20mAr2",
+      "email": "010@parent.school.com"
+    },
+    {
+      "uid": "nrjcfUgc7ta9Neo5UcxBHG9XYU53",
+      "email": "gk@gmail.com"
+    },
+    {
+      "uid": "oEu73I7eYEY763MoHVvGmICt8912",
+      "email": "1323@parent.school.com"
+    },
+    {
+      "uid": "oUW7rAUgZEgNIEt2wktilifamF93",
+      "email": "nav009@parent.zuna.com"
+    },
+    {
+      "uid": "oVqrTBlvr0d1umXbuR3MeAPYLA42",
+      "email": "108@parent.zuna.com"
+    },
+    {
+      "uid": "ojihIdes1FNQ9KrGQTavHLBjpLu2",
+      "email": "kiruthykrakhava59661@gmail.com"
+    },
+    {
+      "uid": "pEU6hS4l9dWa4RBi9vNyLLOhhSC3",
+      "email": "cms037@parent.zuna.com"
+    },
+    {
+      "uid": "pJixPfLWz3ZXSIS73DzyjKrWIY33",
+      "email": "hema@abc.com"
+    },
+    {
+      "uid": "pM3Vv4k2LCZGQb24AkAIgBp04vi1",
+      "email": "pavithranpavi29112000@gmail.com"
+    },
+    {
+      "uid": "qDo9HPCPDGWr9WOODs7yk1nd0vm2",
+      "email": "revathi45@gmail.com"
+    },
+    {
+      "uid": "qZ5beOGRWXgGzbQBUNm3UeuybXs1",
+      "email": "49@parent.school.com"
+    },
+    {
+      "uid": "qjzG3T1TMZhnhSmUD8emvUxCKUy1",
+      "email": "swethasekar1402@gmail.com"
+    },
+    {
+      "uid": "qwzZFwt7LTaErTBx2BqvoIjIFyH2",
+      "email": "swethasekar44@gmail.com"
+    },
+    {
+      "uid": "rKFPMdynqqN2PNcm18CZ8gP6ajf2",
+      "email": "mohamed@mother.com"
+    },
+    {
+      "uid": "rYOUoLtsr4PdhJn0iWSFzg4xuaJ3",
+      "email": "swe001@parent.zuna.com"
+    },
+    {
+      "uid": "sA3Mmi1mr5ORtKMOXP8RM6CgfOC2",
+      "email": "1201@parent.school.com"
+    },
+    {
+      "uid": "sUFHLiZydTVtnqYCUnvEXJmo6L43",
+      "email": "shivakumar271085@gmail.com"
+    },
+    {
+      "uid": "sbhkz69aavM3vT5svJeU8yOpxaA2",
+      "email": "1198@parent.school.com"
+    },
+    {
+      "uid": "sg4y2aU0KHTpSOgFE20kGcFOGTk1",
+      "email": "manimegal23@gmail.com"
+    },
+    {
+      "uid": "tBCCqVyLnMORJvwC4Jq1FsmzXcJ2",
+      "email": "admin@grace.com"
+    },
+    {
+      "uid": "tMSUauffoBaughLZzZbRD3kvU5L2",
+      "email": "004@parent.zuna.com"
+    },
+    {
+      "uid": "tScfBT2wD0XMlqpVdtu2bNwjq753",
+      "email": "sabarnisha@abc.com"
+    },
+    {
+      "uid": "tx0AtIA7A1TGpkTBKMhrjAT7Fb43",
+      "email": "adm003@parent.zuna.com"
+    },
+    {
+      "uid": "tzlgrVBGK2coTbJ7s43cpUUYjVm2",
+      "email": "adm001@parent.school.com"
+    },
+    {
+      "uid": "uShyV1PlQCRbrpoKABAqaiNC4G02",
+      "email": "johndalton@abc.com"
+    },
+    {
+      "uid": "uhpRfcJyWUdPKR2U00xK8bwSV9p2",
+      "email": "subi@abc.com"
+    },
+    {
+      "uid": "vIJQhpA6oDQU1udMnUpLQd5TLAW2",
+      "email": "swethasekarerode@gmail.com"
+    },
+    {
+      "uid": "vhzSlrJimVglOdCWXBkCN6fsQCu2",
+      "email": "swetha@xyz.com"
+    },
+    {
+      "uid": "w4rfpwgkRebc0C7qy8OjUWxXy7Y2",
+      "email": "000@parent.school.com"
+    },
+    {
+      "uid": "wCZqRoMT3zMM62XtEiZkdYh5h6x1",
+      "email": "alisa@abc.com"
+    },
+    {
+      "uid": "wUHsltQrcQSHdCy4uJypYLyPkmm1",
+      "email": "mohamed@grace.com"
+    },
+    {
+      "uid": "wz4fJHNo2AUpIWc6fhPtTn6SLPk2",
+      "email": "sri004@parent.zuna.com"
+    },
+    {
+      "uid": "xL3VNIzw0rPo2Irmv7WWSIJL7JJ2",
+      "email": "admin@govt.com"
+    },
+    {
+      "uid": "xlsuVpEPH5WtivdEfRroyr0MqJz1",
+      "email": "dha008@parent.zuna.com"
+    },
+    {
+      "uid": "xm4jGNnLysY4fmobA6PyaNT4gMD2",
+      "email": "kkn001@parent.zuna.com"
+    },
+    {
+      "uid": "yHwlPqIsfteH6KC48pRJ72MOHrp2",
+      "email": "sangeetha.angusamy01@gmail.com"
+    },
+    {
+      "uid": "ych6SnVdHpWX0FvOP6sJwvftLre2",
+      "email": "bala.murugan20@school.edu.in"
+    },
+    {
+      "uid": "ynqfWhLnTfNHmsL3DcpQ9d1axd82",
+      "email": "1071@parent.school.com"
+    },
+    {
+      "uid": "zPnlPcsGQtXVhJZQRyy3Wecek0X2",
+      "email": "achu@grace.com"
+    },
+    {
+      "uid": "zR5xvsR3FkYt1Uan9PDq1hlTsVT2",
+      "email": "admin@vivekanandha.com"
+    },
+    {
+      "uid": "zgKmYMg6oaZrgLe8QZAJNLC16zi2",
+      "email": "pavithran@gmail.com"
+    },
+    {
+      "uid": "zn16Tjcqbbah56uS6OKWwJhZGNx1",
+      "email": "73@parent.school.com"
+    }
+  ]
+}

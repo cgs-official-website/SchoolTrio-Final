@@ -1,0 +1,48 @@
+{
+  "superAdmins": [
+    {
+      "id": "e30600c3-bbb9-47b8-9772-ce94abc87c79",
+      "email": "admin@zuna.com",
+      "systemRole": "SUPER_ADMIN",
+      "schoolId": null
+    }
+  ],
+  "schoolAdmins": [
+    {
+      "userId": "bf0814d1-d3dc-45d7-a0d5-1d4815191681",
+      "email": "admin.smvs@springmount.co.in",
+      "systemRole": "ADMIN",
+      "schoolCode": "SchoolS024",
+      "schoolName": "Spring Mount Valley School",
+      "staffName": "N/A",
+      "designation": "N/A"
+    },
+    {
+      "userId": "e30600c3-bbb9-47b8-9772-ce94abc87c79",
+      "email": "admin@zuna.com",
+      "systemRole": "SUPER_ADMIN",
+      "schoolCode": "N/A",
+      "schoolName": "N/A",
+      "staffName": "N/A",
+      "designation": "N/A"
+    },
+    {
+      "userId": "825e5260-f1bf-4730-a6e5-4e660ba1d267",
+      "email": "admin@nct.com",
+      "systemRole": "SCHOOL_ADMIN",
+      "schoolCode": "NCT-3970",
+      "schoolName": "NCT",
+      "staffName": "N/A",
+      "designation": "N/A"
+    },
+    {
+      "userId": "d67ee86a-73dd-4a59-8e18-3652458e2724",
+      "email": "pravin@globaltrustitec.com",
+      "systemRole": "TENANT_ADMIN",
+      "schoolCode": "SchoolS015",
+      "schoolName": "TrustITec College",
+      "staffName": "N/A",
+      "designation": "N/A"
+    }
+  ]
+}

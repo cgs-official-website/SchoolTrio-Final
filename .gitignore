@@ -1,0 +1,60 @@
+# Node / Dependencies
+node_modules/
+**/node_modules/
+
+# Environment Variables & Credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+
+# Firebase & Cloud Secrets
+.firebase/
+*firebase-adminsdk*.json
+firebase-debug.log
+firestore.rules
+secrets/
+**/secrets/
+
+# Build & Output Directories
+dist/
+dist-ssr/
+build/
+.vercel/
+graphify-out/
+
+# Logs & Temporary Scratch Files
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+scratch/
+**/scratch/
+*.jsonl
+
+# Testing & QA Artifacts
+screenshots/
+test-reports/
+coverage/
+
+# IDE & Editor files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.system_generated/
+.gemini/
+.brain/

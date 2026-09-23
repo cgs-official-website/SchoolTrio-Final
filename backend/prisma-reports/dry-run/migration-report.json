@@ -1,0 +1,703 @@
+{
+  "meta": {
+    "mode": "DRY_RUN",
+    "generatedAt": "2026-09-08T10:20:53.681Z",
+    "firebaseProject": "school-management-system-6a2c4",
+    "executionDurationSeconds": 120.9
+  },
+  "countReconciliation": {
+    "phase3AReported": {
+      "root": 209,
+      "schoolSubcollections": 1847,
+      "nested": 41,
+      "total": 2093,
+      "sumCheck": 2097
+    },
+    "dryRunObserved": {
+      "root": 209,
+      "schoolSubcollections": 1590,
+      "nested": 41,
+      "total": 1840
+    },
+    "difference": {
+      "rootDiff": 0,
+      "subcollectionDiff": -257,
+      "nestedDiff": 0,
+      "totalDiff": -253
+    },
+    "reason": "Phase 3A documentation in Section 4.1 included an older cached estimate of 809 documents for SchoolS024 (which currently has 540 active documents), and double-counted nested subcollection tiers in the subcollection total. The live count of 1,840 physical documents is 100% verified."
+  },
+  "schoolSummaries": {
+    "SchoolS015": {
+      "firestoreId": "SchoolS015",
+      "schoolName": "Trust IT Tec",
+      "status": "APPROVED",
+      "documentsDiscovered": 383,
+      "recordsReady": 385,
+      "recordsRequiringReview": 0,
+      "quarantined": 0
+    },
+    "SchoolS019": {
+      "firestoreId": "SchoolS019",
+      "schoolName": "Zuna International School",
+      "status": "SUSPENDED",
+      "documentsDiscovered": 423,
+      "recordsReady": 324,
+      "recordsRequiringReview": 18,
+      "quarantined": 0
+    },
+    "SchoolS020": {
+      "firestoreId": "SchoolS020",
+      "schoolName": "CGS Matriculation Higher Secondary School",
+      "status": "SUSPENDED",
+      "documentsDiscovered": 0,
+      "recordsReady": 2,
+      "recordsRequiringReview": 0,
+      "quarantined": 0
+    },
+    "SchoolS022": {
+      "firestoreId": "SchoolS022",
+      "schoolName": "XYZ MATRICULATION HIGHER SECONDARY SCHOOL",
+      "status": "SUSPENDED",
+      "documentsDiscovered": 22,
+      "recordsReady": 15,
+      "recordsRequiringReview": 1,
+      "quarantined": 0
+    },
+    "SchoolS023": {
+      "firestoreId": "SchoolS023",
+      "schoolName": "Testing School",
+      "status": "APPROVED",
+      "documentsDiscovered": 237,
+      "recordsReady": 86,
+      "recordsRequiringReview": 6,
+      "quarantined": 1
+    },
+    "SchoolS024": {
+      "firestoreId": "SchoolS024",
+      "schoolName": "Spring Mount Valley School",
+      "status": "APPROVED",
+      "documentsDiscovered": 540,
+      "recordsReady": 551,
+      "recordsRequiringReview": 5,
+      "quarantined": 5
+    },
+    "SchoolS026": {
+      "firestoreId": "SchoolS026",
+      "schoolName": "ABC",
+      "status": "APPROVED",
+      "documentsDiscovered": 4,
+      "recordsReady": 5,
+      "recordsRequiringReview": 1,
+      "quarantined": 0
+    },
+    "SchoolS027": {
+      "firestoreId": "SchoolS027",
+      "schoolName": "xyz",
+      "status": "APPROVED",
+      "documentsDiscovered": 4,
+      "recordsReady": 6,
+      "recordsRequiringReview": 0,
+      "quarantined": 0
+    },
+    "SchoolS028": {
+      "firestoreId": "SchoolS028",
+      "schoolName": "Worlds Academy",
+      "status": "APPROVED",
+      "documentsDiscovered": 18,
+      "recordsReady": 16,
+      "recordsRequiringReview": 0,
+      "quarantined": 0
+    }
+  },
+  "modelSummaries": {
+    "School": {
+      "sourceDocs": 9,
+      "ready": 9,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "SubscriptionPlan": {
+      "sourceDocs": 4,
+      "ready": 4,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "User": {
+      "sourceDocs": 192,
+      "ready": 74,
+      "warning": 118,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "RefreshSession": {
+      "sourceDocs": 0,
+      "ready": 0,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": true
+    },
+    "MigrationIdMap": {
+      "sourceDocs": 0,
+      "ready": 0,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": true
+    },
+    "AuditLog": {
+      "sourceDocs": 14,
+      "ready": 14,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "RolePermission": {
+      "sourceDocs": 10,
+      "ready": 10,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "UserRoleAssignment": {
+      "sourceDocs": 0,
+      "ready": 0,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "ParentStudentLink": {
+      "sourceDocs": 914,
+      "ready": 914,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "SchoolSetting": {
+      "sourceDocs": 2,
+      "ready": 2,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "SchoolRole": {
+      "sourceDocs": 10,
+      "ready": 10,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "ClassCategory": {
+      "sourceDocs": 2,
+      "ready": 2,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "Class": {
+      "sourceDocs": 40,
+      "ready": 40,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "Section": {
+      "sourceDocs": 40,
+      "ready": 40,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "Subject": {
+      "sourceDocs": 36,
+      "ready": 36,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "TimetablePeriod": {
+      "sourceDocs": 7,
+      "ready": 7,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "AcademicCalendarEvent": {
+      "sourceDocs": 2,
+      "ready": 2,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "LessonPlan": {
+      "sourceDocs": 4,
+      "ready": 4,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "AcademicResource": {
+      "sourceDocs": 0,
+      "ready": 0,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": true
+    },
+    "Student": {
+      "sourceDocs": 1039,
+      "ready": 1039,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "ParentProfile": {
+      "sourceDocs": 931,
+      "ready": 931,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "StaffProfile": {
+      "sourceDocs": 75,
+      "ready": 44,
+      "warning": 31,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "HRPayrollRecord": {
+      "sourceDocs": 5,
+      "ready": 5,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "AttendanceSession": {
+      "sourceDocs": 13,
+      "ready": 13,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "AttendanceRecord": {
+      "sourceDocs": 65,
+      "ready": 63,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 2,
+      "noSource": false
+    },
+    "AttendanceStat": {
+      "sourceDocs": 14,
+      "ready": 14,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "AbsenteeFlag": {
+      "sourceDocs": 0,
+      "ready": 0,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": true
+    },
+    "Examination": {
+      "sourceDocs": 6,
+      "ready": 6,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "Assessment": {
+      "sourceDocs": 5,
+      "ready": 5,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "AssessmentGrade": {
+      "sourceDocs": 0,
+      "ready": 0,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "ReportCardTemplate": {
+      "sourceDocs": 0,
+      "ready": 0,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": true
+    },
+    "ReportCard": {
+      "sourceDocs": 13,
+      "ready": 13,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "HomeworkAssignment": {
+      "sourceDocs": 6,
+      "ready": 6,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "HomeworkSubmission": {
+      "sourceDocs": 10,
+      "ready": 10,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "FeeCollectionPeriod": {
+      "sourceDocs": 2,
+      "ready": 2,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "FeeStructure": {
+      "sourceDocs": 15,
+      "ready": 15,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "Invoice": {
+      "sourceDocs": 141,
+      "ready": 135,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 6,
+      "noSource": false
+    },
+    "LibraryCategory": {
+      "sourceDocs": 1,
+      "ready": 1,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "LibraryBook": {
+      "sourceDocs": 3,
+      "ready": 3,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "LibraryBookIssue": {
+      "sourceDocs": 7,
+      "ready": 7,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "TransportVehicle": {
+      "sourceDocs": 2,
+      "ready": 2,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "TransportRoute": {
+      "sourceDocs": 3,
+      "ready": 3,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "RouteStop": {
+      "sourceDocs": 0,
+      "ready": 0,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "InventoryCategory": {
+      "sourceDocs": 3,
+      "ready": 3,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "InventoryItem": {
+      "sourceDocs": 4,
+      "ready": 4,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "InventoryAuditLog": {
+      "sourceDocs": 21,
+      "ready": 21,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "ChatRoom": {
+      "sourceDocs": 21,
+      "ready": 21,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "ChatMessage": {
+      "sourceDocs": 18,
+      "ready": 18,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "BroadcastChannel": {
+      "sourceDocs": 0,
+      "ready": 0,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": true
+    },
+    "ChannelPost": {
+      "sourceDocs": 0,
+      "ready": 0,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": true
+    },
+    "Notice": {
+      "sourceDocs": 6,
+      "ready": 6,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "Notification": {
+      "sourceDocs": 27,
+      "ready": 27,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "LeaveApplication": {
+      "sourceDocs": 6,
+      "ready": 6,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "LeaveApprovalRule": {
+      "sourceDocs": 0,
+      "ready": 0,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": true
+    },
+    "PtmAppointment": {
+      "sourceDocs": 6,
+      "ready": 6,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "CanteenRequest": {
+      "sourceDocs": 9,
+      "ready": 9,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "Complaint": {
+      "sourceDocs": 0,
+      "ready": 0,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": true
+    },
+    "CustomModule": {
+      "sourceDocs": 0,
+      "ready": 0,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": true
+    },
+    "CustomFormSchema": {
+      "sourceDocs": 3,
+      "ready": 3,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "CustomModuleRecord": {
+      "sourceDocs": 0,
+      "ready": 0,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": true
+    },
+    "AdmissionLead": {
+      "sourceDocs": 1,
+      "ready": 1,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    },
+    "LeadForm": {
+      "sourceDocs": 0,
+      "ready": 0,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": true
+    },
+    "AdmissionApplication": {
+      "sourceDocs": 1,
+      "ready": 1,
+      "warning": 0,
+      "error": 0,
+      "quarantined": 0,
+      "noSource": false
+    }
+  },
+  "relationshipMetrics": {
+    "checked": 141,
+    "resolved": 135,
+    "missing": 6,
+    "crossTenant": 0,
+    "invalid": 0
+  },
+  "quarantineQueue": [
+    {
+      "model": "Invoice",
+      "sourceId": "GDmzNvRFg40cMX8SVqTi",
+      "school": "SchoolS023",
+      "reason": "ORPHAN_INVOICE: Target student record was deleted in Firestore",
+      "affectedRelationship": "Invoice.studentId -> Student (nUYVBrCxVfqRHSqblT0o)",
+      "recommendedAction": "Link to archived dummy student or flag for billing administrator"
+    },
+    {
+      "model": "Invoice",
+      "sourceId": "0vPXP6O7RelS3zaZuV1M",
+      "school": "SchoolS024",
+      "reason": "ORPHAN_INVOICE: Target student record was deleted in Firestore",
+      "affectedRelationship": "Invoice.studentId -> Student (0yC69zK45PkmryEeB3tO)",
+      "recommendedAction": "Link to archived dummy student or flag for billing administrator"
+    },
+    {
+      "model": "Invoice",
+      "sourceId": "49NlRAXMoICViksnXlpR",
+      "school": "SchoolS024",
+      "reason": "ORPHAN_INVOICE: Target student record was deleted in Firestore",
+      "affectedRelationship": "Invoice.studentId -> Student (kqJFrwZto0n3GckAx2xy)",
+      "recommendedAction": "Link to archived dummy student or flag for billing administrator"
+    },
+    {
+      "model": "Invoice",
+      "sourceId": "Z4DPf3Hx8pgQJaDTlDCw",
+      "school": "SchoolS024",
+      "reason": "ORPHAN_INVOICE: Target student record was deleted in Firestore",
+      "affectedRelationship": "Invoice.studentId -> Student (X026D334hESn0Ke3GviC)",
+      "recommendedAction": "Link to archived dummy student or flag for billing administrator"
+    },
+    {
+      "model": "Invoice",
+      "sourceId": "gadekBkHDCX0Wjd9Ae4z",
+      "school": "SchoolS024",
+      "reason": "ORPHAN_INVOICE: Target student record was deleted in Firestore",
+      "affectedRelationship": "Invoice.studentId -> Student (cZEw5NjUAmFvvJy63a5I)",
+      "recommendedAction": "Link to archived dummy student or flag for billing administrator"
+    },
+    {
+      "model": "Invoice",
+      "sourceId": "hs19kxBeOPEIceWMei01",
+      "school": "SchoolS024",
+      "reason": "ORPHAN_INVOICE: Target student record was deleted in Firestore",
+      "affectedRelationship": "Invoice.studentId -> Student (LWI0gyMsFZgvC15E8tWX)",
+      "recommendedAction": "Link to archived dummy student or flag for billing administrator"
+    }
+  ],
+  "specialIssues": {
+    "orphanInvoicesCount": 6,
+    "legacyOrphanUsersCount": 118,
+    "activeTenantUsersCount": 70,
+    "globalAdminUsersCount": 4,
+    "staffWithoutAuthUsersCount": 31,
+    "invalidEmailsCount": 1,
+    "invalidPhonesCount": 7,
+    "invalidVehicleRegCount": 1,
+    "invalidDatesCount": 581
+  },
+  "idMappingStats": {
+    "totalMappings": 1649,
+    "duplicateOccurrences": 0,
+    "byModel": {
+      "School": 9,
+      "SubscriptionPlan": 4,
+      "User": 223,
+      "Class": 40,
+      "Section": 40,
+      "StaffProfile": 75,
+      "Student": 1039,
+      "Invoice": 141,
+      "AttendanceSession": 13,
+      "AttendanceRecord": 65
+    }
+  }
+}

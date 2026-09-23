@@ -1,0 +1,712 @@
+{
+  "timestamp": "2026-09-21T15:17:24.223Z",
+  "schoolCensus": [
+    {
+      "fbSchoolId": "SchoolS015",
+      "schoolName": "TrustITec College",
+      "pgSchoolId": "e2638de0-cf88-4cef-96db-74c353c6e43d",
+      "fbRecords": 383,
+      "pgRecords": 1015,
+      "status": "FULLY_MIGRATED",
+      "rawFbCounts": {
+        "classes": 2,
+        "formSchemas": 1,
+        "libraryCategories": 1,
+        "parents": 2,
+        "students": 375,
+        "subjects": 1,
+        "teachers": 1
+      }
+    },
+    {
+      "fbSchoolId": "SchoolS019",
+      "schoolName": "Zuna International School",
+      "pgSchoolId": "4e2c7fdf-46c1-4bc7-927f-e3382e8c579d",
+      "fbRecords": 401,
+      "pgRecords": 0,
+      "status": "NOT_MIGRATED",
+      "rawFbCounts": {
+        "assessments": 3,
+        "attendance": 8,
+        "attendanceStats": 5,
+        "books": 1,
+        "canteen_requests": 3,
+        "chats": 4,
+        "classes": 5,
+        "dashboardStats": 7,
+        "exams": 1,
+        "feeStructures": 1,
+        "formSchemas": 1,
+        "homeworks": 2,
+        "invoices": 5,
+        "issuedBooks": 2,
+        "leaves": 6,
+        "lesson_plans": 1,
+        "notices": 3,
+        "notifications": 7,
+        "parents": 3,
+        "payroll": 1,
+        "ptms": 4,
+        "roles": 2,
+        "settings": 1,
+        "staff_audit_logs": 1,
+        "students": 290,
+        "subjects": 7,
+        "teachers": 21,
+        "timetables": 5,
+        "transportRoutes": 1
+      }
+    },
+    {
+      "fbSchoolId": "SchoolS020",
+      "schoolName": "CGS Matriculation Higher Secondary School",
+      "pgSchoolId": "UNMAPPED",
+      "fbRecords": 0,
+      "pgRecords": 0,
+      "status": "NOT_MIGRATED",
+      "rawFbCounts": {}
+    },
+    {
+      "fbSchoolId": "SchoolS022",
+      "schoolName": "XYZ MATRICULATION HIGHER SECONDARY SCHOOL",
+      "pgSchoolId": "UNMAPPED",
+      "fbRecords": 21,
+      "pgRecords": 0,
+      "status": "NOT_MIGRATED",
+      "rawFbCounts": {
+        "chats": 2,
+        "classes": 1,
+        "homeworks": 1,
+        "parents": 2,
+        "ptms": 1,
+        "roles": 2,
+        "staff_audit_logs": 4,
+        "students": 3,
+        "subjects": 1,
+        "teachers": 4
+      }
+    },
+    {
+      "fbSchoolId": "SchoolS023",
+      "schoolName": "Testing School",
+      "pgSchoolId": "UNMAPPED",
+      "fbRecords": 246,
+      "pgRecords": 0,
+      "status": "NOT_MIGRATED",
+      "rawFbCounts": {
+        "assessments": 2,
+        "attendance": 5,
+        "attendanceStats": 9,
+        "books": 2,
+        "calendar": 1,
+        "canteen_requests": 6,
+        "chats": 13,
+        "classCategories": 3,
+        "classes": 1,
+        "config": 1,
+        "dashboardStats": 4,
+        "exams": 4,
+        "feeCollectionPeriods": 2,
+        "feeStructures": 7,
+        "formSchemas": 1,
+        "homeworks": 3,
+        "inventory": 4,
+        "inventory_audit_logs": 21,
+        "inventory_categories": 3,
+        "invoices": 32,
+        "issuedBooks": 5,
+        "lesson_plans": 3,
+        "notices": 4,
+        "notifications": 20,
+        "parents": 30,
+        "payroll": 5,
+        "ptms": 1,
+        "roles": 3,
+        "staff_audit_logs": 8,
+        "students": 26,
+        "subjects": 2,
+        "teachers": 10,
+        "timetables": 2,
+        "transportRoutes": 1,
+        "vehicles": 2
+      }
+    },
+    {
+      "fbSchoolId": "SchoolS024",
+      "schoolName": "Spring Mount Valley School",
+      "pgSchoolId": "25e9637a-7fa4-4ac2-b43d-b4c0edcf2932",
+      "fbRecords": 734,
+      "pgRecords": 1117,
+      "status": "FULLY_MIGRATED",
+      "rawFbCounts": {
+        "calendar": 1,
+        "chats": 1,
+        "classes": 22,
+        "feeStructures": 7,
+        "invoices": 104,
+        "leads": 1,
+        "parents": 169,
+        "roles": 6,
+        "staff_audit_logs": 13,
+        "students": 340,
+        "subjects": 22,
+        "teachers": 46,
+        "timetables": 1,
+        "transportRoutes": 1
+      }
+    },
+    {
+      "fbSchoolId": "SchoolS026",
+      "schoolName": "ABC",
+      "pgSchoolId": "UNMAPPED",
+      "fbRecords": 4,
+      "pgRecords": 0,
+      "status": "NOT_MIGRATED",
+      "rawFbCounts": {
+        "classes": 1,
+        "staff_audit_logs": 1,
+        "students": 1,
+        "teachers": 1
+      }
+    },
+    {
+      "fbSchoolId": "SchoolS027",
+      "schoolName": "xyz",
+      "pgSchoolId": "UNMAPPED",
+      "fbRecords": 14,
+      "pgRecords": 0,
+      "status": "NOT_MIGRATED",
+      "rawFbCounts": {
+        "calendar": 1,
+        "classes": 1,
+        "formSchemas": 1,
+        "parents": 3,
+        "roles": 2,
+        "settings": 1,
+        "students": 2,
+        "subjects": 1,
+        "teachers": 2
+      }
+    },
+    {
+      "fbSchoolId": "SchoolS028",
+      "schoolName": "Worlds Academy",
+      "pgSchoolId": "UNMAPPED",
+      "fbRecords": 56,
+      "pgRecords": 0,
+      "status": "NOT_MIGRATED",
+      "rawFbCounts": {
+        "admissionApplications": 1,
+        "assessments": 1,
+        "attendance": 1,
+        "attendanceStats": 4,
+        "canteen_requests": 5,
+        "chats": 7,
+        "classes": 2,
+        "dashboardStats": 1,
+        "exams": 1,
+        "formSchemas": 1,
+        "notifications": 1,
+        "parents": 12,
+        "roles": 1,
+        "staff_audit_logs": 3,
+        "students": 10,
+        "subjects": 2,
+        "teachers": 3
+      }
+    },
+    {
+      "fbSchoolId": "SchoolS029",
+      "schoolName": "Grace Matriculation Higher Secondary School",
+      "pgSchoolId": "UNMAPPED",
+      "fbRecords": 26,
+      "pgRecords": 0,
+      "status": "NOT_MIGRATED",
+      "rawFbCounts": {
+        "classes": 1,
+        "feeCollectionPeriods": 1,
+        "parents": 9,
+        "roles": 2,
+        "staff_audit_logs": 3,
+        "students": 7,
+        "teachers": 3
+      }
+    },
+    {
+      "fbSchoolId": "SchoolS030",
+      "schoolName": "Choco academic",
+      "pgSchoolId": "UNMAPPED",
+      "fbRecords": 0,
+      "pgRecords": 0,
+      "status": "NOT_MIGRATED",
+      "rawFbCounts": {}
+    },
+    {
+      "fbSchoolId": "SchoolS031",
+      "schoolName": "hihjl",
+      "pgSchoolId": "UNMAPPED",
+      "fbRecords": 0,
+      "pgRecords": 0,
+      "status": "NOT_MIGRATED",
+      "rawFbCounts": {}
+    }
+  ],
+  "entityComparisons": {
+    "SchoolS015": {
+      "schoolName": "TrustITec College",
+      "pgSchoolId": "e2638de0-cf88-4cef-96db-74c353c6e43d",
+      "entities": {
+        "students": {
+          "fbCount": 375,
+          "pgExisting": 375,
+          "alreadyMatched": 0,
+          "migrationRequired": 375,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "teachers": {
+          "fbCount": 1,
+          "pgExisting": 1,
+          "alreadyMatched": 1,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "classes": {
+          "fbCount": 2,
+          "pgExisting": 2,
+          "alreadyMatched": 0,
+          "migrationRequired": 2,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "subjects": {
+          "fbCount": 1,
+          "pgExisting": 1,
+          "alreadyMatched": 1,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        }
+      }
+    },
+    "SchoolS019": {
+      "schoolName": "Zuna International School",
+      "pgSchoolId": "4e2c7fdf-46c1-4bc7-927f-e3382e8c579d",
+      "entities": {
+        "students": {
+          "fbCount": 290,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 290,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "teachers": {
+          "fbCount": 21,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 21,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "classes": {
+          "fbCount": 5,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 5,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "subjects": {
+          "fbCount": 7,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 7,
+          "conflicts": 0,
+          "duplicates": 0
+        }
+      }
+    },
+    "SchoolS020": {
+      "schoolName": "CGS Matriculation Higher Secondary School",
+      "pgSchoolId": null,
+      "entities": {
+        "students": {
+          "fbCount": 0,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "teachers": {
+          "fbCount": 0,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "classes": {
+          "fbCount": 0,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "subjects": {
+          "fbCount": 0,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        }
+      }
+    },
+    "SchoolS022": {
+      "schoolName": "XYZ MATRICULATION HIGHER SECONDARY SCHOOL",
+      "pgSchoolId": null,
+      "entities": {
+        "students": {
+          "fbCount": 3,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 3,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "teachers": {
+          "fbCount": 4,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 4,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "classes": {
+          "fbCount": 1,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 1,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "subjects": {
+          "fbCount": 1,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 1,
+          "conflicts": 0,
+          "duplicates": 0
+        }
+      }
+    },
+    "SchoolS023": {
+      "schoolName": "Testing School",
+      "pgSchoolId": null,
+      "entities": {
+        "students": {
+          "fbCount": 26,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 26,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "teachers": {
+          "fbCount": 10,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 10,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "classes": {
+          "fbCount": 1,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 1,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "subjects": {
+          "fbCount": 2,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 2,
+          "conflicts": 0,
+          "duplicates": 0
+        }
+      }
+    },
+    "SchoolS024": {
+      "schoolName": "Spring Mount Valley School",
+      "pgSchoolId": "25e9637a-7fa4-4ac2-b43d-b4c0edcf2932",
+      "entities": {
+        "students": {
+          "fbCount": 340,
+          "pgExisting": 340,
+          "alreadyMatched": 0,
+          "migrationRequired": 340,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "teachers": {
+          "fbCount": 46,
+          "pgExisting": 38,
+          "alreadyMatched": 12,
+          "migrationRequired": 34,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "classes": {
+          "fbCount": 22,
+          "pgExisting": 22,
+          "alreadyMatched": 0,
+          "migrationRequired": 22,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "subjects": {
+          "fbCount": 22,
+          "pgExisting": 22,
+          "alreadyMatched": 22,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        }
+      }
+    },
+    "SchoolS026": {
+      "schoolName": "ABC",
+      "pgSchoolId": null,
+      "entities": {
+        "students": {
+          "fbCount": 1,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 1,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "teachers": {
+          "fbCount": 1,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 1,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "classes": {
+          "fbCount": 1,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 1,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "subjects": {
+          "fbCount": 0,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        }
+      }
+    },
+    "SchoolS027": {
+      "schoolName": "xyz",
+      "pgSchoolId": null,
+      "entities": {
+        "students": {
+          "fbCount": 2,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 2,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "teachers": {
+          "fbCount": 2,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 2,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "classes": {
+          "fbCount": 1,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 1,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "subjects": {
+          "fbCount": 1,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 1,
+          "conflicts": 0,
+          "duplicates": 0
+        }
+      }
+    },
+    "SchoolS028": {
+      "schoolName": "Worlds Academy",
+      "pgSchoolId": null,
+      "entities": {
+        "students": {
+          "fbCount": 10,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 10,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "teachers": {
+          "fbCount": 3,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 3,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "classes": {
+          "fbCount": 2,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 2,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "subjects": {
+          "fbCount": 2,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 2,
+          "conflicts": 0,
+          "duplicates": 0
+        }
+      }
+    },
+    "SchoolS029": {
+      "schoolName": "Grace Matriculation Higher Secondary School",
+      "pgSchoolId": null,
+      "entities": {
+        "students": {
+          "fbCount": 7,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 7,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "teachers": {
+          "fbCount": 3,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 3,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "classes": {
+          "fbCount": 1,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 1,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "subjects": {
+          "fbCount": 0,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        }
+      }
+    },
+    "SchoolS030": {
+      "schoolName": "Choco academic",
+      "pgSchoolId": null,
+      "entities": {
+        "students": {
+          "fbCount": 0,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "teachers": {
+          "fbCount": 0,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "classes": {
+          "fbCount": 0,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "subjects": {
+          "fbCount": 0,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        }
+      }
+    },
+    "SchoolS031": {
+      "schoolName": "hihjl",
+      "pgSchoolId": null,
+      "entities": {
+        "students": {
+          "fbCount": 0,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "teachers": {
+          "fbCount": 0,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "classes": {
+          "fbCount": 0,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        },
+        "subjects": {
+          "fbCount": 0,
+          "pgExisting": 0,
+          "alreadyMatched": 0,
+          "migrationRequired": 0,
+          "conflicts": 0,
+          "duplicates": 0
+        }
+      }
+    }
+  }
+}

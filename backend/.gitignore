@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.*
+!.env.example
+
+migration/secrets/
+prisma/migrations/secrets/
+prisma-reports/secrets/
+secrets/
+*firebase-adminsdk*.json

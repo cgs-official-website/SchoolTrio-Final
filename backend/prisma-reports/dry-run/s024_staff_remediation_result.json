@@ -1,0 +1,67 @@
+{
+  "timestamp": "2026-09-22T04:07:27.733Z",
+  "schoolId": "25e9637a-7fa4-4ac2-b43d-b4c0edcf2932",
+  "preStaffCount": 38,
+  "postStaffCount": 43,
+  "remediatedResults": [
+    {
+      "fbDocId": "5kKk3Uz71GaD4QL1uU5Y",
+      "employeeId": "SMVSA003",
+      "authUid": "sUFHLiZydTVtnqYCUnvEXJmo6L43",
+      "pgUserId": "3f4bc30c-97d8-4212-a410-010eec664c9c",
+      "pgStaffProfileId": "9862b0e6-107b-4616-9dbd-bf0039c50175",
+      "schoolId": "25e9637a-7fa4-4ac2-b43d-b4c0edcf2932",
+      "status": "MIGRATED_SUCCESSFULLY"
+    },
+    {
+      "fbDocId": "EcEjUOxqYCaizT0WU4HZ",
+      "employeeId": "SMVST039",
+      "authUid": "30EEnp8h00VlkIyPuXJ6rnBqf3Z2",
+      "pgUserId": "bd96cd56-dfd9-4542-bbb2-854b50776c53",
+      "pgStaffProfileId": "c89a5592-d41f-4e00-9a37-c0a388536a84",
+      "schoolId": "25e9637a-7fa4-4ac2-b43d-b4c0edcf2932",
+      "status": "MIGRATED_SUCCESSFULLY"
+    },
+    {
+      "fbDocId": "VOd9WVjHpYfSHJOgSBIV",
+      "employeeId": "SMVSA002",
+      "authUid": "ojihIdes1FNQ9KrGQTavHLBjpLu2",
+      "pgUserId": "2f28f2a3-fb91-4c75-ad66-6d08f4ef987d",
+      "pgStaffProfileId": "a770aca1-1294-4dfa-ac27-f406b7514ed0",
+      "schoolId": "25e9637a-7fa4-4ac2-b43d-b4c0edcf2932",
+      "status": "MIGRATED_SUCCESSFULLY"
+    },
+    {
+      "fbDocId": "fzH2RpA8ufIdaejtWn9d",
+      "employeeId": "SMVSA004",
+      "authUid": "Xa4NBrAiHmMSV4RQCi4f5ABB59X2",
+      "pgUserId": "83df531c-44c8-482b-aca9-fad1bac99830",
+      "pgStaffProfileId": "3652d273-8a8f-450b-88be-65ac7b4c3233",
+      "schoolId": "25e9637a-7fa4-4ac2-b43d-b4c0edcf2932",
+      "status": "MIGRATED_SUCCESSFULLY"
+    },
+    {
+      "fbDocId": "rvmmAVaTBgrZsNRJuTPV",
+      "employeeId": "SMVSA001",
+      "authUid": "yHwlPqIsfteH6KC48pRJ72MOHrp2",
+      "pgUserId": "bd36246f-a428-4445-a3cb-df9e60f831b5",
+      "pgStaffProfileId": "a69ef52b-bfa4-4975-9621-4c69bf65a561",
+      "schoolId": "25e9637a-7fa4-4ac2-b43d-b4c0edcf2932",
+      "status": "MIGRATED_SUCCESSFULLY"
+    }
+  ],
+  "uncertainRecordsStatus": [
+    {
+      "docId": "6j1rFvb57IMmvdZ4fL5B",
+      "status": "UNCHANGED — REQUIRES SEPARATE REVIEW"
+    },
+    {
+      "docId": "CdVPfwYMtZWpc8tNYNBR",
+      "status": "UNCHANGED — REQUIRES SEPARATE REVIEW"
+    },
+    {
+      "docId": "ZQX36ET7IQ0TlNuK4UGP",
+      "status": "UNCHANGED — REQUIRES SEPARATE REVIEW"
+    }
+  ]
+}

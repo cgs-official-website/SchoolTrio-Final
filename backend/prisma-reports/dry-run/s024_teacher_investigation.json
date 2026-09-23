@@ -1,0 +1,383 @@
+{
+  "timestamp": "2026-09-22T03:57:48.391Z",
+  "counts": {
+    "fbTeachers": 46,
+    "pgStaff": 38,
+    "matched": 38,
+    "unmatched": 8
+  },
+  "matchedList": [
+    {
+      "fbDocId": "1cyubq42sEUhVPin2FeU",
+      "name": "Dhivya M",
+      "pgId": "a0cf8a68-723d-474c-a136-4a31dff72f9b"
+    },
+    {
+      "fbDocId": "3siV6Gw8Vbi9ggxDc8hP",
+      "name": "Niveka V",
+      "pgId": "a675bc15-bdd6-43e6-ac5c-0564eea47f5e"
+    },
+    {
+      "fbDocId": "48PsDRLkN4tx7Aydd7Iu",
+      "name": "Rethika Rachael ",
+      "pgId": "afd5591d-5d08-40a3-9386-d81bd119ba34"
+    },
+    {
+      "fbDocId": "5fb4ZqplqhJW0DeQrhy0",
+      "name": "Dhanalakshmi Murugan",
+      "pgId": "6a57b2ca-8bd5-495f-82de-ae2b3cda466f"
+    },
+    {
+      "fbDocId": "5rMZ7KbqQ0dA74OEJel5",
+      "name": "Lalitha Ramanujam ",
+      "pgId": "dd95f83c-a518-4048-bcfd-a27bb95486ee"
+    },
+    {
+      "fbDocId": "8oO6TqVNCYFDVbnrSmSO",
+      "name": "Mohanambal D",
+      "pgId": "119a36a9-0cb0-4d70-b4b5-60ffbe2eb950"
+    },
+    {
+      "fbDocId": "ACU5f8yD0KREJNNPyQdL",
+      "name": "Ruby R",
+      "pgId": "3d34130b-d13a-493b-9a71-bcf72ecdf328"
+    },
+    {
+      "fbDocId": "BdghJj2ywDAUBDdtTtXT",
+      "name": "Kanimozhi P",
+      "pgId": "398f0cec-3c54-47bb-9e55-19588728a062"
+    },
+    {
+      "fbDocId": "DDobDd14nYX6rdGDYDPz",
+      "name": "Ashish kashyap",
+      "pgId": "17099e0c-f827-4cdd-84b0-e8a7ce651e9d"
+    },
+    {
+      "fbDocId": "FCvUuPUh2Ux2yugLk0Tj",
+      "name": "Shihana Sajin",
+      "pgId": "af697b43-1227-43d1-940d-61e1347315f5"
+    },
+    {
+      "fbDocId": "FxDnprTwlUVBRvpJ9pla",
+      "name": "Yogendra Kumar",
+      "pgId": "451de121-3c76-4cbe-a416-5a2c733eb6aa"
+    },
+    {
+      "fbDocId": "J0DFpcO5L1OHnVpjiORz",
+      "name": "Arulkumar ",
+      "pgId": "5f94354d-d147-47c3-9613-e243b1c1171f"
+    },
+    {
+      "fbDocId": "J67JktuTucIfgNEYzUNT",
+      "name": "AISHWARYA G",
+      "pgId": "c09159de-f290-428a-8afb-4ebe25c02466"
+    },
+    {
+      "fbDocId": "KBjRcmGqXsm89gNDRXMx",
+      "name": "Kaviya ",
+      "pgId": "819404ae-a5fb-473d-af22-74a6e7891263"
+    },
+    {
+      "fbDocId": "KmVF89DmPH1QSDjVLnpE",
+      "name": "Sushmitha N",
+      "pgId": "55dd48b9-778f-4376-9b87-b5ffdc54cb71"
+    },
+    {
+      "fbDocId": "L3Zb5McYqA46cUnIF6OQ",
+      "name": "SHOBANA S",
+      "pgId": "8122a2bb-48ed-4095-892a-16c87473a894"
+    },
+    {
+      "fbDocId": "MXEsLEL8gIds2CRwXF78",
+      "name": "Nuri Mathew",
+      "pgId": "83d74a05-fca5-4a25-b642-cb30787c5873"
+    },
+    {
+      "fbDocId": "Ptb7vobIaWmiN8jSFcgr",
+      "name": "Aruljothi P",
+      "pgId": "97dfe97e-46ec-4922-969a-acc51cb7ff5f"
+    },
+    {
+      "fbDocId": "RrbpxMmsS28FQqzjbMiE",
+      "name": "Ratheesh K V",
+      "pgId": "b1d78cd9-45a6-4c32-90ac-8562029a955e"
+    },
+    {
+      "fbDocId": "SsE26iKYz5OCg9zEkz4G",
+      "name": "S.KAVYA",
+      "pgId": "dc9d7fbe-e126-4ace-8b86-0ed04a3ed38f"
+    },
+    {
+      "fbDocId": "TA72si30LeN9bNDrdGAU",
+      "name": "A.Gayathri",
+      "pgId": "b7f52e60-9162-4247-a551-3c799450a7c7"
+    },
+    {
+      "fbDocId": "Uxvxo6Ri42qJ53oQPEi4",
+      "name": "MAHIMA JOVITHA M ",
+      "pgId": "a4d0f414-fc9e-4f73-8396-bb051a0561c7"
+    },
+    {
+      "fbDocId": "VIlkVPZKrr9QoBhg6DBd",
+      "name": "Balamurugan.N",
+      "pgId": "ceb26cdb-aa35-4f6a-a8b2-cd0639d71d62"
+    },
+    {
+      "fbDocId": "XCosrX6bwkmx30D0Zkp4",
+      "name": "Darun C K",
+      "pgId": "e78ab391-5194-4a87-a103-fd5a6f6b3545"
+    },
+    {
+      "fbDocId": "YBNKME0uqFq6erNIGepq",
+      "name": "Sruthi Sunil",
+      "pgId": "eb9a8007-e451-4132-8f4a-6fc5cd63c140"
+    },
+    {
+      "fbDocId": "bnHcNyYAqMzmbUFwi7dd",
+      "name": "R. Gomathi",
+      "pgId": "9ea21a4f-8344-4d37-82fb-be880bf3741d"
+    },
+    {
+      "fbDocId": "dmwWmITGRFVvUksYSuRP",
+      "name": "Priyadharshini.B",
+      "pgId": "293bebb2-c22d-4460-95f2-42c0021f7d4c"
+    },
+    {
+      "fbDocId": "lsLgNCXqDf2nsKqlSQMQ",
+      "name": "karthika C",
+      "pgId": "d4ca4399-ce8f-441e-ae95-f2431bf5a96d"
+    },
+    {
+      "fbDocId": "n6cPIvn7o4cFOqm1X1Od",
+      "name": "Sathya K",
+      "pgId": "61c4dd33-6b15-4516-8800-52ed3dbf2a0a"
+    },
+    {
+      "fbDocId": "nRlL08q4RdVvGrlfIYqv",
+      "name": "Hyder Khan M",
+      "pgId": "766d6b75-5613-45a4-8ec5-cc33ff556ed5"
+    },
+    {
+      "fbDocId": "o5TrswcPHP69RXTkXfmE",
+      "name": "MUTHULAKSHMI S",
+      "pgId": "75f5c981-f49e-49f1-af9a-1d935e9bc602"
+    },
+    {
+      "fbDocId": "o64hhGztPWVwXji3g2Bq",
+      "name": "BINDHUJA A S",
+      "pgId": "5005a46e-4685-4383-a6ce-fc87078faf36"
+    },
+    {
+      "fbDocId": "pUTnXuv2bIYJJMeifPlt",
+      "name": "Priyadharshini M",
+      "pgId": "45088e2f-ae9f-4a73-9448-385f78a9195a"
+    },
+    {
+      "fbDocId": "qcgyM85iJRiK0YFXaPEr",
+      "name": "Aswani. D",
+      "pgId": "4f75c4a5-8d1a-4b25-9178-a408a20f0dbf"
+    },
+    {
+      "fbDocId": "qkTE1ovzWKptAw5X7hRn",
+      "name": "P.Lakshmi Priya ",
+      "pgId": "b172ff39-fb17-4ab1-ac4d-af7467dfd63a"
+    },
+    {
+      "fbDocId": "sLPfDiUGnKHWHWfUDrqw",
+      "name": "Rajalakshmi R",
+      "pgId": "c5009d0a-6934-452f-b3cc-45f762efdfbd"
+    },
+    {
+      "fbDocId": "uq6ZAlZd2dG9yVWu4rlG",
+      "name": "N.Ranjith",
+      "pgId": "0283ec52-fb42-4763-bcdb-ec71b7bf3af2"
+    },
+    {
+      "fbDocId": "yaiT3fNS8SQ7A3YSSeY0",
+      "name": "Priyanka S",
+      "pgId": "fc9e8c1e-a079-44e5-ba13-518c68a00025"
+    }
+  ],
+  "unmatchedAnalysis": [
+    {
+      "docId": "5kKk3Uz71GaD4QL1uU5Y",
+      "name": "SHIVA KUMAR P S",
+      "employeeId": "SMVSA003",
+      "email": "shivakumar271085@gmail.com",
+      "designation": "Staffs",
+      "hasAuthAccount": true,
+      "authUid": "sUFHLiZydTVtnqYCUnvEXJmo6L43",
+      "referenceCount": 2,
+      "references": [
+        {
+          "collection": "staff_audit_logs",
+          "docId": "4FpRIrLAWS0p0YB4JjhH"
+        },
+        {
+          "collection": "teachers",
+          "docId": "5kKk3Uz71GaD4QL1uU5Y"
+        }
+      ]
+    },
+    {
+      "docId": "6j1rFvb57IMmvdZ4fL5B",
+      "name": "Shinasshukoor",
+      "employeeId": "SMVSP001",
+      "email": "viceprincipal@springmount.co.in",
+      "designation": "Staffs",
+      "hasAuthAccount": false,
+      "authUid": null,
+      "referenceCount": 2,
+      "references": [
+        {
+          "collection": "staff_audit_logs",
+          "docId": "IiZNi9qr6RRndJyukkO1"
+        },
+        {
+          "collection": "teachers",
+          "docId": "6j1rFvb57IMmvdZ4fL5B"
+        }
+      ]
+    },
+    {
+      "docId": "CdVPfwYMtZWpc8tNYNBR",
+      "name": "Bindu Nair",
+      "employeeId": "SMVSA007",
+      "email": "bindunair@springmount.co.in",
+      "designation": "Staffs",
+      "hasAuthAccount": false,
+      "authUid": null,
+      "referenceCount": 2,
+      "references": [
+        {
+          "collection": "staff_audit_logs",
+          "docId": "tAuNUROnwjX8rvu9loBd"
+        },
+        {
+          "collection": "teachers",
+          "docId": "CdVPfwYMtZWpc8tNYNBR"
+        }
+      ]
+    },
+    {
+      "docId": "EcEjUOxqYCaizT0WU4HZ",
+      "name": "Jane Williams",
+      "employeeId": "SMVST039",
+      "email": "janewilliams.erd@springmount.co.in",
+      "designation": "Staffs",
+      "hasAuthAccount": true,
+      "authUid": "30EEnp8h00VlkIyPuXJ6rnBqf3Z2",
+      "referenceCount": 2,
+      "references": [
+        {
+          "collection": "staff_audit_logs",
+          "docId": "yvQoi8Jc2ERiyUf827L6"
+        },
+        {
+          "collection": "teachers",
+          "docId": "EcEjUOxqYCaizT0WU4HZ"
+        }
+      ]
+    },
+    {
+      "docId": "VOd9WVjHpYfSHJOgSBIV",
+      "name": "Megala S",
+      "employeeId": "SMVSA002",
+      "email": "kiruthykrakhava59661@gmail.com",
+      "designation": "Staffs",
+      "hasAuthAccount": true,
+      "authUid": "ojihIdes1FNQ9KrGQTavHLBjpLu2",
+      "referenceCount": 2,
+      "references": [
+        {
+          "collection": "staff_audit_logs",
+          "docId": "JjwvwRgt1V6k2KyTEA4a"
+        },
+        {
+          "collection": "teachers",
+          "docId": "VOd9WVjHpYfSHJOgSBIV"
+        }
+      ]
+    },
+    {
+      "docId": "ZQX36ET7IQ0TlNuK4UGP",
+      "name": "Revathi S",
+      "employeeId": "SMVSF001",
+      "email": "revathi.3395@gmail.com",
+      "designation": "Staffs",
+      "hasAuthAccount": false,
+      "authUid": null,
+      "referenceCount": 3,
+      "references": [
+        {
+          "collection": "staff_audit_logs",
+          "docId": "QTdn4BS0QKI30DOR1cTq"
+        },
+        {
+          "collection": "staff_audit_logs",
+          "docId": "qxNVxxTb1zuaOQx3D34O"
+        },
+        {
+          "collection": "teachers",
+          "docId": "ZQX36ET7IQ0TlNuK4UGP"
+        }
+      ]
+    },
+    {
+      "docId": "fzH2RpA8ufIdaejtWn9d",
+      "name": "Sudha.M",
+      "employeeId": "SMVSA004",
+      "email": "seniorcoordinator@springmount.co.in",
+      "designation": "Staffs",
+      "hasAuthAccount": true,
+      "authUid": "Xa4NBrAiHmMSV4RQCi4f5ABB59X2",
+      "referenceCount": 2,
+      "references": [
+        {
+          "collection": "staff_audit_logs",
+          "docId": "E6e9SZe3RE5reyvntQVD"
+        },
+        {
+          "collection": "teachers",
+          "docId": "fzH2RpA8ufIdaejtWn9d"
+        }
+      ]
+    },
+    {
+      "docId": "rvmmAVaTBgrZsNRJuTPV",
+      "name": "Sangeetha A",
+      "employeeId": "SMVSA001",
+      "email": "sangeetha.angusamy01@gmail.com",
+      "designation": "Staffs",
+      "hasAuthAccount": true,
+      "authUid": "yHwlPqIsfteH6KC48pRJ72MOHrp2",
+      "referenceCount": 6,
+      "references": [
+        {
+          "collection": "staff_audit_logs",
+          "docId": "9zVqfSfxSVuaZr8zMDUY"
+        },
+        {
+          "collection": "staff_audit_logs",
+          "docId": "PKQ5librbgfAI0rxJ4Or"
+        },
+        {
+          "collection": "staff_audit_logs",
+          "docId": "Rq57nPapeRs3f6IaH9VE"
+        },
+        {
+          "collection": "staff_audit_logs",
+          "docId": "u9NhvyMekeqVYNx81cbF"
+        },
+        {
+          "collection": "staff_audit_logs",
+          "docId": "uL0bBw2ZnefWK1I2aH1F"
+        },
+        {
+          "collection": "teachers",
+          "docId": "rvmmAVaTBgrZsNRJuTPV"
+        }
+      ]
+    }
+  ]
+}
