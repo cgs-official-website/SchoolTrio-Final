@@ -62,6 +62,54 @@ describe('Authentication Domain Service (auth.service.js)', () => {
       expect(result.user.passwordHash).toBeUndefined();
     });
 
+    it('authenticates valid user via phone number', async () => {
+      vi.spyOn(authRepository, 'findUserByEmail').mockResolvedValue(null);
+      vi.spyOn(authRepository, 'findCandidateUsersByIdentifier').mockResolvedValue([sampleUser]);
+      vi.spyOn(passwordService, 'isLockedPassword').mockReturnValue(false);
+      vi.spyOn(passwordService, 'verifyPassword').mockResolvedValue(true);
+      vi.spyOn(sessionService, 'createSession').mockResolvedValue({
+        rawToken: 'mock-raw-refresh-token-phone',
+        sessionId: 'session-uuid-phone',
+        expiresAt: new Date()
+      });
+      vi.spyOn(tokenService, 'issueAccessToken').mockReturnValue('mock-jwt-phone');
+
+      const result = await authService.login({
+        identifier: '9876543210',
+        password: 'ValidPassword123!'
+      });
+
+      expect(authRepository.findCandidateUsersByIdentifier).toHaveBeenCalledWith('9876543210', {
+        includePassword: true
+      });
+      expect(result.accessToken).toBe('mock-jwt-phone');
+      expect(result.user.id).toBe(sampleUser.id);
+    });
+
+    it('authenticates valid parent user via admission number', async () => {
+      vi.spyOn(authRepository, 'findUserByEmail').mockResolvedValue(null);
+      vi.spyOn(authRepository, 'findCandidateUsersByIdentifier').mockResolvedValue([sampleUser]);
+      vi.spyOn(passwordService, 'isLockedPassword').mockReturnValue(false);
+      vi.spyOn(passwordService, 'verifyPassword').mockResolvedValue(true);
+      vi.spyOn(sessionService, 'createSession').mockResolvedValue({
+        rawToken: 'mock-raw-refresh-token-adm',
+        sessionId: 'session-uuid-adm',
+        expiresAt: new Date()
+      });
+      vi.spyOn(tokenService, 'issueAccessToken').mockReturnValue('mock-jwt-adm');
+
+      const result = await authService.login({
+        identifier: 'ADM-1234',
+        password: 'ValidPassword123!'
+      });
+
+      expect(authRepository.findCandidateUsersByIdentifier).toHaveBeenCalledWith('ADM-1234', {
+        includePassword: true
+      });
+      expect(result.accessToken).toBe('mock-jwt-adm');
+      expect(result.user.id).toBe(sampleUser.id);
+    });
+
     it('returns generic INVALID_CREDENTIALS for unknown email to prevent enumeration', async () => {
       vi.spyOn(authRepository, 'findUserByEmail').mockResolvedValue(null);
 

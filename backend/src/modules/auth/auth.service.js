@@ -30,52 +30,107 @@ export const login = async ({ identifier, password, ipAddress = null, deviceInfo
     throw new UnauthorizedError('Invalid email or password', ERROR_CODES.INVALID_CREDENTIALS);
   }
 
-  const normalizedEmail = identifier.toLowerCase().trim();
+  const normalizedIdentifier = identifier.trim();
+  const normalizedEmail = normalizedIdentifier.toLowerCase();
 
-  // 1. Locate user record with credentials
-  const user = await authRepository.findUserByEmail(normalizedEmail, { includePassword: true });
+  // 1. Locate candidate user records (check direct email first, then phone / admission number)
+  let candidateUsers = [];
+  const userByEmail = await authRepository.findUserByEmail(normalizedEmail, { includePassword: true });
+  if (userByEmail) {
+    candidateUsers.push(userByEmail);
+  } else {
+    candidateUsers = await authRepository.findCandidateUsersByIdentifier(normalizedIdentifier, {
+      includePassword: true
+    });
+  }
 
   // 2. Generic authentication failure if user does not exist (prevents enumeration)
-  if (!user) {
+  if (candidateUsers.length === 0) {
     throw new UnauthorizedError('Invalid email or password', ERROR_CODES.INVALID_CREDENTIALS);
   }
 
-  // 3. Locked account guard (e.g. Migrated Firebase users)
-  if (isLockedPassword(user.passwordHash)) {
-    throw new ForbiddenError(
-      'Password is not set for this account. Please use password setup or reset.',
-      ERROR_CODES.PASSWORD_NOT_SET
-    );
-  }
+  let user = null;
 
-  // 4. Account active state verification
-  if (!user.isActive) {
-    throw new ForbiddenError(
-      'Your account has been deactivated. Please contact administrator.',
-      ERROR_CODES.ACCOUNT_DISABLED
-    );
-  }
+  if (candidateUsers.length === 1) {
+    const single = candidateUsers[0];
 
-  // 5. Tenant eligibility check for institutional users
-  if (user.schoolId && user.school) {
-    if (user.school.status === 'suspended') {
+    // 3. Locked account guard
+    if (isLockedPassword(single.passwordHash)) {
       throw new ForbiddenError(
-        'School tenant account is suspended. Please contact platform support.',
-        ERROR_CODES.TENANT_ACCESS_ERROR
+        'Password is not set for this account. Please use password setup or reset.',
+        ERROR_CODES.PASSWORD_NOT_SET
       );
     }
-    if (user.school.status === 'pending') {
+
+    // 4. Account active state verification
+    if (!single.isActive) {
       throw new ForbiddenError(
-        'School tenant account is pending approval. Please contact platform support.',
-        ERROR_CODES.TENANT_ACCESS_ERROR
+        'Your account has been deactivated. Please contact administrator.',
+        ERROR_CODES.ACCOUNT_DISABLED
       );
     }
-  }
 
-  // 6. Cryptographic password verification (Argon2id)
-  const isMatch = await verifyPassword(user.passwordHash, password);
-  if (!isMatch) {
-    throw new UnauthorizedError('Invalid email or password', ERROR_CODES.INVALID_CREDENTIALS);
+    // 5. Tenant eligibility check for institutional users
+    if (single.schoolId && single.school) {
+      if (single.school.status === 'suspended') {
+        throw new ForbiddenError(
+          'School tenant account is suspended. Please contact platform support.',
+          ERROR_CODES.TENANT_ACCESS_ERROR
+        );
+      }
+      if (single.school.status === 'pending') {
+        throw new ForbiddenError(
+          'School tenant account is pending approval. Please contact platform support.',
+          ERROR_CODES.TENANT_ACCESS_ERROR
+        );
+      }
+    }
+
+    // 6. Cryptographic password verification (Argon2id)
+    const isMatch = await verifyPassword(single.passwordHash, password);
+    if (!isMatch) {
+      throw new UnauthorizedError('Invalid email or password', ERROR_CODES.INVALID_CREDENTIALS);
+    }
+
+    user = single;
+  } else {
+    // Multiple candidates (e.g. phone shared or admission number linked parents)
+    for (const candidate of candidateUsers) {
+      if (isLockedPassword(candidate.passwordHash) || !candidate.isActive) {
+        continue;
+      }
+      const isMatch = await verifyPassword(candidate.passwordHash, password);
+      if (isMatch) {
+        user = candidate;
+        break;
+      }
+    }
+
+    if (!user) {
+      const hasLockedCandidate = candidateUsers.some((c) => isLockedPassword(c.passwordHash));
+      if (hasLockedCandidate) {
+        throw new ForbiddenError(
+          'Password is not set for this account. Please use password setup or reset.',
+          ERROR_CODES.PASSWORD_NOT_SET
+        );
+      }
+      throw new UnauthorizedError('Invalid email or password', ERROR_CODES.INVALID_CREDENTIALS);
+    }
+
+    if (user.schoolId && user.school) {
+      if (user.school.status === 'suspended') {
+        throw new ForbiddenError(
+          'School tenant account is suspended. Please contact platform support.',
+          ERROR_CODES.TENANT_ACCESS_ERROR
+        );
+      }
+      if (user.school.status === 'pending') {
+        throw new ForbiddenError(
+          'School tenant account is pending approval. Please contact platform support.',
+          ERROR_CODES.TENANT_ACCESS_ERROR
+        );
+      }
+    }
   }
 
   // 7. Establish refresh session

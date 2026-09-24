@@ -79,7 +79,7 @@ export default function LoginPage() {
       }
     } catch (err) {
       console.error('[LOGIN ERROR]', err);
-      const msg = err.message || "Invalid email/admission number or password.";
+      const msg = err.message || "Invalid email, admission number, phone number, or password.";
       setError(msg);
       setLoading(false);
     }
@@ -140,7 +140,7 @@ export default function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-5">
             <div className="space-y-1">
               <label htmlFor="identifier" className="block text-sm font-bold text-slate-700 dark:text-slate-200">
-                Email or Admission No.
+                Email, Admission No. or Phone Number
               </label>
               <input 
                 type="text" 
@@ -149,7 +149,7 @@ export default function LoginPage() {
                 value={formData.identifier}
                 onChange={handleChange}
                 className="w-full px-4 py-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all outline-none text-slate-900 dark:text-white disabled:opacity-50" 
-                placeholder="you@example.com or ADM-1234" 
+                placeholder="you@example.com, ADM-1234, or phone number" 
                 disabled={loading || success}
                 required 
               />
