@@ -39,6 +39,8 @@ lerna-debug.log*
 scratch/
 **/scratch/
 *.jsonl
+.metro-cache/
+**/.metro-cache/
 
 # Testing & QA Artifacts
 screenshots/
