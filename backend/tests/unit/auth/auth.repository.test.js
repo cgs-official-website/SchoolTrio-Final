@@ -17,10 +17,11 @@ import {
   executePasswordResetTransaction,
   executePasswordChangeTransaction,
   findUserForFirebaseIdentity,
+  findCandidateUsersByIdentifier,
   SAFE_USER_SELECT,
   AUTH_USER_SELECT
 } from '../../../src/modules/auth/auth.repository.js';
-import { prisma } from '../../../src/database/prisma.client.js';
+import { prisma, basePrisma } from '../../../src/database/prisma.client.js';
 
 
 
@@ -613,6 +614,59 @@ describe('Authentication Repository', () => {
       it('returns null for empty firebaseUid', async () => {
         const result = await findUserForFirebaseIdentity({ firebaseUid: null });
         expect(result).toEqual({ user: null, conflict: false });
+      });
+    });
+
+    describe('findCandidateUsersByIdentifier', () => {
+      it('returns empty array if identifier is empty or invalid', async () => {
+        expect(await findCandidateUsersByIdentifier('')).toEqual([]);
+        expect(await findCandidateUsersByIdentifier(null)).toEqual([]);
+        expect(await findCandidateUsersByIdentifier(undefined)).toEqual([]);
+      });
+
+      it('finds candidate user by direct email', async () => {
+        const mockUser = { id: 'user-1', email: 'teacher@school.edu' };
+        vi.spyOn(prisma.user, 'findUnique').mockResolvedValue(mockUser);
+
+        const candidates = await findCandidateUsersByIdentifier('teacher@school.edu');
+        expect(prisma.user.findUnique).toHaveBeenCalledWith({
+          where: { email: 'teacher@school.edu' },
+          select: SAFE_USER_SELECT
+        });
+        expect(candidates).toEqual([mockUser]);
+      });
+
+      it('finds candidate user by phone number', async () => {
+        const mockUser = { id: 'user-2', email: 'parent@school.edu' };
+        vi.spyOn(prisma.user, 'findUnique').mockResolvedValue(null);
+        vi.spyOn(prisma.user, 'findMany').mockResolvedValue([mockUser]);
+        vi.spyOn(basePrisma.student, 'findMany').mockResolvedValue([]);
+
+        const candidates = await findCandidateUsersByIdentifier('9876543210');
+        expect(prisma.user.findMany).toHaveBeenCalled();
+        expect(candidates).toEqual([mockUser]);
+      });
+
+      it('finds candidate user by admission number via student parents link', async () => {
+        const mockParentUser = { id: 'user-parent-1', email: 'parent1@school.edu' };
+        vi.spyOn(prisma.user, 'findUnique').mockResolvedValue(null);
+        vi.spyOn(basePrisma.student, 'findMany').mockResolvedValue([
+          {
+            id: 'student-1',
+            admissionNumber: 'ADM-1234',
+            parents: [
+              {
+                parent: {
+                  user: mockParentUser
+                }
+              }
+            ]
+          }
+        ]);
+
+        const candidates = await findCandidateUsersByIdentifier('ADM-1234');
+        expect(basePrisma.student.findMany).toHaveBeenCalled();
+        expect(candidates).toEqual([mockParentUser]);
       });
     });
 

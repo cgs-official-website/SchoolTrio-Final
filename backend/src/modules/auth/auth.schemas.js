@@ -11,7 +11,7 @@ import { z } from 'zod';
 export const loginSchema = {
   body: z.object({
     identifier: z
-      .string({ required_error: 'Identifier (email) is required' })
+      .string({ required_error: 'Identifier (email, admission number, or phone) is required' })
       .min(1, 'Identifier is required')
       .max(255, 'Identifier must not exceed 255 characters'),
     password: z

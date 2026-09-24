@@ -4,6 +4,7 @@ import { logger } from './utils/logger.js';
 import { disconnectPrisma } from './database/prisma.client.js';
 import { disconnectRedis } from './database/redis.client.js';
 
+// Initialize Express application
 const app = createApp();
 
 const server = app.listen(env.PORT, () => {

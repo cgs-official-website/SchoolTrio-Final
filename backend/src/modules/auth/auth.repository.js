@@ -1,4 +1,4 @@
-import { prisma } from '../../database/prisma.client.js';
+import { prisma, basePrisma } from '../../database/prisma.client.js';
 import { AUTH_CONSTANTS } from '../../config/constants.js';
 
 /**
@@ -209,6 +209,112 @@ export const findUserForFirebaseIdentity = async (
   return { user: null, conflict: false };
 };
 
+/**
+ * Retrieves candidate user records matching an identifier, which may be:
+ * 1. An email address (user.email)
+ * 2. A phone number (staffProfile.phone or parentProfile.phone)
+ * 3. A student admission number (student.admissionNumber -> linked parent users)
+ *
+ * @param {string} identifier - Email, phone number, or admission number
+ * @param {Object} [options] - Query options
+ * @param {boolean} [options.includePassword=false] - Whether to include passwordHash
+ * @param {Object} [options.tx] - Optional Prisma transaction client
+ * @returns {Promise<Array<Object>>} Array of candidate user records
+ */
+export const findCandidateUsersByIdentifier = async (
+  identifier,
+  { includePassword = false, tx = null } = {}
+) => {
+  if (!identifier || typeof identifier !== 'string') {
+    return [];
+  }
+
+  const raw = identifier.trim();
+  if (!raw) return [];
+
+  const client = getClient(tx);
+  const select = includePassword ? AUTH_USER_SELECT : SAFE_USER_SELECT;
+  const candidatesMap = new Map();
+
+  const addCandidate = (user) => {
+    if (user && user.id && !candidatesMap.has(user.id)) {
+      candidatesMap.set(user.id, user);
+    }
+  };
+
+  // 1. Direct Email Match
+  const normalizedEmail = raw.toLowerCase();
+  const userByEmail = await client.user.findUnique({
+    where: { email: normalizedEmail },
+    select
+  });
+  if (userByEmail) {
+    addCandidate(userByEmail);
+  }
+
+  // 2. Phone Number Match
+  const digitsOnly = raw.replace(/\D/g, '');
+  if (digitsOnly.length >= 7) {
+    const phoneConditions = [
+      { staffProfile: { phone: raw } },
+      { staffProfile: { phone: { contains: digitsOnly } } },
+      { parentProfile: { phone: raw } },
+      { parentProfile: { phone: { contains: digitsOnly } } }
+    ];
+
+    if (digitsOnly.length > 10) {
+      const last10 = digitsOnly.slice(-10);
+      phoneConditions.push(
+        { staffProfile: { phone: { contains: last10 } } },
+        { parentProfile: { phone: { contains: last10 } } }
+      );
+    }
+
+    const usersByPhone = await client.user.findMany({
+      where: {
+        OR: phoneConditions
+      },
+      select
+    });
+    usersByPhone.forEach(addCandidate);
+  }
+
+  // 3. Admission Number Match (look up Student -> ParentStudentLink -> ParentProfile -> User)
+  // Cross-tenant lookup uses basePrisma because incoming unauthenticated request has no schoolId
+  const studentClient = tx || basePrisma;
+  const students = await studentClient.student.findMany({
+    where: {
+      admissionNumber: {
+        equals: raw,
+        mode: 'insensitive'
+      }
+    },
+    include: {
+      parents: {
+        include: {
+          parent: {
+            include: {
+              user: {
+                select
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  for (const student of students) {
+    for (const link of student.parents || []) {
+      const parentUser = link.parent?.user;
+      if (parentUser) {
+        addCandidate(parentUser);
+      }
+    }
+  }
+
+  return Array.from(candidatesMap.values());
+};
 
 /**
  * Retrieves a refresh session by its SHA-256 token hash.

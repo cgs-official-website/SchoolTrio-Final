@@ -1,6 +1,7 @@
 # Node / Dependencies
 node_modules/
 **/node_modules/
+redis/
 
 # Environment Variables & Credentials
 .env
