@@ -296,7 +296,7 @@ describe('POST /api/v1/auth/firebase-exchange Integration', () => {
     expect(res.status).toBe(200);
     expect(upgradeSpy).toHaveBeenCalledWith({
       userId: mockUser.id,
-      newPasswordHash: expect.stringMatching(/^\$argon2id\$/)
+      newPasswordHash: expect.stringMatching(/^\$2[ab]\$/)
     });
     expect(issueTokenSpy).toHaveBeenCalledWith(expect.objectContaining({
       tokenVersion: 2

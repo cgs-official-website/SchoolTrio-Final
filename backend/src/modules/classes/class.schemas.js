@@ -135,3 +135,16 @@ export const sectionParamsSchema = {
     sectionId: z.string({ required_error: 'Section ID is required' }).regex(REGEX.UUID, 'Invalid section ID format')
   })
 };
+
+export const bulkImportClassesSchema = {
+  body: z.object({
+    rows: z.array(
+      z.object({
+        className: z.string().trim().min(1, 'Class name cannot be empty'),
+        section: z.string().trim().min(1, 'Section cannot be empty'),
+        category: z.string().trim().optional().nullable()
+      })
+    ).min(1, 'At least one row is required for import')
+  })
+};
+

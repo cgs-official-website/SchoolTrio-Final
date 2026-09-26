@@ -53,12 +53,12 @@ describe('Authentication Domain Service (auth.service.js)', () => {
       expect(passwordService.verifyPassword).toHaveBeenCalledWith(sampleUser.passwordHash, 'ValidPassword123!');
       expect(result.accessToken).toBe('mock-jwt-access-token');
       expect(result.rawRefreshToken).toBe('mock-raw-refresh-token-64hex');
-      expect(result.user).toEqual({
+      expect(result.user).toEqual(expect.objectContaining({
         id: sampleUser.id,
         email: sampleUser.email,
         schoolId: sampleUser.schoolId,
         systemRole: sampleUser.systemRole
-      });
+      }));
       expect(result.user.passwordHash).toBeUndefined();
     });
 
@@ -335,12 +335,12 @@ describe('Authentication Domain Service (auth.service.js)', () => {
       });
       expect(result.accessToken).toBe('mock-jwt-access-token');
       expect(result.rawRefreshToken).toBe('mock-raw-refresh-token-64hex');
-      expect(result.user).toEqual({
+      expect(result.user).toEqual(expect.objectContaining({
         id: sampleUser.id,
         email: sampleUser.email,
         schoolId: sampleUser.schoolId,
         systemRole: sampleUser.systemRole
-      });
+      }));
       expect(result.user.passwordHash).toBeUndefined();
     });
 

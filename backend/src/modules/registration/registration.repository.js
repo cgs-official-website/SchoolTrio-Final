@@ -37,10 +37,11 @@ export async function findSchoolById(id, tx = prisma) {
  * Finds a user by unique lowercase email.
  */
 export async function findUserByEmail(email, tx = prisma) {
-  return tx.user.findUnique({
+  return tx.user.findFirst({
     where: { email: email.toLowerCase() }
   });
 }
+
 
 /**
  * Finds an active subscription plan by UUID.

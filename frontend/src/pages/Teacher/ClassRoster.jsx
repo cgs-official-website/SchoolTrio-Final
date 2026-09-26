@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getStaffMe } from '../../api/staff';
-import { getClass } from '../../api/classes';
+import { getClass, listClasses } from '../../api/classes';
 import { listStudents } from '../../api/students';
 import { listAttendanceSessions, getAttendanceSession } from '../../api/attendance';
 import { listRoutes } from '../../api/transport';
@@ -15,11 +15,25 @@ export default function ClassRoster() {
   const { userProfile } = useAuth();
   const schoolId = userProfile?.schoolId;
   const [classId, setClassId] = useState(userProfile?.assignedClassId || null);
+  const [classList, setClassList] = useState([]);
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!schoolId) return;
     let isMounted = true;
+
+    // Load available school classes for dropdown selection
+    listClasses({ limit: 100 })
+      .then(res => {
+        if (!isMounted) return;
+        const classes = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+        setClassList(classes);
+        if (!classId && classes.length > 0) {
+          setClassId(userProfile?.assignedClassId || classes[0].id);
+        }
+      })
+      .catch(err => console.error('Error fetching classes list in ClassRoster:', err));
+
     const fetchStaffAssignment = async () => {
       try {
         const res = await getStaffMe();
@@ -245,16 +259,42 @@ export default function ClassRoster() {
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
         <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-primary-500/20 rounded-full blur-2xl translate-y-1/2"></div>
         
-        <div className="relative z-10">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white/10 text-white border border-white/20 mb-4 backdrop-blur-sm">
-            <Users size={14} /> My Assigned Class
-          </span>
-          <h1 className="text-4xl md:text-5xl font-black mb-2 tracking-tight">
-            Class Dashboard
-          </h1>
-          <p className="text-slate-300 text-lg flex items-center gap-2">
-            {classDetails ? `${classDetails.name} - Section ${classDetails.section}` : 'Loading Class...'}
-          </p>
+        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+          <div>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white/10 text-white border border-white/20 mb-4 backdrop-blur-sm">
+              <Users size={14} /> Class Roster & Overview
+            </span>
+            <h1 className="text-4xl md:text-5xl font-black mb-2 tracking-tight">
+              Class Dashboard
+            </h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-slate-300 text-lg">
+                {classDetails ? `${classDetails.name} - Section ${classDetails.section}` : 'Loading Class...'}
+              </p>
+              {classDetails?.classTeacher?.name && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-primary-500/30 text-white border border-primary-400/40 backdrop-blur-sm">
+                  <GraduationCap size={14} /> Class Teacher: {classDetails.classTeacher.name}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {classList.length > 0 && (
+            <div className="w-full md:w-auto">
+              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-1">Select Class</label>
+              <select
+                value={classId || ''}
+                onChange={(e) => setClassId(e.target.value)}
+                className="w-full md:w-auto px-4 py-2.5 bg-white/10 text-white rounded-xl border border-white/20 font-bold text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 backdrop-blur-sm"
+              >
+                {classList.map((c) => (
+                  <option key={c.id} value={c.id} className="text-slate-900 bg-white">
+                    {c.name} {c.section ? `- Section ${c.section}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 

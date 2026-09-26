@@ -11,6 +11,19 @@ import { HTTP_STATUS, ERROR_CODES } from '../config/constants.js';
  * @returns {{ statusCode: number, code: string, message: string, details: any } | null}
  */
 const mapPrismaError = (err) => {
+  if (err.name === 'PrismaClientInitializationError' || err.message?.includes('connection pool')) {
+    logger.error({
+      msg: '[PRISMA CONNECTION POOL TIMEOUT] Database connection pool exhausted',
+      errorMessage: err.message
+    });
+    return {
+      statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      code: ERROR_CODES.INTERNAL_SERVER_ERROR,
+      message: 'Database connection pool busy. Please retry.',
+      details: null
+    };
+  }
+
   // Prisma Known Request Error (e.g. P2002, P2025, P2003)
   if (typeof err.code === 'string' && /^P\d{4}$/.test(err.code)) {
     switch (err.code) {

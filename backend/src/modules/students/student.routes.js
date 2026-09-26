@@ -45,6 +45,16 @@ router.get(
   studentController.getStudent
 );
 
+// Bulk import students
+router.post(
+  '/bulk-import',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('students', 'create'),
+  validate(studentSchemas.bulkImportStudentsSchema),
+  studentController.bulkImportStudents
+);
+
 // Create student
 router.post(
   '/',
@@ -54,6 +64,7 @@ router.post(
   validate(studentSchemas.createStudentSchema),
   studentController.createStudent
 );
+
 
 // Update student
 router.patch(

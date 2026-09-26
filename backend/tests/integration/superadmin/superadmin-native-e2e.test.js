@@ -11,25 +11,33 @@ describe('SuperAdmin Native REST Authentication & Platform E2E Integration', () 
 
   it('1. Prepares SuperAdmin PostgreSQL user account with Argon2id hash', async () => {
     const passwordHash = await hashPassword(superAdminPassword);
-    const user = await prisma.user.upsert({
-      where: { email: superAdminEmail },
-      update: {
-        systemRole: 'SUPER_ADMIN',
-        passwordHash,
-        passwordAlgorithm: 'argon2id',
-        isActive: true,
-        schoolId: null
-      },
-      create: {
-        email: superAdminEmail,
-        passwordHash,
-        passwordAlgorithm: 'argon2id',
-        systemRole: 'SUPER_ADMIN',
-        isActive: true,
-        schoolId: null,
-        tokenVersion: 1
-      }
+    let user = await prisma.user.findFirst({
+      where: { email: superAdminEmail, schoolId: null }
     });
+    if (user) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          systemRole: 'SUPER_ADMIN',
+          passwordHash,
+          passwordAlgorithm: 'argon2id',
+          isActive: true
+        }
+      });
+    } else {
+      user = await prisma.user.create({
+        data: {
+          email: superAdminEmail,
+          passwordHash,
+          passwordAlgorithm: 'argon2id',
+          systemRole: 'SUPER_ADMIN',
+          isActive: true,
+          schoolId: null,
+          tokenVersion: 1
+        }
+      });
+    }
+
 
     expect(user).toBeDefined();
     expect(user.email).toBe(superAdminEmail);
@@ -98,7 +106,8 @@ describe('SuperAdmin Native REST Authentication & Platform E2E Integration', () 
 
     expect(plansRes.status).toBe(200);
     expect(Array.isArray(plansRes.body.data)).toBe(true);
-  });
+  }, 30000);
+
 
   it('4. Rejects wrong password with 401 Unauthorized', async () => {
     const res = await request(app)

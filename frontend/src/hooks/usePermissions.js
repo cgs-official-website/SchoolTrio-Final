@@ -128,25 +128,25 @@ export default function usePermissions() {
   const canRead = useCallback((moduleKey) => {
     if (permissions === 'ALL' || isUnrestricted) return true;
     if (!permissions || !moduleKey) return false;
-    return permissions[moduleKey]?.canRead === true || permissions[moduleKey]?.read === true;
+    return Boolean(permissions[moduleKey]?.canRead || permissions[moduleKey]?.read);
   }, [permissions, isUnrestricted]);
 
   const canCreate = useCallback((moduleKey) => {
     if (permissions === 'ALL' || isUnrestricted) return true;
     if (!permissions || !moduleKey) return false;
-    return permissions[moduleKey]?.canCreate === true || permissions[moduleKey]?.create === true;
+    return Boolean(permissions[moduleKey]?.canCreate || permissions[moduleKey]?.create);
   }, [permissions, isUnrestricted]);
 
   const canEdit = useCallback((moduleKey) => {
     if (permissions === 'ALL' || isUnrestricted) return true;
     if (!permissions || !moduleKey) return false;
-    return permissions[moduleKey]?.canEdit === true || permissions[moduleKey]?.edit === true;
+    return Boolean(permissions[moduleKey]?.canEdit || permissions[moduleKey]?.edit);
   }, [permissions, isUnrestricted]);
 
   const canDelete = useCallback((moduleKey) => {
     if (permissions === 'ALL' || isUnrestricted) return true;
     if (!permissions || !moduleKey) return false;
-    return permissions[moduleKey]?.canDelete === true || permissions[moduleKey]?.delete === true;
+    return Boolean(permissions[moduleKey]?.canDelete || permissions[moduleKey]?.delete);
   }, [permissions, isUnrestricted]);
 
   return {

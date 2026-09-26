@@ -55,7 +55,18 @@ export const SAFE_USER_SELECT = Object.freeze({
       id: true,
       name: true,
       staffType: true,
-      designation: true
+      designation: true,
+      employeeId: true,
+      phone: true,
+      email: true,
+      assignedClassId: true,
+      customData: true,
+      assignedClass: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
     }
   },
   parentProfile: {
@@ -106,17 +117,28 @@ export const findUserById = async (userId, { includePassword = false, tx = null 
  * @param {Object} [options.tx] - Optional Prisma transaction client
  * @returns {Promise<Object|null>} User object or null
  */
-export const findUserByEmail = async (email, { includePassword = false, tx = null } = {}) => {
+export const findUserByEmail = async (email, { schoolId = null, includePassword = false, tx = null } = {}) => {
   if (!email || typeof email !== 'string') {
     return null;
   }
 
   const client = getClient(tx);
-  return client.user.findUnique({
-    where: { email: email.toLowerCase().trim() },
-    select: includePassword ? AUTH_USER_SELECT : SAFE_USER_SELECT
+  const normalizedEmail = email.toLowerCase().trim();
+  const select = includePassword ? AUTH_USER_SELECT : SAFE_USER_SELECT;
+
+  if (schoolId) {
+    return client.user.findFirst({
+      where: { schoolId, email: normalizedEmail },
+      select
+    });
+  }
+
+  return client.user.findFirst({
+    where: { email: normalizedEmail },
+    select
   });
 };
+
 
 /**
  * Retrieves a user by their legacy Firestore ID or Firebase UID.
@@ -187,7 +209,7 @@ export const findUserForFirebaseIdentity = async (
 
   let userByEmail = null;
   if (normalizedEmail && emailVerified && !isSyntheticEmail) {
-    userByEmail = await client.user.findUnique({
+    userByEmail = await client.user.findFirst({
       where: { email: normalizedEmail },
       select: userSelect
     });
@@ -244,13 +266,12 @@ export const findCandidateUsersByIdentifier = async (
 
   // 1. Direct Email Match
   const normalizedEmail = raw.toLowerCase();
-  const userByEmail = await client.user.findUnique({
+  const usersByEmail = await client.user.findMany({
     where: { email: normalizedEmail },
     select
   });
-  if (userByEmail) {
-    addCandidate(userByEmail);
-  }
+  usersByEmail.forEach(addCandidate);
+
 
   // 2. Phone Number Match
   const digitsOnly = raw.replace(/\D/g, '');

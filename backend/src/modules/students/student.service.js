@@ -1,6 +1,6 @@
 import * as studentRepository from './student.repository.js';
 import { createAuditLog } from '../audit/audit.repository.js';
-import { prisma } from '../../database/prisma.client.js';
+import { prisma, basePrisma } from '../../database/prisma.client.js';
 import {
   NotFoundError,
   ConflictError,
@@ -35,7 +35,8 @@ export async function listStudents(schoolId, query = {}) {
 
   const paginationParams = parsePagination(query, {
     defaultSort: 'name',
-    defaultOrder: 'asc'
+    defaultOrder: 'asc',
+    maxLimit: 1000
   });
 
   const options = {
@@ -480,3 +481,252 @@ export async function deleteStudent(schoolId, studentId, actor = null) {
     }
   });
 }
+
+/**
+ * High-performance batch bulk import for students.
+ * Processes an array of student payloads (up to 100 per call) in an atomic transaction.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Array<Object>} studentsPayload - List of student creation payloads
+ * @param {Object} [actor] - Context of requesting user
+ * @returns {Promise<Object>} Summary of created, updated, and failed students
+ */
+export async function bulkImportStudents(schoolId, studentsPayload = [], actor = null) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required for bulk import');
+  }
+
+  if (!Array.isArray(studentsPayload) || studentsPayload.length === 0) {
+    throw new ValidationError('Bulk import payload must contain at least one student object');
+  }
+
+  // 1. Capacity limit check
+  const school = await prisma.school.findUnique({
+    where: { id: schoolId },
+    select: { plan: true, seatLimit: true }
+  });
+
+  const planStr = typeof school?.plan === 'string' ? school.plan : (school?.plan?.name || '');
+  const effectiveSeatLimit = school?.seatLimit || (
+    planStr.toLowerCase() === 'enterprise' ? 2000 :
+    planStr.toLowerCase() === 'basic' ? 100 : 500
+  );
+
+
+  const currentCount = await prisma.student.count({
+    where: { schoolId }
+  });
+
+  if (currentCount >= effectiveSeatLimit) {
+    throw new ValidationError(`School student capacity limit of ${effectiveSeatLimit} seats reached`);
+  }
+
+  // Preload unique class IDs and matching fee structures for batch
+  const uniqueClassIds = Array.from(new Set(studentsPayload.map(s => s.classId).filter(Boolean)));
+  const admissionNumbers = studentsPayload.map(s => s.admissionNumber).filter(Boolean);
+
+  const [existingStudents, feeStructures] = await Promise.all([
+    prisma.student.findMany({
+      where: {
+        schoolId,
+        admissionNumber: { in: admissionNumbers, mode: 'insensitive' }
+      }
+    }),
+    uniqueClassIds.length > 0
+      ? prisma.feeStructure.findMany({
+          where: { schoolId, classId: { in: uniqueClassIds } }
+        })
+      : Promise.resolve([])
+  ]);
+
+  const existingMap = new Map(existingStudents.map(s => [s.admissionNumber.toLowerCase(), s]));
+
+  // In-memory fee structure map: classId -> FeeStructure[]
+  const feeStructureMap = new Map();
+  for (const fs of feeStructures) {
+    if (!feeStructureMap.has(fs.classId)) {
+      feeStructureMap.set(fs.classId, []);
+    }
+    feeStructureMap.get(fs.classId).push(fs);
+  }
+
+  const resultStudents = [];
+  const newlyCreatedStudents = [];
+  const toCreatePayloads = [];
+  const toUpdateItems = [];
+  let createdCount = 0;
+  let updatedCount = 0;
+  const errors = [];
+
+  // 2. Perform atomic batch transaction with 30s timeout option
+  await basePrisma.$transaction(async (tx) => {
+    for (let i = 0; i < studentsPayload.length; i++) {
+      const data = studentsPayload[i];
+      const admissionNumber = data.admissionNumber?.trim();
+      if (!admissionNumber || !data.firstName?.trim()) {
+        errors.push({ index: i, admissionNumber, message: 'Missing required admission number or first name' });
+        continue;
+      }
+
+      const lowerAdm = admissionNumber.toLowerCase();
+      const existing = existingMap.get(lowerAdm);
+
+      const studentData = {
+        schoolId,
+        admissionNumber,
+        firstName: data.firstName.trim(),
+        lastName: data.lastName ? data.lastName.trim() : (existing?.lastName || null),
+        dob: data.dob || (existing?.dob || null),
+        gender: data.gender ? data.gender.trim() : (existing?.gender || null),
+        bloodGroup: data.bloodGroup || (existing?.bloodGroup || null),
+        aadhaarNumber: data.aadhaarNumber ? data.aadhaarNumber.trim() : (existing?.aadhaarNumber || null),
+        photoUrl: data.photoUrl ? data.photoUrl.trim() : (existing?.photoUrl || null),
+        rollNumber: data.rollNumber ? data.rollNumber.trim() : (existing?.rollNumber || null),
+        classId: data.classId || (existing?.classId || null),
+        sectionId: data.sectionId || (existing?.sectionId || null),
+        transportRouteId: data.transportRouteId || (existing?.transportRouteId || null),
+        pickupStopId: data.pickupStopId || (existing?.pickupStopId || null),
+        status: data.status || (existing?.status || 'Active'),
+        customData: data.customData ? { ...(existing?.customData || {}), ...data.customData } : (existing?.customData || {})
+      };
+
+      if (existing) {
+        const updateData = {};
+        const newFirstName = data.firstName.trim();
+        if (newFirstName !== existing.firstName) updateData.firstName = newFirstName;
+
+        const newLastName = data.lastName ? data.lastName.trim() : null;
+        if (newLastName !== (existing.lastName || null)) updateData.lastName = newLastName;
+
+        const existingDobStr = existing.dob ? new Date(existing.dob).toISOString().split('T')[0] : null;
+        const newDobStr = data.dob ? new Date(data.dob).toISOString().split('T')[0] : null;
+        if (newDobStr !== existingDobStr) updateData.dob = data.dob ? new Date(data.dob) : null;
+
+        const newGender = data.gender ? data.gender.trim() : null;
+        if (newGender !== (existing.gender || null)) updateData.gender = newGender;
+
+        const newBloodGroup = data.bloodGroup || null;
+        if (newBloodGroup !== (existing.bloodGroup || null)) updateData.bloodGroup = newBloodGroup;
+
+        const newAadhaar = data.aadhaarNumber ? data.aadhaarNumber.trim() : null;
+        if (newAadhaar !== (existing.aadhaarNumber || null)) updateData.aadhaarNumber = newAadhaar;
+
+        const newPhotoUrl = data.photoUrl ? data.photoUrl.trim() : null;
+        if (newPhotoUrl !== (existing.photoUrl || null)) updateData.photoUrl = newPhotoUrl;
+
+        const newRollNumber = data.rollNumber ? data.rollNumber.trim() : null;
+        if (newRollNumber !== (existing.rollNumber || null)) updateData.rollNumber = newRollNumber;
+
+        const newClassId = data.classId || null;
+        if (newClassId !== (existing.classId || null)) updateData.classId = newClassId;
+
+        const newSectionId = data.sectionId || null;
+        if (newSectionId !== (existing.sectionId || null)) updateData.sectionId = newSectionId;
+
+        const newTransportRouteId = data.transportRouteId || null;
+        if (newTransportRouteId !== (existing.transportRouteId || null)) updateData.transportRouteId = newTransportRouteId;
+
+        const newPickupStopId = data.pickupStopId || null;
+        if (newPickupStopId !== (existing.pickupStopId || null)) updateData.pickupStopId = newPickupStopId;
+
+        const newStatus = data.status || 'Active';
+        if (newStatus !== (existing.status || 'Active')) updateData.status = newStatus;
+
+        if (data.customData) {
+          const mergedCustomData = { ...(existing.customData || {}), ...data.customData };
+          if (JSON.stringify(mergedCustomData) !== JSON.stringify(existing.customData || {})) {
+            updateData.customData = mergedCustomData;
+          }
+        }
+
+        if (Object.keys(updateData).length > 0) {
+          toUpdateItems.push({ id: existing.id, data: updateData });
+        } else {
+          resultStudents.push(existing);
+          updatedCount++;
+        }
+      } else {
+        if ((currentCount + createdCount) >= effectiveSeatLimit) {
+          errors.push({ index: i, admissionNumber, message: 'Capacity limit reached' });
+          continue;
+        }
+        toCreatePayloads.push(studentData);
+        createdCount++;
+      }
+    }
+
+    if (toUpdateItems.length > 0) {
+      const updatedList = await Promise.all(
+        toUpdateItems.map(item => studentRepository.updateStudentForBulk(schoolId, item.id, item.data, tx))
+      );
+      for (const updated of updatedList) {
+        resultStudents.push(updated);
+      }
+      updatedCount += updatedList.length;
+    }
+
+    if (toCreatePayloads.length > 0) {
+      const createdList = await studentRepository.createStudentsInBulk(toCreatePayloads, tx);
+      for (const created of createdList) {
+        resultStudents.push(created);
+        newlyCreatedStudents.push(created);
+      }
+    }
+
+    // Batch Invoice Synchronization for newly created students
+    if (newlyCreatedStudents.length > 0 && feeStructureMap.size > 0) {
+      const invoicePayloads = [];
+      for (const st of newlyCreatedStudents) {
+        if (!st.classId) continue;
+        const matchingStructures = feeStructureMap.get(st.classId) || [];
+        for (const fs of matchingStructures) {
+          invoicePayloads.push({
+            schoolId,
+            studentId: st.id,
+            feeStructureId: fs.id,
+            collectionPeriodId: fs.collectionPeriodId || null,
+            feeName: fs.name,
+            amount: fs.amount,
+            dueDate: fs.dueDate,
+            status: 'Pending',
+            customData: fs.customData ?? null
+          });
+        }
+      }
+
+      if (invoicePayloads.length > 0) {
+        await tx.invoice.createMany({
+          data: invoicePayloads,
+          skipDuplicates: true
+        });
+      }
+    }
+  }, { timeout: 30000, maxWait: 10000 });
+
+  // Canonical non-blocking AuditLog
+  createAuditLog({
+    schoolId,
+    entityType: 'Student',
+    entityId: schoolId,
+    actionPerformed: `BULK_IMPORT_STUDENTS: ${createdCount} created, ${updatedCount} updated`,
+    userName: actor?.email || actor?.userId || 'Administrator',
+    userRole: actor?.systemRole || null,
+    modifiedFields: {
+      createdCount,
+      updatedCount,
+      failedCount: errors.length
+    }
+  }).catch(() => {});
+
+  return {
+    success: true,
+    totalProcessed: resultStudents.length,
+    createdCount,
+    updatedCount,
+    failedCount: errors.length,
+    students: resultStudents,
+    errors
+  };
+}
+
+

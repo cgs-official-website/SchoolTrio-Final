@@ -17,8 +17,10 @@ vi.mock('../../../src/database/prisma.client.js', () => {
     },
     user: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn()
     },
+
     parentProfile: {
       create: vi.fn()
     },
@@ -66,7 +68,9 @@ describe('Unit: Parent Concurrency & Transaction Integrity', () => {
 
   it('aborts transaction and throws ConflictError when duplicate email is concurrently registered', async () => {
     prisma.user.findUnique.mockResolvedValue(null);
+    prisma.user.findFirst.mockResolvedValue(null);
     prisma.user.create.mockRejectedValue(new ConflictError('Email address is already in use'));
+
 
     await expect(parentService.linkParentToStudent(
       SCHOOL_ID,

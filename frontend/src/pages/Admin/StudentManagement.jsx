@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { listStudents, createStudent, updateStudent, deleteStudent, getStudentHealth, updateStudentHealth } from '../../api/students';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { listStudents, createStudent, updateStudent, deleteStudent, bulkImportStudents, getStudentHealth, updateStudentHealth } from '../../api/students';
 import { listClasses } from '../../api/classes';
+
 import { getStudentAttendance } from '../../api/attendance';
 import { admissionsApi } from '../../api/admissions';
 import { useAuth } from '../../context/AuthContext';
@@ -23,6 +24,9 @@ import usePermissions from '../../hooks/usePermissions';
 import { sortClassesAscending } from '../../utils/classSorting';
 import { normalizeGender, isMale, isFemale } from '../../utils/genderUtils';
 import { validateName, validateDateOfBirth, validateBloodGroup, validateAadhaarNumber, validatePhone, validateEmail, getTodayDateString } from '../../utils/validationUtils';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { formatDate } from '../../utils/dateUtils';
 
 export default function StudentManagement() {
   const { userProfile } = useAuth();
@@ -91,6 +95,19 @@ export default function StudentManagement() {
   const [uploadFile, setUploadFile] = useState(null);
   const [uploading, setUploading] = useState(false);
 
+  // Live Import Progress Modal State
+  const [importProgressModalOpen, setImportProgressModalOpen] = useState(false);
+  const [importProgressStats, setImportProgressStats] = useState({
+    total: 0,
+    processed: 0,
+    currentBatch: 0,
+    totalBatches: 0,
+    successCount: 0,
+    failedCount: 0,
+    percentage: 0
+  });
+
+
   // View Modal State
   const [viewStudentModalOpen, setViewStudentModalOpen] = useState(false);
   const [selectedStudentToView, setSelectedStudentToView] = useState(null);
@@ -147,8 +164,8 @@ export default function StudentManagement() {
       const row = { "S.No": index + 1 };
       if (selectedFields.name) row["Student Name"] = `${student.firstName} ${student.lastName}`.trim();
       if (selectedFields.admissionNumber) row["Admission Number"] = student.admissionNumber || '';
-      if (selectedFields.classSection) row["Class & Section"] = getClassName(student.classId);
-      if (selectedFields.dob) row["Date of Birth"] = student.dob || '';
+      if (selectedFields.classSection) row["Class & Section"] = getClassName(student.classId, student);
+      if (selectedFields.dob) row["Date of Birth"] = formatDate(student.dob);
       if (selectedFields.gender) row["Gender"] = student.gender || '';
       if (selectedFields.parentName) row["Parent Name"] = student.parentName || '';
       if (selectedFields.parentPhone) row["Parent Phone"] = student.parentPhone || '';
@@ -174,7 +191,8 @@ export default function StudentManagement() {
       await deleteStudent(studentId);
       toast.success("Student deleted successfully!");
       setConfirmDeleteState({ isOpen: false, id: null, name: '' });
-      fetchData();
+      await fetchData();
+      notifyDataChanged('students');
     } catch (error) {
       console.error("Error deleting student:", error);
       const errorMsg = error.response?.data?.message || error.message || "Failed to delete student.";
@@ -314,6 +332,8 @@ export default function StudentManagement() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useLiveDataRefresh(fetchData, [fetchData], ['students', 'classes', 'admissions']);
 
   // Handle Opening Application Review Modal
   const handleOpenReviewModal = (app) => {
@@ -482,6 +502,8 @@ export default function StudentManagement() {
         ...(uploadedCustomData || {})
       };
 
+      const [cId, sId] = (formData.classId || '').split(':');
+
       const payload = {
         admissionNumber: formData.admissionNumber.trim(),
         firstName: formData.firstName.trim(),
@@ -491,12 +513,14 @@ export default function StudentManagement() {
         bloodGroup: formData.bloodGroup ? formData.bloodGroup.trim().toUpperCase() : null,
         aadhaarNumber: formData.aadharNumber ? formData.aadharNumber.trim() : null,
         photoUrl: photoUrl || null,
-        classId: formData.classId || null,
+        classId: cId || null,
+        sectionId: sId || formData.sectionId || null,
         status: formData.status || 'Active',
         customData: customDataPayload
       };
 
       await createStudent(payload);
+      notifyDataChanged('students');
 
       setFormData({
         firstName: '', lastName: '', admissionNumber: '', classId: '', parentEmail: '', dob: '', gender: 'Male', status: 'Active',
@@ -525,12 +549,235 @@ export default function StudentManagement() {
     setUploadModalOpen(true);
   };
 
+  const parseExcelDob = (val) => {
+    if (!val) return null;
+    const str = String(val).trim();
+    if (!str) return null;
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+      return str;
+    }
+
+    const dmyMatch = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+    if (dmyMatch) {
+      const [, day, month, year] = dmyMatch;
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${year}-${pad(month)}-${pad(day)}`;
+    }
+
+    const parsedDate = new Date(str);
+    if (!isNaN(parsedDate.getTime())) {
+      const year = parsedDate.getFullYear();
+      const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+      const day = String(parsedDate.getDate()).padStart(2, '0');
+      if (year > 1900 && year <= new Date().getFullYear()) {
+        return `${year}-${month}-${day}`;
+      }
+    }
+
+    return null;
+  };
+
+  const parseExcelBloodGroup = (val) => {
+    if (!val) return null;
+    let bg = String(val).trim().toUpperCase();
+    if (!bg) return null;
+    bg = bg.replace(/POSITIVE/g, '+').replace(/NEGATIVE/g, '-').replace(/\s+/g, '');
+    const VALID_BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+    return VALID_BLOOD_GROUPS.includes(bg) ? bg : null;
+  };
+
+  const parseExcelAadhaar = (val) => {
+    if (!val) return null;
+    const cleaned = String(val).replace(/\D/g, '');
+    return cleaned.length === 12 ? cleaned : null;
+  };
+
+  const cleanClassStr = (str) => {
+    if (!str) return '';
+    return String(str)
+      .toLowerCase()
+      .replace(/^(class|grade|std|standard)\s+/i, '')
+      .replace(/[^a-z0-9]/g, '')
+      .trim();
+  };
+
+  const selectableClassOptions = useMemo(() => {
+    if (!Array.isArray(classes)) return [];
+    const options = [];
+
+    for (const c of classes) {
+      const classNameStr = (c.name || '').trim();
+      if (Array.isArray(c.sections) && c.sections.length > 0) {
+        for (const s of c.sections) {
+          const secNameStr = (s.name || '').trim();
+          const cleanCls = cleanClassStr(classNameStr);
+          const cleanSec = cleanClassStr(secNameStr);
+          const label = cleanCls.endsWith(cleanSec) ? classNameStr : `${classNameStr} - ${secNameStr}`;
+          options.push({
+            key: `${c.id}:${s.id}`,
+            classId: c.id,
+            sectionId: s.id,
+            label,
+            className: classNameStr,
+            sectionName: secNameStr,
+            stream: c.stream || ''
+          });
+        }
+      } else if (c.section) {
+        const secNameStr = String(c.section).trim();
+        const cleanCls = cleanClassStr(classNameStr);
+        const cleanSec = cleanClassStr(secNameStr);
+        const label = cleanCls.endsWith(cleanSec) ? classNameStr : `${classNameStr} - ${secNameStr}`;
+        options.push({
+          key: `${c.id}:${c.section}`,
+          classId: c.id,
+          sectionId: null,
+          sectionName: secNameStr,
+          label,
+          className: classNameStr,
+          stream: c.stream || ''
+        });
+      } else {
+        options.push({
+          key: c.id,
+          classId: c.id,
+          sectionId: null,
+          label: classNameStr,
+          className: classNameStr,
+          stream: c.stream || ''
+        });
+      }
+    }
+
+    return options;
+  }, [classes]);
+
+  const formatClassOptionLabel = (c) => {
+    if (!c) return '';
+    const nameStr = (c.name || '').trim();
+    const secStr = (c.section || (Array.isArray(c.sections) && c.sections.length === 1 ? c.sections[0].name : '') || '').trim();
+    if (secStr) {
+      const cleanCls = cleanClassStr(nameStr);
+      const cleanSec = cleanClassStr(secStr);
+      if (cleanCls.endsWith(cleanSec)) {
+        return nameStr;
+      }
+      return `${nameStr} - ${secStr}`;
+    }
+    if (Array.isArray(c.sections) && c.sections.length > 1) {
+      return `${nameStr} (${c.sections.map(s => s.name).join(', ')})`;
+    }
+    return nameStr;
+  };
+
+  const findMatchingClass = (classNameRaw, sectionRaw, classesList) => {
+    if (!classNameRaw || !Array.isArray(classesList) || classesList.length === 0) {
+      return null;
+    }
+
+    const ROMAN_MAP = {
+      '1': 'i', '2': 'ii', '3': 'iii', '4': 'iv', '5': 'v',
+      '6': 'vi', '7': 'vii', '8': 'viii', '9': 'ix', '10': 'x',
+      '11': 'xi', '12': 'xii'
+    };
+    const REVERSE_ROMAN_MAP = Object.fromEntries(Object.entries(ROMAN_MAP).map(([k, v]) => [v, k]));
+
+    const rawNameStr = String(classNameRaw).trim();
+    const rawSecStr = String(sectionRaw || '').trim();
+
+    let targetClassPart = rawNameStr;
+    let targetSecPart = rawSecStr;
+
+    if (targetClassPart.includes('-') && !targetSecPart) {
+      const parts = targetClassPart.split('-');
+      targetClassPart = parts[0].trim();
+      targetSecPart = parts.slice(1).join('-').trim();
+    }
+
+    const cleanClassName = cleanClassStr(targetClassPart);
+    const cleanSecName = cleanClassStr(targetSecPart);
+    const altClassName = ROMAN_MAP[cleanClassName] || REVERSE_ROMAN_MAP[cleanClassName] || cleanClassName;
+
+    const resolveSectionId = (c) => {
+      if (!c) return null;
+      if (Array.isArray(c.sections) && c.sections.length > 0) {
+        if (cleanSecName) {
+          const matchSec = c.sections.find(s => cleanClassStr(s.name) === cleanSecName);
+          if (matchSec) return matchSec.id;
+        }
+        return c.sections[0]?.id || null;
+      }
+      return null;
+    };
+
+    for (const c of classesList) {
+      const dbNameRaw = String(c.name || '').trim();
+      const dbSecRaw = String(c.section || '').trim();
+      const cleanDbName = cleanClassStr(dbNameRaw);
+      const cleanDbSec = cleanClassStr(dbSecRaw);
+
+      // Level 1 Pass A: Exact name & matching section
+      if (
+        (cleanDbName === cleanClassName || cleanDbName === altClassName) &&
+        cleanSecName && cleanDbSec && cleanDbSec === cleanSecName
+      ) {
+        return { ...c, sectionId: resolveSectionId(c) };
+      }
+
+      // Level 1 Pass B: DB section is empty or matches empty input section
+      if (
+        (cleanDbName === cleanClassName || cleanDbName === altClassName) &&
+        !cleanSecName && (!cleanDbSec || cleanDbSec === 'undefined')
+      ) {
+        return { ...c, sectionId: resolveSectionId(c) };
+      }
+
+      // Level 1 Pass C: Combined class + section in DB name (e.g. c.name = "I - A")
+      const combinedTarget1 = cleanClassStr(`${targetClassPart} ${targetSecPart}`);
+      const combinedTarget2 = cleanClassStr(`${altClassName} ${targetSecPart}`);
+      const combinedTarget3 = cleanClassStr(`${targetClassPart}${targetSecPart}`);
+      const combinedTarget4 = cleanClassStr(`${altClassName}${targetSecPart}`);
+
+      if (
+        cleanDbName === combinedTarget1 ||
+        cleanDbName === combinedTarget2 ||
+        cleanDbName === combinedTarget3 ||
+        cleanDbName === combinedTarget4
+      ) {
+        return { ...c, sectionId: resolveSectionId(c) };
+      }
+
+      const combinedDb = cleanClassStr(`${dbNameRaw} ${dbSecRaw}`);
+      if (
+        combinedDb === combinedTarget1 ||
+        combinedDb === combinedTarget2 ||
+        combinedDb === combinedTarget3 ||
+        combinedDb === combinedTarget4
+      ) {
+        return { ...c, sectionId: resolveSectionId(c) };
+      }
+    }
+
+    // Level 2 Fallback: Base class name match when DB class section is omitted/undefined (e.g. Don Bosco classes: name="I", section=undefined)
+    for (const c of classesList) {
+      const dbNameRaw = String(c.name || '').trim();
+      const cleanDbName = cleanClassStr(dbNameRaw);
+
+      if (cleanDbName === cleanClassName || cleanDbName === altClassName) {
+        return { ...c, sectionId: resolveSectionId(c) };
+      }
+    }
+
+    return null;
+  };
+
   const handleUpload = async () => {
     if (!uploadFile) return;
     setUploading(true);
 
     if (!selectedStudentForUpload) {
-      // BULK IMPORT LOGIC (Row-by-row, non-atomic REST import)
+      // HIGH-PERFORMANCE BATCH BULK IMPORT LOGIC
       setUploadModalOpen(false);
 
       const effectiveSeatLimit = schoolData?.seatLimit || (schoolData?.plan?.toLowerCase() === 'enterprise' ? 2000 : schoolData?.plan?.toLowerCase() === 'basic' ? 100 : 500);
@@ -542,7 +789,6 @@ export default function StudentManagement() {
         return;
       }
 
-      const loadingToastId = toast.loading("Processing bulk import...");
       try {
         const reader = new FileReader();
         reader.onload = async (evt) => {
@@ -561,138 +807,163 @@ export default function StudentManagement() {
               }
               return normalized;
             });
-            
-            let successCount = 0;
-            let skipCount = 0;
-            let failureCount = 0;
-            let limitCappedCount = 0;
-            const importedAdmissions = new Set();
+
             const existingAdmissionsMap = new Map(students.map(s => [s.admissionNumber?.toLowerCase(), s]));
+            const importedAdmissions = new Set();
+            const payloads = [];
+            let skipCount = 0;
 
             for (let i = 0; i < data.length; i++) {
               const row = data[i];
-              
               const fullName = row['full name'] || row['name'] || row['student name'] || row['fullname'];
               const admissionNumberRaw = row['admission number'] || row['admission no'] || row['admission no.'] || row['roll number'] || row['id'];
 
-              if (fullName && admissionNumberRaw) {
-                const admissionNumber = admissionNumberRaw.toString().trim();
-                
-                if (!admissionNumber) {
-                  skipCount++;
-                  continue;
-                }
+              if (!fullName || !admissionNumberRaw) {
+                skipCount++;
+                continue;
+              }
 
-                const lowerAdmission = admissionNumber.toLowerCase();
+              const admissionNumber = admissionNumberRaw.toString().trim();
+              if (!admissionNumber) {
+                skipCount++;
+                continue;
+              }
 
-                if (importedAdmissions.has(lowerAdmission)) {
-                  skipCount++;
-                  continue;
-                }
+              const lowerAdmission = admissionNumber.toLowerCase();
+              if (importedAdmissions.has(lowerAdmission)) {
+                skipCount++;
+                continue;
+              }
+              importedAdmissions.add(lowerAdmission);
 
-                if ((students.length + successCount) >= effectiveSeatLimit) {
-                  limitCappedCount++;
-                  continue;
-                }
+              const fullNameStr = fullName.toString().trim();
+              const nameParts = fullNameStr.split(' ');
+              const firstName = nameParts[0];
+              const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+              
+              const classNameRaw = row['class'] || row['grade'] || row['class name'] || row['grade/class'] || '';
+              const sectionRaw = row['section'] || row['group'] || row['sec'] || '';
+              const matchedClass = findMatchingClass(classNameRaw, sectionRaw, classes);
+              const matchedClassId = matchedClass ? matchedClass.id : null;
+              const matchedSectionId = matchedClass ? matchedClass.sectionId : null;
 
-                importedAdmissions.add(lowerAdmission);
+              const existingStudent = existingAdmissionsMap.get(lowerAdmission);
+              const existingCustom = existingStudent?.customData || {};
 
-                const fullNameStr = fullName.toString().trim();
-                const nameParts = fullNameStr.split(' ');
-                const firstName = nameParts[0];
-                const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
-                
-                // Match class
-                const classNameRaw = row['class'] || row['grade'] || '';
-                const sectionRaw = row['section'] || row['group'] || '';
-                let matchedClassId = null;
-                
-                if (classNameRaw) {
-                  const classLower = classNameRaw.toString().toLowerCase().trim();
-                  const sectionLower = sectionRaw.toString().toLowerCase().trim();
-                  
-                  const matchedClass = classes.find(c => {
-                    const cName = (c.name || '').toLowerCase();
-                    const cSec = (c.section || '').toLowerCase();
-                    
-                    if (sectionLower) {
-                      return cName === classLower && cSec === sectionLower;
-                    } else {
-                      return cName === classLower;
-                    }
+              const customDataPayload = {
+                ...existingCustom,
+                parentName: row['parent/guardian name'] || row['parent name'] || existingCustom.parentName || '',
+                parentPhone: row['parent/guardian phone number'] || row['parent phone'] || existingCustom.parentPhone || '',
+                parentEmail: row['parent/guardian email address'] || row['parent email'] || existingCustom.parentEmail || '',
+                parentOccupation: row['parent/guardian occupation'] || row['parent occupation'] || existingCustom.parentOccupation || '',
+                emergencyContact: row['emergency contact number'] || row['emergency contact'] || existingCustom.emergencyContact || '',
+                annualIncome: row['annual income (inr)'] || row['annual income'] || existingCustom.annualIncome || '',
+                siblingName: row['sibling name (same school: y/n)'] || row['sibling name'] || existingCustom.siblingName || '',
+                homeAddress: row['home address'] || existingCustom.homeAddress || '',
+                previousSchool: row['previous school name'] || row['previous school'] || existingCustom.previousSchool || '',
+                previousRecords: row['previous academic records/report card status'] || row['previous records'] || existingCustom.previousRecords || '',
+                subjectsChosen: row['subjects chosen'] || existingCustom.subjectsChosen || '',
+                busRoute: row['school bus route/stop'] || row['bus route'] || existingCustom.busRoute || '',
+                tuitionFee: row['tuition fee (inr)'] || row['tuition fee'] || existingCustom.tuitionFee || '',
+                hostelFee: row['hostel fee (inr)'] || row['hostel fee'] || existingCustom.hostelFee || '',
+                bookFee: row['book fee (inr)'] || row['book fee'] || existingCustom.bookFee || '',
+                otherFee: row['other fee (inr)'] || row['other fee'] || existingCustom.otherFee || '',
+                totalFee: row['total fee (inr)'] || row['total fee'] || existingCustom.totalFee || '',
+                nationality: row['nationality'] || existingCustom.nationality || '',
+                religion: row['religion'] || existingCustom.religion || '',
+                motherTongue: row['mother tongue'] || existingCustom.motherTongue || ''
+              };
+
+              const rawDob = row['date of birth'] || row['dob'];
+              const rawBloodGroup = row['blood group'];
+              const rawAadhaar = row['aadhar number'] || row['aadhaar number'] || row['aadhaar'];
+
+              payloads.push({
+                firstName,
+                lastName: lastName || (existingStudent?.lastName || null),
+                admissionNumber,
+                dob: parseExcelDob(rawDob) || (existingStudent?.dob || null),
+                gender: normalizeGender(row['gender'] || row['sex'] || row['student gender'] || row['student_gender'] || row['gender (male/female)'] || row['gender (boy/girl)'], existingStudent?.gender || 'Male'),
+                bloodGroup: parseExcelBloodGroup(rawBloodGroup) || (existingStudent?.bloodGroup || null),
+                aadhaarNumber: parseExcelAadhaar(rawAadhaar) || (existingStudent?.aadhaarNumber || null),
+                status: 'Active',
+                classId: matchedClassId || (existingStudent?.classId || null),
+                sectionId: matchedSectionId || (existingStudent?.sectionId || null),
+                customData: customDataPayload
+              });
+            }
+
+            if (payloads.length === 0) {
+              toast.error("No valid student rows found in Excel file.");
+              setUploading(false);
+              return;
+            }
+
+            // Chunk payloads into batches of 25 for parallel speed & live progress updates
+            const BATCH_SIZE = 25;
+            const batches = [];
+            for (let b = 0; b < payloads.length; b += BATCH_SIZE) {
+              batches.push(payloads.slice(b, b + BATCH_SIZE));
+            }
+
+            const toastId = toast.loading(`Processing bulk import... (0/${payloads.length})`);
+
+            let totalCreated = 0;
+            let totalUpdated = 0;
+            let totalFailed = 0;
+
+            for (let k = 0; k < batches.length; k++) {
+              const currentBatchPayloads = batches[k];
+              try {
+                const res = await bulkImportStudents(currentBatchPayloads);
+                const batchResult = res?.data || {};
+
+                totalCreated += (batchResult.createdCount || 0);
+                totalUpdated += (batchResult.updatedCount || 0);
+                totalFailed += (batchResult.failedCount || 0);
+
+                // INCREMENTAL REAL-TIME STATE UPDATE:
+                // Merge newly imported/updated student records into React state LIVE!
+                if (Array.isArray(batchResult.students) && batchResult.students.length > 0) {
+                  const formatted = batchResult.students.map(s => {
+                    const cd = s.customData || {};
+                    return {
+                      ...cd,
+                      ...s,
+                      customData: cd,
+                      parentName: s.parentName || cd.parentName || '',
+                      parentPhone: s.parentPhone || cd.parentPhone || '',
+                      parentEmail: s.parentEmail || cd.parentEmail || '',
+                      homeAddress: s.homeAddress || cd.homeAddress || ''
+                    };
                   });
 
-                  if (matchedClass) {
-                    matchedClassId = matchedClass.id;
-                  }
+                  setStudents(prev => {
+                    const map = new Map(prev.map(item => [item.id, item]));
+                    for (const item of formatted) {
+                      map.set(item.id, item);
+                    }
+                    return Array.from(map.values());
+                  });
                 }
-
-                const existingStudent = existingAdmissionsMap.get(lowerAdmission);
-                const existingCustom = existingStudent?.customData || {};
-
-                const customDataPayload = {
-                  ...existingCustom,
-                  parentName: row['parent/guardian name'] || row['parent name'] || existingCustom.parentName || '',
-                  parentPhone: row['parent/guardian phone number'] || row['parent phone'] || existingCustom.parentPhone || '',
-                  parentEmail: row['parent/guardian email address'] || row['parent email'] || existingCustom.parentEmail || '',
-                  parentOccupation: row['parent/guardian occupation'] || row['parent occupation'] || existingCustom.parentOccupation || '',
-                  emergencyContact: row['emergency contact number'] || row['emergency contact'] || existingCustom.emergencyContact || '',
-                  annualIncome: row['annual income (inr)'] || row['annual income'] || existingCustom.annualIncome || '',
-                  siblingName: row['sibling name (same school: y/n)'] || row['sibling name'] || existingCustom.siblingName || '',
-                  homeAddress: row['home address'] || existingCustom.homeAddress || '',
-                  previousSchool: row['previous school name'] || row['previous school'] || existingCustom.previousSchool || '',
-                  previousRecords: row['previous academic records/report card status'] || row['previous records'] || existingCustom.previousRecords || '',
-                  subjectsChosen: row['subjects chosen'] || existingCustom.subjectsChosen || '',
-                  busRoute: row['school bus route/stop'] || row['bus route'] || existingCustom.busRoute || '',
-                  tuitionFee: row['tuition fee (inr)'] || row['tuition fee'] || existingCustom.tuitionFee || '',
-                  hostelFee: row['hostel fee (inr)'] || row['hostel fee'] || existingCustom.hostelFee || '',
-                  bookFee: row['book fee (inr)'] || row['book fee'] || existingCustom.bookFee || '',
-                  otherFee: row['other fee (inr)'] || row['other fee'] || existingCustom.otherFee || '',
-                  totalFee: row['total fee (inr)'] || row['total fee'] || existingCustom.totalFee || '',
-                  nationality: row['nationality'] || existingCustom.nationality || '',
-                  religion: row['religion'] || existingCustom.religion || '',
-                  motherTongue: row['mother tongue'] || existingCustom.motherTongue || ''
-                };
-
-                const studentPayload = {
-                  firstName,
-                  lastName: lastName || (existingStudent ? existingStudent.lastName : null),
-                  admissionNumber,
-                  dob: (row['date of birth'] || row['dob'])?.toString() || (existingStudent ? existingStudent.dob : null),
-                  gender: normalizeGender(row['gender'] || row['sex'] || row['student gender'] || row['student_gender'] || row['gender (male/female)'] || row['gender (boy/girl)'], existingStudent?.gender || 'Male'),
-                  bloodGroup: row['blood group']?.toString() || (existingStudent ? existingStudent.bloodGroup : null),
-                  aadhaarNumber: row['aadhar number']?.toString() || (existingStudent ? existingStudent.aadhaarNumber : null),
-                  status: 'Active',
-                  classId: matchedClassId || (existingStudent ? existingStudent.classId : null),
-                  customData: customDataPayload
-                };
-
-                try {
-                  if (existingStudent) {
-                    await updateStudent(existingStudent.id, studentPayload);
-                  } else {
-                    await createStudent(studentPayload);
-                  }
-                  successCount++;
-                } catch (rowErr) {
-                  failureCount++;
-                  console.error(`Row ${i + 1} import failed:`, rowErr);
-                }
+              } catch (batchErr) {
+                console.error(`Batch ${k + 1} bulk import error:`, batchErr);
+                totalFailed += currentBatchPayloads.length;
               }
+
+              const processedSoFar = Math.min(payloads.length, (k + 1) * BATCH_SIZE);
+              toast.loading(`Processing bulk import... (${processedSoFar}/${payloads.length})`, { id: toastId });
             }
 
-            fetchData();
+            // Finish and dispatch live refresh signal
+            notifyDataChanged('students');
+            await fetchData();
 
-            if (limitCappedCount > 0) {
-              toast.error(`Imported ${successCount} students. ${limitCappedCount} student(s) skipped because school capacity limit (${effectiveSeatLimit}) was reached! Contact SuperAdmin to expand limit.`, { id: loadingToastId, duration: 8000 });
-            } else if (failureCount > 0 || skipCount > 0) {
-              toast.success(`Import completed: ${successCount} succeeded, ${failureCount} failed, ${skipCount} skipped.`, { id: loadingToastId });
-            } else {
-              toast.success(`Successfully imported ${successCount} students!`, { id: loadingToastId });
-            }
-          } catch(err) {
+            toast.success(`Import complete! ${totalCreated} created, ${totalUpdated} updated${totalFailed > 0 ? `, ${totalFailed} failed` : ''}.`, { id: toastId, duration: 5000 });
+
+          } catch (err) {
             console.error(err);
-            toast.error("Failed to parse Excel file", { id: loadingToastId });
+            toast.error("Failed to parse Excel file");
           } finally {
             setUploadFile(null);
             setUploading(false);
@@ -701,11 +972,13 @@ export default function StudentManagement() {
         reader.readAsBinaryString(uploadFile);
       } catch (err) {
         console.error(err);
-        toast.error("Failed to process Excel file", { id: loadingToastId });
+        toast.error("Failed to process Excel file");
         setUploading(false);
+        setImportProgressModalOpen(false);
       }
       return;
     }
+
 
     try {
       const safeSchoolName = (schoolName || 'School').replace(/[^a-z0-9]/gi, '_').trim();
@@ -749,8 +1022,10 @@ export default function StudentManagement() {
     if (!selectedStudentForAssign) return;
     setAssigning(true);
     try {
+      const [targetClassId, targetSectionId] = (selectedClassIdForAssign || '').split(':');
       await updateStudent(selectedStudentForAssign.id, {
-        classId: selectedClassIdForAssign || null
+        classId: targetClassId || null,
+        sectionId: targetSectionId || null
       });
       toast.success("Class assigned successfully");
       setAssignModalOpen(false);
@@ -1061,7 +1336,13 @@ export default function StudentManagement() {
   const filteredStudents = students.filter(student => {
     const q = searchQuery.trim().toLowerCase();
     
-    const matchesClass = classFilter === 'all' || student.classId === classFilter;
+    const matchesClass = classFilter === 'all' || (() => {
+      const [fClassId, fSecId] = classFilter.split(':');
+      if (fSecId) {
+        return student.classId === fClassId && (!student.sectionId || student.sectionId === fSecId);
+      }
+      return student.classId === fClassId;
+    })();
     const matchesGender = genderFilter === 'all' || normalizeGender(student.gender, '') === genderFilter;
     if (!matchesClass || !matchesGender) return false;
 
@@ -1152,13 +1433,52 @@ export default function StudentManagement() {
   }, [searchQuery, classFilter, genderFilter, rowsPerPage]);
 
   const getClassName = (classId, student = null) => {
-    if (student?.class?.name) {
-      return student.section?.name ? `${student.class.name} - ${student.section.name}` : student.class.name;
+    const studentObj = (typeof student === 'object' && student !== null) 
+      ? student 
+      : (typeof classId === 'object' && classId !== null ? classId : null);
+
+    const targetClassId = studentObj?.classId || (typeof classId === 'string' ? classId : null);
+    const targetSecId = studentObj?.sectionId || null;
+
+    const classNameStr = (studentObj?.class?.name || classes.find(c => c.id === targetClassId)?.name || '').trim();
+    const sectionNameStr = (
+      studentObj?.section?.name || 
+      studentObj?.class?.section || 
+      (targetClassId && targetSecId ? classes.find(c => c.id === targetClassId)?.sections?.find(s => s.id === targetSecId)?.name : '') || 
+      (targetClassId ? classes.find(c => c.id === targetClassId)?.section : '') || 
+      ''
+    ).trim();
+
+    if (classNameStr && sectionNameStr) {
+      const cleanCls = cleanClassStr(classNameStr);
+      const cleanSec = cleanClassStr(sectionNameStr);
+      if (cleanCls.endsWith(cleanSec)) {
+        return classNameStr;
+      }
+      return `${classNameStr} - ${sectionNameStr}`;
     }
-    const cls = classes.find(c => c.id === classId);
-    if (!cls) return 'Unknown';
-    if (cls.section) return `${cls.name} - ${cls.section}`;
-    return cls.name;
+
+    if (classNameStr) return classNameStr;
+
+    if (targetClassId) {
+      const cls = classes.find(c => c.id === targetClassId);
+      if (!cls) return 'Unknown';
+      if (cls.section) {
+        const cleanCls = cleanClassStr(cls.name);
+        const cleanSec = cleanClassStr(cls.section);
+        if (cleanCls.endsWith(cleanSec)) return cls.name;
+        return `${cls.name} - ${cls.section}`;
+      }
+      if (Array.isArray(cls.sections) && cls.sections.length === 1) {
+        const cleanCls = cleanClassStr(cls.name);
+        const cleanSec = cleanClassStr(cls.sections[0].name);
+        if (cleanCls.endsWith(cleanSec)) return cls.name;
+        return `${cls.name} - ${cls.sections[0].name}`;
+      }
+      return cls.name;
+    }
+
+    return 'Unknown';
   };
 
   if (loading && !showForm) {
@@ -1632,9 +1952,22 @@ export default function StudentManagement() {
               <div className="grid md:grid-cols-3 gap-6">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Assign to Class *</label>
-                  <select required value={formData.classId} onChange={(e) => setFormData({...formData, classId: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900">
+                  <select
+                    required
+                    value={formData.sectionId ? `${formData.classId}:${formData.sectionId}` : (formData.classId || '')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) {
+                        setFormData({ ...formData, classId: '', sectionId: '' });
+                      } else {
+                        const parts = val.split(':');
+                        setFormData({ ...formData, classId: parts[0], sectionId: parts[1] || '' });
+                      }
+                    }}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
+                  >
                     <option value="">Select a Class...</option>
-                    {classes.map(c => <option key={c.id} value={c.id}>{c.name} - Section {c.section}</option>)}
+                    {selectableClassOptions.map(opt => <option key={opt.key} value={opt.key}>{opt.label}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1809,8 +2142,8 @@ export default function StudentManagement() {
                 className="px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 <option value="all">All Classes</option>
-                {classes.map(c => (
-                  <option key={c.id} value={c.id}>{c.name} - {c.section}</option>
+                {selectableClassOptions.map(opt => (
+                  <option key={opt.key} value={opt.key}>{opt.label}</option>
                 ))}
               </select>
               <select 
@@ -1883,7 +2216,7 @@ export default function StudentManagement() {
                       </td>
                       <td className="p-4 text-slate-700 dark:text-slate-200">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
-                          {getClassName(student.classId)}
+                          {getClassName(student.classId, student)}
                         </span>
                       </td>
                       <td className="p-4">
@@ -2375,7 +2708,7 @@ export default function StudentManagement() {
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Date of Birth</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.dob ? new Date(selectedStudentToView.dob).toLocaleDateString('en-GB') : '—'}</p>
+                        <p className="text-slate-950 font-semibold">{formatDate(selectedStudentToView.dob)}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Age</label>
@@ -2422,7 +2755,7 @@ export default function StudentManagement() {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Class & Section</label>
-                        <p className="text-slate-950 font-semibold">{getClassName(selectedStudentToView.classId)}</p>
+                        <p className="text-slate-950 font-semibold">{getClassName(selectedStudentToView.classId, selectedStudentToView)}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Roll Number</label>
@@ -2872,13 +3205,23 @@ export default function StudentManagement() {
                       <div>
                         <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Class & Section</label>
                         <select
-                          value={editStudentData.classId || ''}
-                          onChange={e => handleEditFieldChange('classId', e.target.value)}
+                          value={editStudentData.sectionId ? `${editStudentData.classId}:${editStudentData.sectionId}` : (editStudentData.classId || '')}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (!val) {
+                              handleEditFieldChange('classId', '');
+                              handleEditFieldChange('sectionId', null);
+                            } else {
+                              const parts = val.split(':');
+                              handleEditFieldChange('classId', parts[0]);
+                              handleEditFieldChange('sectionId', parts[1] || null);
+                            }
+                          }}
                           className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500"
                         >
                           <option value="">-- Unassigned --</option>
-                          {classes.map(c => (
-                            <option key={c.id} value={c.id}>{c.name} - {c.section}</option>
+                          {selectableClassOptions.map(opt => (
+                            <option key={opt.key} value={opt.key}>{opt.label}</option>
                           ))}
                         </select>
                       </div>
@@ -3317,8 +3660,8 @@ export default function StudentManagement() {
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                 >
                   <option value="">-- Unassigned --</option>
-                  {classes.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} - {c.section}</option>
+                  {selectableClassOptions.map(opt => (
+                    <option key={opt.key} value={opt.key}>{opt.label}</option>
                   ))}
                 </select>
               </div>
@@ -3534,9 +3877,9 @@ export default function StudentManagement() {
                         {classes.length === 0 ? (
                           <option value="">No classes available - Please create a class first</option>
                         ) : (
-                          classes.map(c => (
-                            <option key={c.id} value={c.id}>
-                              {c.name} - {c.section} {c.stream ? `(${c.stream})` : ''}
+                          selectableClassOptions.map(opt => (
+                            <option key={opt.key} value={opt.key}>
+                              {opt.label} {opt.stream ? `(${opt.stream})` : ''}
                             </option>
                           ))
                         )}
@@ -3585,7 +3928,7 @@ export default function StudentManagement() {
                     </div>
                     <div>
                       <p className="text-xs font-semibold text-slate-400 dark:text-slate-300">Date of Birth</p>
-                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{selectedAppForReview.dob || 'N/A'}</p>
+                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{formatDate(selectedAppForReview.dob)}</p>
                     </div>
                     <div>
                       <p className="text-xs font-semibold text-slate-400 dark:text-slate-300">Age & Gender</p>
@@ -3825,6 +4168,55 @@ export default function StudentManagement() {
         </div>
       )}
 
+      {/* Live Import Progress Modal */}
+      {importProgressModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-primary-50 dark:bg-primary-950/50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-primary-100 dark:border-primary-800/50">
+                <UploadCloud className="w-8 h-8 text-primary-600 dark:text-primary-400 animate-pulse" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-1">
+                Importing Student Records...
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
+                Updating directory table live in real-time
+              </p>
+
+              {/* Progress Bar Container */}
+              <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-3 mb-3 overflow-hidden p-0.5 border border-slate-200 dark:border-slate-700">
+                <div
+                  className="bg-gradient-to-r from-primary-500 to-emerald-500 h-full rounded-full transition-all duration-300 ease-out shadow-sm"
+                  style={{ width: `${importProgressStats.percentage}%` }}
+                />
+              </div>
+
+              {/* Stats Counters */}
+              <div className="flex justify-between items-center text-xs font-semibold text-slate-600 dark:text-slate-400 mb-4 px-1">
+                <span>Batch {importProgressStats.currentBatch} of {importProgressStats.totalBatches}</span>
+                <span className="text-primary-600 dark:text-primary-400 font-bold">{importProgressStats.percentage}%</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/80 text-xs">
+                <div>
+                  <span className="text-slate-400 dark:text-slate-500 block text-[10px] uppercase font-bold tracking-wider">Processed</span>
+                  <span className="font-extrabold text-slate-800 dark:text-slate-200 text-sm">
+                    {importProgressStats.processed} / {importProgressStats.total}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 dark:text-slate-500 block text-[10px] uppercase font-bold tracking-wider">Success</span>
+                  <span className="font-extrabold text-emerald-600 dark:text-emerald-400 text-sm">
+                    {importProgressStats.successCount}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
+

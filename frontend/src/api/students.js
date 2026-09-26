@@ -182,12 +182,20 @@ export async function updateStudentPerformanceStatus(studentId, status, currentC
   });
 }
 
+export async function bulkImportStudents(studentsArray) {
+  return apiClient('/api/v1/students/bulk-import', {
+    method: 'POST',
+    body: JSON.stringify({ students: studentsArray })
+  });
+}
+
 export const studentsApi = {
   listStudents,
   getStudent,
   createStudent,
   updateStudent,
   deleteStudent,
+  bulkImportStudents,
   listStudentParents,
   linkParentToStudent,
   unlinkParentFromStudent,
@@ -197,3 +205,4 @@ export const studentsApi = {
 };
 
 export default studentsApi;
+

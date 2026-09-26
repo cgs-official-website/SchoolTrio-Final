@@ -13,6 +13,8 @@ import ConfirmModal from '../../components/ConfirmModal';
 import usePermissions from '../../hooks/usePermissions';
 import { sortClassesAscending } from '../../utils/classSorting';
 import { normalizeGender, isMale, isFemale } from '../../utils/genderUtils';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 function normalizeStaffMember(s) {
   const custom = s.customData || {};
@@ -43,6 +45,7 @@ function normalizeStaffMember(s) {
     staff_type: s.staffType || 'teaching',
     staffType: s.staffType || 'teaching',
     status: s.status || 'Active',
+    isRegistered: Boolean(s.isRegistered || s.user?.isRegistered || (s.user?.passwordHash && !s.user.passwordHash.startsWith('!'))),
     assignedClassObj: s.assignedClass || (typeof s.assignedClassId === 'object' ? s.assignedClassId : null),
     assignedClass: s.assignedClass || (typeof s.assignedClassId === 'object' ? s.assignedClassId : null),
     assignedClassId: typeof s.assignedClassId === 'object' ? s.assignedClassId?.id : (s.assignedClassId || s.assignedClass?.id || null),
@@ -331,6 +334,8 @@ export default function StaffAssignment() {
     fetchStaffData();
   }, [fetchStaffData]);
 
+  useLiveDataRefresh(fetchStaffData, [fetchStaffData], ['staff', 'classes', 'subjects']);
+
   // Click outside to close filter dropdown
   useEffect(() => {
     function handleClickOutside(event) {
@@ -416,6 +421,111 @@ export default function StaffAssignment() {
             return '';
           };
 
+          const romanToArabicMap = { i: '1', ii: '2', iii: '3', iv: '4', v: '5', vi: '6', vii: '7', viii: '8', ix: '9', x: '10', xi: '11', xii: '12' };
+          const arabicToRomanMap = { '1': 'i', '2': 'ii', '3': 'iii', '4': 'iv', '5': 'v', '6': 'vi', '7': 'vii', '8': 'viii', '9': 'ix', '10': 'x', '11': 'xi', '12': 'xii' };
+
+          const normalizeStr = (str) => {
+            if (!str) return '';
+            return String(str).trim().toLowerCase().replace(/\s+/g, ' ');
+          };
+
+          const findClassByName = (classNameStr) => {
+            if (!classNameStr) return null;
+            const rawClean = normalizeStr(classNameStr);
+            if (!rawClean || rawClean === 'unassigned' || rawClean === 'none' || rawClean === 'n/a' || rawClean === '-') return null;
+
+            const cleanVariations = new Set([rawClean]);
+
+            const matchRoman = rawClean.match(/^([a-z]+)(\s*[-–—]?\s*)(.*)$/);
+            if (matchRoman && romanToArabicMap[matchRoman[1]]) {
+              const arb = romanToArabicMap[matchRoman[1]];
+              const rest = matchRoman[3];
+              if (rest) {
+                cleanVariations.add(`${arb} - ${rest}`);
+                cleanVariations.add(`${arb} ${rest}`);
+                cleanVariations.add(`${arb}${rest}`);
+                cleanVariations.add(`${arb}-${rest}`);
+              } else {
+                cleanVariations.add(arb);
+              }
+            }
+            const matchArabic = rawClean.match(/^(\d+)(\s*[-–—]?\s*)(.*)$/);
+            if (matchArabic && arabicToRomanMap[matchArabic[1]]) {
+              const rom = arabicToRomanMap[matchArabic[1]];
+              const rest = matchArabic[3];
+              if (rest) {
+                cleanVariations.add(`${rom} - ${rest}`);
+                cleanVariations.add(`${rom} ${rest}`);
+                cleanVariations.add(`${rom}${rest}`);
+                cleanVariations.add(`${rom}-${rest}`);
+              } else {
+                cleanVariations.add(rom);
+              }
+            }
+
+            for (const cls of classes) {
+              const clsNameClean = normalizeStr(cls.name);
+              const clsNameVariations = new Set([clsNameClean]);
+              if (romanToArabicMap[clsNameClean]) clsNameVariations.add(romanToArabicMap[clsNameClean]);
+              if (arabicToRomanMap[clsNameClean]) clsNameVariations.add(arabicToRomanMap[clsNameClean]);
+
+              for (const v of cleanVariations) {
+                if (clsNameVariations.has(v)) return cls;
+              }
+
+              const sections = Array.isArray(cls.sections) && cls.sections.length > 0
+                ? cls.sections
+                : (cls.section ? [{ name: cls.section }] : []);
+
+              for (const sec of sections) {
+                const secNameClean = normalizeStr(sec.name);
+                for (const clsVar of clsNameVariations) {
+                  const fullHyphen = `${clsVar} - ${secNameClean}`;
+                  const fullSpace = `${clsVar} ${secNameClean}`;
+                  const fullCompact = `${clsVar}${secNameClean}`;
+                  const fullDash = `${clsVar}-${secNameClean}`;
+
+                  for (const inputVar of cleanVariations) {
+                    if (
+                      inputVar === fullHyphen ||
+                      inputVar === fullSpace ||
+                      inputVar === fullCompact ||
+                      inputVar === fullDash
+                    ) {
+                      return cls;
+                    }
+                  }
+                }
+              }
+            }
+            return null;
+          };
+
+          const parseSubjectClassIds = (subjectClassesStr) => {
+            if (!subjectClassesStr) return [];
+            const parts = String(subjectClassesStr).split(/[,;]/).map(p => p.trim()).filter(Boolean);
+            const matchedIds = [];
+            for (const part of parts) {
+              const matched = findClassByName(part);
+              if (matched && !matchedIds.includes(matched.id)) {
+                matchedIds.push(matched.id);
+              }
+            }
+            return matchedIds;
+          };
+
+          const formatDob = (val) => {
+            if (!val) return null;
+            if (val instanceof Date && !isNaN(val)) return val.toISOString().split('T')[0];
+            if (typeof val === 'number' && XLSX.SSF) {
+              const d = XLSX.SSF.parse_date_code(val);
+              if (d) return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+            }
+            const s = String(val).trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+            return s || null;
+          };
+
           let successCount = 0;
           let skippedCount = 0;
 
@@ -441,6 +551,12 @@ export default function StaffAssignment() {
             const roleName = getField(row, 'role', 'designation', 'position') || 'Staffs';
             const matchedRole = rolesList.find(r => r.name?.toLowerCase() === roleName.toLowerCase() || r.slug === roleName.toLowerCase());
 
+            const assignedClassStr = getField(row, 'assigned class', 'assigned_class', 'assigned class id', 'class id', 'classid', 'class');
+            const matchedClass = findClassByName(assignedClassStr);
+
+            const subjectClassesStr = getField(row, 'subject classes', 'subject_classes', 'subjects classes');
+            const matchedSubjectClassIds = parseSubjectClassIds(subjectClassesStr);
+
             const staffPayload = {
               firstName,
               lastName: lastName || null,
@@ -450,49 +566,66 @@ export default function StaffAssignment() {
               staffType: (getField(row, 'staff type', 'stafftype', 'type') || 'teaching').toLowerCase() === 'non-teaching' ? 'non-teaching' : 'teaching',
               designation: getField(row, 'designation') || roleName || null,
               roleId: matchedRole?.id || null,
-              assignedClassId: getField(row, 'assigned class id', 'class id', 'classid') || null,
+              assignedClassId: matchedClass?.id || getField(row, 'assigned class id', 'class id', 'classid') || null,
               status: 'Active',
-              dob: getField(row, 'date of birth', 'dob', 'birth date') || null,
+              dob: formatDob(getField(row, 'date of birth', 'dob', 'birth date')),
               gender: normalizeGender(getField(row, 'gender', 'sex', 'staff gender', 'staff_gender'), 'Male'),
               nationality: getField(row, 'nationality') || null,
               maritalStatus: getField(row, 'marital status', 'marital_status') || 'Single',
               bloodGroup: getField(row, 'blood group', 'bloodgroup', 'blood_group') || null,
               address: getField(row, 'residential address', 'address', 'residence') || null,
               emergencyContact: getField(row, 'emergency contact details', 'emergency contact', 'emergency') || null,
-              fatherGuardianName: getField(row, 'father name/guardian name', 'father name', 'guardian name', 'father/guardian') || null,
+              fatherGuardianName: getField(row, 'father / guardian name', 'father name/guardian name', 'father name', 'guardian name', 'father/guardian') || null,
               languagesKnown: getField(row, 'languages known', 'languages', 'language') || null,
               qualifications: {
                 highestQualification: getField(row, 'highest qualification', 'qualification') || null,
-                degreeSpecialization: getField(row, 'degree(s) and specialization', 'degree and specialization', 'degree', 'specialization') || null,
-                universityName: getField(row, 'university/college name', 'university', 'college', 'institution') || null,
+                degreeSpecialization: getField(row, 'degree specialization', 'degree(s) and specialization', 'degree and specialization', 'degree', 'specialization') || null,
+                universityName: getField(row, 'university name', 'university/college name', 'university', 'college', 'institution') || null,
                 yearOfPassing: getField(row, 'year of passing', 'year passing', 'passing year') || null,
                 certifications: getField(row, 'certifications', 'professional certifications', 'certification') || null
               },
               experience: {
-                previousExperience: getField(row, 'previous experience (years)', 'previous experience', 'experience years', 'experience') || null,
+                previousExperience: getField(row, 'previous experience (yrs)', 'previous experience (years)', 'previous experience', 'experience years', 'experience') || null,
                 previousOrganization: getField(row, 'previous school/organization', 'previous school', 'previous organization', 'organization') || null,
                 subjectSpecialization: getField(row, 'subject specialization', 'subject', 'subjects') || null,
-                gradesClassesHandled: getField(row, 'grades/classes handled', 'grades', 'classes handled') || null
+                gradesClassesHandled: getField(row, 'grades / classes handled', 'grades/classes handled', 'grades', 'classes handled') || null
               },
               financial: {
                 panNumber: getField(row, 'pan number', 'pan', 'pan_number') || null,
                 pfNumber: getField(row, 'pf number', 'pf', 'provident fund') || null,
                 esicNumber: getField(row, 'esic number', 'esic') || null,
                 uanNumber: getField(row, 'uan number', 'uan') || null,
-                taxIdDetails: getField(row, 'tax identification details (pan)', 'tax identification', 'tax id') || null,
+                taxIdDetails: getField(row, 'tax identification details (pan)', 'tax identification details', 'tax identification', 'tax id') || null,
                 bankName: getField(row, 'bank name and branch', 'bank name', 'bank') || null,
                 bankAccountNumber: getField(row, 'bank account number', 'account number', 'bank account') || null,
                 branchName: getField(row, 'branch name', 'branch') || null,
                 ifscCode: getField(row, 'ifsc code', 'ifsc') || null
               },
               customData: {
-                aadharNumber: getField(row, 'aadhar number', 'aadhar', 'aadhaar number', 'aadhaar') || null,
+                aadharNumber: getField(row, 'aadhaar / govt id', 'aadhaar/govt id', 'aadhar number', 'aadhar', 'aadhaar number', 'aadhaar') || null,
                 govtIdNumber: getField(row, 'government-issued id', 'government id', 'govt id', 'govt_id') || null
               }
             };
 
             try {
-              await createStaff(staffPayload);
+              const existingStaffMember = staff.find(s => s.email?.toLowerCase() === email.toLowerCase());
+              let targetStaffId = null;
+
+              if (existingStaffMember) {
+                await updateStaff(existingStaffMember.id, staffPayload);
+                targetStaffId = existingStaffMember.id;
+              } else {
+                const createRes = await createStaff(staffPayload);
+                targetStaffId = createRes?.data?.id || createRes?.data?.staff?.id || createRes?.id;
+              }
+
+              if (targetStaffId && (matchedClass?.id || matchedSubjectClassIds.length > 0)) {
+                await assignStaff(targetStaffId, {
+                  assignedClassId: matchedClass?.id || null,
+                  subjectClassIds: matchedSubjectClassIds
+                }).catch(err => console.warn('Assignment update warning:', err));
+              }
+
               successCount++;
             } catch (innerRowErr) {
               console.warn(`Row ${i + 1} skipped during import:`, innerRowErr);
@@ -893,33 +1026,34 @@ export default function StaffAssignment() {
 
     const classId = typeof classInput === 'object' ? classInput.id : classInput;
 
+    const formatClassWithSection = (c) => {
+      if (!c) return 'Unassigned';
+      const secName = Array.isArray(c.sections) && c.sections.length > 0
+        ? c.sections.map(s => s.name).join(', ')
+        : (c.section || '');
+      if (secName && !c.name.toLowerCase().includes(secName.toLowerCase())) {
+        return `${c.name} - ${secName}`;
+      }
+      return c.name || 'Unassigned';
+    };
+
     if (classId && Array.isArray(classes)) {
       const cls = classes.find(c => c.id === classId);
       if (cls) {
-        if (cls.section && !cls.name.toLowerCase().includes(cls.section.toLowerCase())) {
-          return `${cls.name} - ${cls.section}`;
-        }
-        return cls.name;
+        return formatClassWithSection(cls);
       }
     }
 
     if (memberObj?.assignedClass) {
       const ac = memberObj.assignedClass;
       if (typeof ac === 'object' && ac.name) {
-        if (ac.section && !ac.name.toLowerCase().includes(ac.section.toLowerCase())) {
-          return `${ac.name} - ${ac.section}`;
-        }
-        return ac.name;
+        return formatClassWithSection(ac);
       }
       if (typeof ac === 'string') return ac;
     }
 
     if (typeof classInput === 'object' && classInput.name) {
-      const ci = classInput;
-      if (ci.section && !ci.name.toLowerCase().includes(ci.section.toLowerCase())) {
-        return `${ci.name} - ${ci.section}`;
-      }
-      return ci.name;
+      return formatClassWithSection(classInput);
     }
 
     return 'Unassigned';
@@ -1019,6 +1153,17 @@ export default function StaffAssignment() {
           <p className="text-slate-500 dark:text-slate-400 mt-1">Manage your teachers, upload documents, and assign classes.</p>
         </div>
         <div className="flex flex-wrap gap-3 mt-4 sm:mt-0">
+          <button 
+            onClick={() => {
+              const regUrl = `${window.location.origin}/register/teacher/${schoolId}`;
+              navigator.clipboard.writeText(regUrl);
+              toast.success("Teacher Registration Link copied to clipboard!");
+            }}
+            className="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl font-medium hover:bg-emerald-100 dark:hover:bg-slate-700 shadow-sm flex items-center gap-2 transition-colors border border-emerald-200"
+            title="Copy Teacher Registration Link"
+          >
+            <LinkIcon size={18} /> Registration Link
+          </button>
           <button 
             onClick={() => {
               if (staff.length === 0) {
@@ -1272,15 +1417,15 @@ export default function StaffAssignment() {
                       </td>
                       <td className="p-4 pr-6 text-right">
                         <div className="flex justify-end gap-2">
-                          {!member.userId && (
+                          {!member.isRegistered && (
                             <button
                               onClick={() => {
                                 const inviteUrl = `${window.location.origin}/register/teacher/${schoolId}?id=${member.id}&email=${encodeURIComponent(member.email || '')}&empId=${encodeURIComponent(member.staffId || member.employeeId || '')}`;
                                 navigator.clipboard.writeText(inviteUrl);
-                                toast.success("Registration link copied!");
+                                toast.success(`Registration link copied for ${member.name || member.firstName}!`);
                               }}
                               className="p-2 text-slate-500 dark:text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
-                              title="Copy Invite Link"
+                              title="Copy Teacher Registration Link"
                             >
                               <LinkIcon size={18} />
                             </button>

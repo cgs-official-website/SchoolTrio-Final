@@ -10,8 +10,10 @@ vi.mock('../../../src/database/prisma.client.js', () => {
   const mockPrisma = {
     user: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn()
     },
+
     schoolRole: {
       findFirst: vi.fn()
     },
@@ -38,6 +40,7 @@ describe('Unit: Staff Concurrency & Constraint Safety — Phase 4C.4', () => {
     staffRepository.findStaffByEmployeeId.mockResolvedValue(null);
     staffRepository.findStaffByEmail.mockResolvedValue(null);
     prisma.user.findUnique.mockResolvedValue(null);
+    prisma.user.findFirst.mockResolvedValue(null);
   });
 
   it('catches Prisma P2002 duplicate employee ID race condition and maps to clean ConflictError', async () => {

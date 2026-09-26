@@ -94,12 +94,28 @@ export async function deleteSubject(id) {
   });
 }
 
+/**
+ * Bulk imports subjects in a single request.
+ * Calls POST /api/v1/subjects/bulk-import.
+ *
+ * @param {Object} data - Payload containing `{ rows: Array<{ name, code }> }`
+ * @returns {Promise<{ success: boolean, data: Object, message?: string }>}
+ */
+export async function bulkImportSubjects(data) {
+  return apiClient('/api/v1/subjects/bulk-import', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
 export const subjectsApi = {
   listSubjects,
   getSubject,
   createSubject,
   updateSubject,
-  deleteSubject
+  deleteSubject,
+  bulkImportSubjects
 };
 
 export default subjectsApi;
+

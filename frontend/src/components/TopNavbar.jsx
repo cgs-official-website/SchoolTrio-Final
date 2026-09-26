@@ -7,6 +7,8 @@ import { useNotifications } from '../context/NotificationContext';
 import { noticesApi } from '../api/notices';
 import { notificationsApi } from '../api/notifications';
 import { FiSun, FiMoon } from 'react-icons/fi';
+import { notifyDataChanged } from '../utils/liveData';
+import toast from 'react-hot-toast';
 
 export default function TopNavbar({ schoolName, schoolLogo, toggleSidebar, navItems = [] }) {
   const { userProfile } = useAuth();
@@ -193,9 +195,11 @@ export default function TopNavbar({ schoolName, schoolLogo, toggleSidebar, navIt
 
   const handleRefresh = () => {
     setIsRefreshing(true);
+    notifyDataChanged('all');
     setTimeout(() => {
-      window.location.reload();
-    }, 500);
+      setIsRefreshing(false);
+      toast.success('Live data refreshed seamlessly!');
+    }, 400);
   };
 
   const handleSearch = (e) => {

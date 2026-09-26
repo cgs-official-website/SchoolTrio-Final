@@ -116,8 +116,16 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
     };
   }
 
-  // 2. Teacher Visibility
-  if (systemRole === SYSTEM_ROLES.TEACHER || actor.roles?.includes(SYSTEM_ROLES.TEACHER)) {
+  // 2. Teacher & Staff Visibility
+  const isTeacherOrStaff =
+    systemRole === SYSTEM_ROLES.TEACHER ||
+    systemRole === SYSTEM_ROLES.STAFF ||
+    systemRole === 'TENANT_USER' ||
+    actor.roles?.includes(SYSTEM_ROLES.TEACHER) ||
+    actor.roles?.includes(SYSTEM_ROLES.STAFF) ||
+    Boolean(actor.staffProfile);
+
+  if (isTeacherOrStaff && systemRole !== SYSTEM_ROLES.PARENT) {
     const staffProfile = await noticeRepository.findStaffProfileByUserId(schoolId, userId);
     const assignedClassId = staffProfile?.assignedClassId || null;
     const headedClassIds = staffProfile?.headedClasses?.map((c) => c.id) || [];
@@ -135,6 +143,15 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
       teacherConditions.push({
         type: 'class',
         classId: { in: teacherClassIds }
+      });
+    } else if (query.classId) {
+      teacherConditions.push({
+        type: 'class',
+        classId: query.classId
+      });
+    } else {
+      teacherConditions.push({
+        type: 'class'
       });
     }
 

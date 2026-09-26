@@ -293,3 +293,115 @@ export async function deleteSubject(schoolId, subjectId, actor = null) {
     }
   });
 }
+
+/**
+ * High-performance bulk import for subjects.
+ * Executes lookups and creations inside a single database transaction.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Array<{ name: string, code?: string }>} rows
+ * @param {Object} [actor] - Context of requesting user
+ * @returns {Promise<{ addedCount: number, skippedCount: number, totalRows: number }>}
+ */
+export async function bulkImportSubjects(schoolId, rows = [], actor = null) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required for bulk import');
+  }
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { addedCount: 0, skippedCount: 0, totalRows: 0 };
+  }
+
+  let addedCount = 0;
+  let skippedCount = 0;
+
+  await prisma.$transaction(async (tx) => {
+    const existingSubjects = await tx.subject.findMany({
+      where: { schoolId },
+      select: { name: true, code: true }
+    });
+
+    const existingNames = new Set(
+      existingSubjects
+        .filter(s => s.name)
+        .map(s => String(s.name).trim().toLowerCase())
+    );
+
+    const existingCodes = new Set(
+      existingSubjects
+        .filter(s => s.code && String(s.code).trim().length > 0)
+        .map(s => String(s.code).trim().toLowerCase())
+    );
+
+    const newSubjectRecords = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      let name = String(row?.name || '').trim();
+      let codeRaw = row?.code !== undefined && row?.code !== null ? String(row.code).trim() : '';
+      let code = codeRaw.length > 0 ? codeRaw : null;
+
+      if (!name) {
+        skippedCount++;
+        continue;
+      }
+
+      if (name.length > 100) {
+        name = name.slice(0, 100).trim();
+      }
+      if (code && code.length > 50) {
+        code = code.slice(0, 50).trim();
+      }
+
+      const nameLower = name.toLowerCase();
+      const codeLower = code ? code.toLowerCase() : null;
+
+      if (existingNames.has(nameLower) || (codeLower && existingCodes.has(codeLower))) {
+        skippedCount++;
+        continue;
+      }
+
+      newSubjectRecords.push({
+        schoolId,
+        name,
+        code
+      });
+
+      existingNames.add(nameLower);
+      if (codeLower) {
+        existingCodes.add(codeLower);
+      }
+      addedCount++;
+    }
+
+    if (newSubjectRecords.length > 0) {
+      await tx.subject.createMany({
+        data: newSubjectRecords
+      });
+    }
+  }, {
+    timeout: 30000,
+    maxWait: 10000
+  });
+
+  await createAuditLog({
+    schoolId,
+    entityType: 'Subject',
+    entityId: schoolId,
+    actionPerformed: `BULK_IMPORT_SUBJECTS: Imported ${addedCount} subjects`,
+    userName: actor?.email || actor?.userId || 'Administrator',
+    userRole: actor?.systemRole || null,
+    modifiedFields: {
+      addedCount,
+      skippedCount,
+      totalRows: rows.length
+    }
+  }).catch(err => console.warn('AuditLog failed during subject bulk import:', err));
+
+  return {
+    addedCount,
+    skippedCount,
+    totalRows: rows.length
+  };
+}
+

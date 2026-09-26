@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import argon2 from 'argon2';
 import { AUTH_CONSTANTS } from '../../config/constants.js';
 import { ValidationError } from '../../utils/app-error.js';
@@ -68,12 +69,12 @@ export const isLockedPassword = (passwordHash) => {
 };
 
 /**
- * Hashes a plaintext password using Argon2id with RFC 9106 recommended parameters.
+ * Hashes a plaintext password using bcrypt with salt rounds defined in AUTH_CONSTANTS.
  * Validates password policy prior to hashing.
  *
  * @param {string} password - Exact plaintext password to hash
- * @param {Object} [customOptions] - Optional Argon2 override options (e.g. for fast unit tests)
- * @returns {Promise<string>} Encoded Argon2id password hash
+ * @param {number|Object} [customOptions] - Salt rounds or options override (e.g. for fast unit tests)
+ * @returns {Promise<string>} Encoded bcrypt password hash
  * @throws {ValidationError} If password does not meet policy complexity
  */
 export const hashPassword = async (password, customOptions = {}) => {
@@ -85,20 +86,21 @@ export const hashPassword = async (password, customOptions = {}) => {
     );
   }
 
-  const options = {
-    type: argon2.argon2id,
-    memoryCost: AUTH_CONSTANTS.ARGON2_PARAMS.memoryCost,
-    timeCost: AUTH_CONSTANTS.ARGON2_PARAMS.timeCost,
-    parallelism: AUTH_CONSTANTS.ARGON2_PARAMS.parallelism,
-    hashLength: AUTH_CONSTANTS.ARGON2_PARAMS.hashLength,
-    ...customOptions
-  };
+  let rounds = AUTH_CONSTANTS.BCRYPT_ROUNDS || 10;
+  if (typeof customOptions === 'number') {
+    rounds = customOptions;
+  } else if (typeof customOptions === 'object' && customOptions !== null) {
+    if (customOptions.rounds) rounds = customOptions.rounds;
+    else if (customOptions.saltRounds) rounds = customOptions.saltRounds;
+    // Handle test overrides using lower rounds
+    else if (customOptions.timeCost || customOptions.memoryCost) rounds = 4;
+  }
 
-  return argon2.hash(password, options);
+  return bcrypt.hash(password, rounds);
 };
 
 /**
- * Verifies a candidate plaintext password against an encoded Argon2id hash.
+ * Verifies a candidate plaintext password against an encoded hash (bcrypt or legacy argon2).
  * Safely guards against locked placeholder accounts and invalid hash formats.
  *
  * @param {string} passwordHash - Encoded hash from database
@@ -114,15 +116,19 @@ export const verifyPassword = async (passwordHash, password) => {
     return false;
   }
 
-  // Fast-fail: Locked migrated placeholders must NEVER reach Argon2 verify computation
+  // Fast-fail: Locked migrated placeholders must NEVER reach verification computation
   if (isLockedPassword(passwordHash)) {
     return false;
   }
 
   try {
-    return await argon2.verify(passwordHash, password);
+    if (passwordHash.startsWith('$argon2')) {
+      return await argon2.verify(passwordHash, password);
+    }
+    return await bcrypt.compare(password, passwordHash);
   } catch (_error) {
     // Malformed hash or internal verification error safely yields false
     return false;
   }
 };
+

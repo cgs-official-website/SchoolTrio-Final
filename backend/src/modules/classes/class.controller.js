@@ -137,3 +137,18 @@ export async function deleteSection(req, res, next) {
     next(err);
   }
 }
+
+/**
+ * POST /api/v1/classes/bulk-import
+ * Bulk imports classes, sections, and categories for the active tenant.
+ */
+export async function bulkImportClasses(req, res, next) {
+  try {
+    const schoolId = req.tenant.schoolId;
+    const result = await classService.bulkImportClasses(schoolId, req.body.rows, req.user || req.auth);
+    return ApiResponse.success(res, result, 'Classes bulk import completed successfully', HTTP_STATUS.CREATED);
+  } catch (err) {
+    next(err);
+  }
+}
+

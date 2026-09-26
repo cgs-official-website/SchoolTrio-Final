@@ -51,6 +51,41 @@ const STUDENT_SELECT_CONFIG = {
   }
 };
 
+export const BULK_STUDENT_SELECT_CONFIG = {
+
+  id: true,
+  schoolId: true,
+  admissionNumber: true,
+  rollNumber: true,
+  firstName: true,
+  lastName: true,
+  dob: true,
+  gender: true,
+  bloodGroup: true,
+  aadhaarNumber: true,
+  photoUrl: true,
+  status: true,
+  customData: true,
+  classId: true,
+  sectionId: true,
+  transportRouteId: true,
+  pickupStopId: true,
+  createdAt: true,
+  updatedAt: true,
+  class: {
+    select: {
+      id: true,
+      name: true
+    }
+  },
+  section: {
+    select: {
+      id: true,
+      name: true
+    }
+  }
+};
+
 /**
  * Finds paginated students for a tenant with optional search and filtering.
  *
@@ -288,6 +323,83 @@ export async function updateStudent(schoolId, studentId, data, tx = prisma) {
     select: STUDENT_SELECT_CONFIG
   });
 }
+
+/**
+ * Creates a student using lightweight bulk select config (omitting heavy relational counts).
+ */
+export async function createStudentForBulk(data, tx = prisma) {
+  return tx.student.create({
+    data: {
+      schoolId: data.schoolId,
+      admissionNumber: data.admissionNumber,
+      firstName: data.firstName,
+      lastName: data.lastName || null,
+      dob: data.dob || null,
+      gender: data.gender || null,
+      bloodGroup: data.bloodGroup || null,
+      aadhaarNumber: data.aadhaarNumber || null,
+      photoUrl: data.photoUrl || null,
+      rollNumber: data.rollNumber || null,
+      classId: data.classId || null,
+      sectionId: data.sectionId || null,
+      transportRouteId: data.transportRouteId || null,
+      pickupStopId: data.pickupStopId || null,
+      status: data.status || 'Active',
+      customData: data.customData !== undefined ? data.customData : null
+    },
+    select: BULK_STUDENT_SELECT_CONFIG
+  });
+}
+
+export const BULK_CREATE_SELECT_CONFIG = {
+  id: true,
+  schoolId: true,
+  admissionNumber: true,
+  rollNumber: true,
+  firstName: true,
+  lastName: true,
+  dob: true,
+  gender: true,
+  bloodGroup: true,
+  aadhaarNumber: true,
+  photoUrl: true,
+  status: true,
+  customData: true,
+  classId: true,
+  sectionId: true,
+  transportRouteId: true,
+  pickupStopId: true,
+  createdAt: true,
+  updatedAt: true
+};
+
+/**
+ * Bulk insert multiple new students in a single SQL operation.
+ */
+export async function createStudentsInBulk(studentsDataArray, tx = prisma) {
+  if (!studentsDataArray || studentsDataArray.length === 0) return [];
+  return tx.student.createManyAndReturn({
+    data: studentsDataArray,
+    select: BULK_CREATE_SELECT_CONFIG
+  });
+}
+
+/**
+ * Updates a student using lightweight bulk select config (omitting heavy relational counts).
+ */
+export async function updateStudentForBulk(schoolId, studentId, data, tx = prisma) {
+  return tx.student.update({
+    where: {
+      schoolId_id: {
+        schoolId,
+        id: studentId
+      }
+    },
+    data,
+    select: BULK_CREATE_SELECT_CONFIG
+  });
+}
+
 
 /**
  * Deletes a student within a tenant.

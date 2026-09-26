@@ -24,25 +24,46 @@ export default function LoginPage() {
   }, [currentUser, userProfile, navigate]);
 
   const redirectBasedOnRole = (role, loginPanel) => {
-    if (loginPanel === 'teacher') {
-      navigate('/teacher');
-      return;
-    }
+    // 1. Honor explicit loginPanel configured on user's assigned RBAC role
     if (loginPanel === 'admin') {
       navigate('/admin');
       return;
     }
+    if (loginPanel === 'teacher') {
+      navigate('/teacher');
+      return;
+    }
+    if (loginPanel === 'parent') {
+      navigate('/parent');
+      return;
+    }
+    if (loginPanel === 'student') {
+      navigate('/student');
+      return;
+    }
 
+    // 2. Fallback to normalized role if loginPanel is missing
     const r = role?.toLowerCase();
     switch (r) {
-      case 'superadmin': navigate('/superadmin'); break;
+      case 'superadmin':
+        navigate('/superadmin');
+        return;
+      case 'admin':
+        navigate('/admin');
+        return;
       case 'teacher':
       case 'staff':
         navigate('/teacher');
-        break;
-      case 'parent': navigate('/parent'); break;
-      case 'admin': navigate('/admin'); break;
-      default: navigate('/teacher');
+        return;
+      case 'parent':
+        navigate('/parent');
+        return;
+      case 'student':
+        navigate('/student');
+        return;
+      default:
+        navigate('/teacher');
+        return;
     }
   };
 

@@ -54,37 +54,63 @@ export const getTodayDateString = () => {
  * @param {boolean} [isRequired=true] - Whether DOB is required.
  * @returns {string|null} Error message if invalid, or null if valid.
  */
+export const normalizeDateString = (input) => {
+  if (!input) return null;
+  if (input instanceof Date) {
+    if (isNaN(input.getTime())) return null;
+    const year = input.getFullYear();
+    const month = String(input.getMonth() + 1).padStart(2, '0');
+    const day = String(input.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  const str = String(input).trim();
+  if (!str) return null;
+
+  const ymdMatch = str.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+  if (ymdMatch) {
+    const [, year, month, day] = ymdMatch;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${year}-${pad(month)}-${pad(day)}`;
+  }
+
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+  if (dmyMatch) {
+    const [, day, month, year] = dmyMatch;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${year}-${pad(month)}-${pad(day)}`;
+  }
+
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    if (year > 1900 && year <= new Date().getFullYear()) {
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  return null;
+};
+
 export const validateDateOfBirth = (dob, isRequired = true) => {
   if (!dob || (typeof dob === 'string' && !dob.trim())) {
     return isRequired ? 'Date of birth is required' : null;
   }
 
-  let dobString = '';
-  if (typeof dob === 'string') {
-    const trimmed = dob.trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-      return 'Please enter a valid date';
-    }
-    const [yearStr, monthStr, dayStr] = trimmed.split('-');
-    const year = parseInt(yearStr, 10);
-    const month = parseInt(monthStr, 10);
-    const day = parseInt(dayStr, 10);
-    const dateObj = new Date(year, month - 1, day);
-    if (
-      dateObj.getFullYear() !== year ||
-      dateObj.getMonth() !== month - 1 ||
-      dateObj.getDate() !== day
-    ) {
-      return 'Please enter a valid date';
-    }
-    dobString = trimmed;
-  } else if (dob instanceof Date) {
-    if (isNaN(dob.getTime())) return 'Please enter a valid date';
-    const year = dob.getFullYear();
-    const month = String(dob.getMonth() + 1).padStart(2, '0');
-    const day = String(dob.getDate()).padStart(2, '0');
-    dobString = `${year}-${month}-${day}`;
-  } else {
+  const dobString = normalizeDateString(dob);
+  if (!dobString) {
+    return 'Please enter a valid date in DD-MM-YYYY, YYYY-MM-DD, DD.MM.YYYY, or YYYY.MM.DD format';
+  }
+
+  const [year, month, day] = dobString.split('-').map(Number);
+  const dateObj = new Date(year, month - 1, day);
+  if (
+    dateObj.getFullYear() !== year ||
+    dateObj.getMonth() !== month - 1 ||
+    dateObj.getDate() !== day
+  ) {
     return 'Please enter a valid date';
   }
 

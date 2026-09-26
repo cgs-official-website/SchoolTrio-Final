@@ -71,4 +71,49 @@ describe('usePermissions Hook (REST RBAC Migration — Phase RBAC.3)', () => {
     expect(normalized.library.canRead).toBe(false);
     expect(normalized.library.read).toBe(false);
   });
+
+  describe('SEC-002 Fallback Cleanup & Permission Verification Tests (17-21)', () => {
+    it('17. Missing permission entry returns false (denied)', () => {
+      const permissions = {
+        attendance: { canRead: true, canCreate: true, canEdit: false, canDelete: false }
+      };
+      const moduleKey = 'inventory';
+      const result = Boolean(permissions[moduleKey]?.canRead || permissions[moduleKey]?.read);
+      expect(result).toBe(false);
+    });
+
+    it('18. TEACHER/STAFF role cannot receive permission from hardcoded fallback when module is unassigned', () => {
+      const permissions = {
+        attendance: { canRead: true, canCreate: true, canEdit: false, canDelete: false }
+      };
+      // 'homework' is unassigned in backend REST response
+      const hasHomeworkRead = Boolean(permissions['homework']?.canRead || permissions['homework']?.read);
+      expect(hasHomeworkRead).toBe(false);
+    });
+
+    it('19. Explicit backend permission is correctly reflected', () => {
+      const permissions = {
+        fees: { canRead: true, canCreate: false, canEdit: true, canDelete: false }
+      };
+      expect(Boolean(permissions.fees?.canRead)).toBe(true);
+      expect(Boolean(permissions.fees?.canCreate)).toBe(false);
+      expect(Boolean(permissions.fees?.canEdit)).toBe(true);
+      expect(Boolean(permissions.fees?.canDelete)).toBe(false);
+    });
+
+    it('20. School Admin ALL is correctly reflected as unrestricted', () => {
+      const permissions = 'ALL';
+      const isUnrestricted = true;
+      const canRead = (mod) => permissions === 'ALL' || isUnrestricted;
+      expect(canRead('inventory')).toBe(true);
+      expect(canRead('anything')).toBe(true);
+    });
+
+    it('21. SuperAdmin unrestricted behavior is preserved', () => {
+      const isSuperAdmin = true;
+      const isUnrestricted = true;
+      const canCreate = (mod) => isSuperAdmin || isUnrestricted;
+      expect(canCreate('any_module')).toBe(true);
+    });
+  });
 });

@@ -9,6 +9,8 @@ import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
 import { uploadCustomDataFiles } from '../../utils/cloudinary';
 import usePermissions from '../../hooks/usePermissions';
 import { sortClassesAscending } from '../../utils/classSorting';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function FeeManagement() {
   const { userProfile } = useAuth();
@@ -139,6 +141,8 @@ export default function FeeManagement() {
   useEffect(() => {
     loadInitialData();
   }, [loadInitialData]);
+
+  useLiveDataRefresh(loadInitialData, [loadInitialData], ['fees', 'classes', 'students']);
 
   // When a collection period is selected, auto-generate the fee name
   const handlePeriodChange = (periodId) => {

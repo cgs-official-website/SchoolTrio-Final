@@ -89,16 +89,17 @@ describe('Authentication Repository', () => {
 
   describe('findUserByEmail', () => {
     it('normalizes email to lowercase and trimmed before querying', async () => {
-      const mockFindUnique = vi.fn().mockResolvedValue({ id: sampleUserId, email: sampleEmail });
-      vi.spyOn(prisma.user, 'findUnique').mockImplementation(mockFindUnique);
+      const mockFindFirst = vi.fn().mockResolvedValue({ id: sampleUserId, email: sampleEmail });
+      vi.spyOn(prisma.user, 'findFirst').mockImplementation(mockFindFirst);
 
       await findUserByEmail('  Test@School.EDU  ');
 
-      expect(mockFindUnique).toHaveBeenCalledWith({
+      expect(mockFindFirst).toHaveBeenCalledWith({
         where: { email: 'test@school.edu' },
         select: SAFE_USER_SELECT
       });
     });
+
 
     it('returns null for invalid email input', async () => {
       expect(await findUserByEmail(null)).toBeNull();
@@ -524,8 +525,7 @@ describe('Authentication Repository', () => {
 
       it('falls back to verified email when UID does not match', async () => {
         const mockUser = { id: sampleUserId, email: sampleEmail, legacyFirestoreId: null };
-        vi.spyOn(prisma.user, 'findFirst').mockResolvedValue(null);
-        vi.spyOn(prisma.user, 'findUnique').mockResolvedValue(mockUser);
+        vi.spyOn(prisma.user, 'findFirst').mockResolvedValue(mockUser);
 
         const result = await findUserForFirebaseIdentity({
           firebaseUid: 'unmapped-uid',
@@ -533,7 +533,7 @@ describe('Authentication Repository', () => {
           emailVerified: true
         });
 
-        expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        expect(prisma.user.findFirst).toHaveBeenCalledWith({
           where: { email: 'test@school.edu' },
           select: SAFE_USER_SELECT
         });
@@ -541,8 +541,7 @@ describe('Authentication Repository', () => {
       });
 
       it('does not fallback to email if emailVerified is false', async () => {
-        vi.spyOn(prisma.user, 'findFirst').mockResolvedValue(null);
-        const mockFindUnique = vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({ id: sampleUserId });
+        const mockFindFirst = vi.spyOn(prisma.user, 'findFirst').mockResolvedValue(null);
 
         const result = await findUserForFirebaseIdentity({
           firebaseUid: 'unmapped-uid',
@@ -550,13 +549,12 @@ describe('Authentication Repository', () => {
           emailVerified: false
         });
 
-        expect(mockFindUnique).not.toHaveBeenCalled();
+        expect(mockFindFirst).toHaveBeenCalledTimes(1);
         expect(result).toEqual({ user: null, conflict: false });
       });
 
       it('ignores synthetic parent emails in fallback matching', async () => {
-        vi.spyOn(prisma.user, 'findFirst').mockResolvedValue(null);
-        const mockFindUnique = vi.spyOn(prisma.user, 'findUnique');
+        const mockFindFirst = vi.spyOn(prisma.user, 'findFirst').mockResolvedValue(null);
 
         const result1 = await findUserForFirebaseIdentity({
           firebaseUid: 'unmapped-uid',
@@ -579,15 +577,17 @@ describe('Authentication Repository', () => {
         });
         expect(result3).toEqual({ user: null, conflict: false });
 
-        expect(mockFindUnique).not.toHaveBeenCalled();
+        expect(mockFindFirst).toHaveBeenCalledTimes(3);
       });
+
 
       it('detects identity conflict when UID matches User A and email matches User B', async () => {
         const userA = { id: 'user-a-uuid', email: 'userA@school.edu', legacyFirestoreId: 'fb-uid-123' };
         const userB = { id: 'user-b-uuid', email: 'userB@school.edu', legacyFirestoreId: 'fb-uid-other' };
 
-        vi.spyOn(prisma.user, 'findFirst').mockResolvedValue(userA);
-        vi.spyOn(prisma.user, 'findUnique').mockResolvedValue(userB);
+        vi.spyOn(prisma.user, 'findFirst')
+          .mockResolvedValueOnce(userA)
+          .mockResolvedValueOnce(userB);
 
         const result = await findUserForFirebaseIdentity({
           firebaseUid: 'fb-uid-123',
@@ -600,7 +600,6 @@ describe('Authentication Repository', () => {
 
       it('returns null and conflict false when no user is found and no conflict exists', async () => {
         vi.spyOn(prisma.user, 'findFirst').mockResolvedValue(null);
-        vi.spyOn(prisma.user, 'findUnique').mockResolvedValue(null);
 
         const result = await findUserForFirebaseIdentity({
           firebaseUid: 'nonexistent-uid',
@@ -626,10 +625,10 @@ describe('Authentication Repository', () => {
 
       it('finds candidate user by direct email', async () => {
         const mockUser = { id: 'user-1', email: 'teacher@school.edu' };
-        vi.spyOn(prisma.user, 'findUnique').mockResolvedValue(mockUser);
+        vi.spyOn(prisma.user, 'findMany').mockResolvedValue([mockUser]);
 
         const candidates = await findCandidateUsersByIdentifier('teacher@school.edu');
-        expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        expect(prisma.user.findMany).toHaveBeenCalledWith({
           where: { email: 'teacher@school.edu' },
           select: SAFE_USER_SELECT
         });
@@ -638,7 +637,6 @@ describe('Authentication Repository', () => {
 
       it('finds candidate user by phone number', async () => {
         const mockUser = { id: 'user-2', email: 'parent@school.edu' };
-        vi.spyOn(prisma.user, 'findUnique').mockResolvedValue(null);
         vi.spyOn(prisma.user, 'findMany').mockResolvedValue([mockUser]);
         vi.spyOn(basePrisma.student, 'findMany').mockResolvedValue([]);
 
@@ -649,7 +647,7 @@ describe('Authentication Repository', () => {
 
       it('finds candidate user by admission number via student parents link', async () => {
         const mockParentUser = { id: 'user-parent-1', email: 'parent1@school.edu' };
-        vi.spyOn(prisma.user, 'findUnique').mockResolvedValue(null);
+        vi.spyOn(prisma.user, 'findMany').mockResolvedValue([]);
         vi.spyOn(basePrisma.student, 'findMany').mockResolvedValue([
           {
             id: 'student-1',
@@ -668,6 +666,7 @@ describe('Authentication Repository', () => {
         expect(basePrisma.student.findMany).toHaveBeenCalled();
         expect(candidates).toEqual([mockParentUser]);
       });
+
     });
 
   });

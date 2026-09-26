@@ -157,19 +157,8 @@ export const AuthProvider = ({ children }) => {
     }
 
     // 2. Institutional Login (SuperAdmin / Staff / Admin / Teacher)
-    // Try native REST login first (POST /api/v1/auth/login).
-    // Native users (e.g., SuperAdmin) and migrated Argon2id accounts succeed immediately via REST.
-    // If native login fails due to locked placeholder password (PASSWORD_NOT_SET for unmigrated Firebase users), fall back to _hybridBridgeLogin.
-    try {
-      return await _nativeInstitutionalLogin(identifier, password);
-    } catch (err) {
-      const errCode = err.response?.data?.error?.code || err.code;
-      const isLockedPassword = errCode === 'PASSWORD_NOT_SET' || err.message?.includes('Password is not set');
-      if (isLockedPassword) {
-        return await _hybridBridgeLogin(identifier, password);
-      }
-      throw err;
-    }
+    // 100% Native REST JWT authentication (POST /api/v1/auth/login).
+    return await _nativeInstitutionalLogin(identifier, password);
   }, []);
 
   /**
@@ -185,15 +174,6 @@ export const AuthProvider = ({ children }) => {
       clearAccessToken();
       setCurrentUser(null);
       setUserProfile(null);
-      try {
-        const { auth } = await import('../firebase/config');
-        const { signOut } = await import('firebase/auth');
-        if (auth?.currentUser) {
-          await signOut(auth);
-        }
-      } catch (signOutErr) {
-        // Safe silence if Firebase is not active
-      }
       try {
         CacheService?.clearTenant?.();
       } catch {

@@ -78,3 +78,19 @@ export async function deleteSubject(req, res, next) {
     return next(error);
   }
 }
+
+/**
+ * Bulk imports subjects.
+ * POST /api/v1/subjects/bulk-import
+ */
+export async function bulkImportSubjects(req, res, next) {
+  try {
+    const schoolId = req.tenant.schoolId;
+    const actor = req.user || req.auth;
+    const result = await subjectService.bulkImportSubjects(schoolId, req.body.rows, actor);
+    return ApiResponse.success(res, result, 'Subjects bulk import completed successfully', HTTP_STATUS.CREATED);
+  } catch (error) {
+    return next(error);
+  }
+}
+

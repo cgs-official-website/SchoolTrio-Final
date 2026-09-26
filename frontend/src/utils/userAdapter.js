@@ -53,10 +53,15 @@ export const normalizeAuthUser = (backendUser) => {
   const roleAssignments = Array.isArray(backendUser.roleAssignments) ? backendUser.roleAssignments : [];
   const assignedRoles = roleAssignments.map(ra => ra.schoolRole?.name).filter(Boolean);
   const primaryRoleAssignment = roleAssignments[0]?.schoolRole;
+  const assignedLoginPanel = roleAssignments.find(ra => ra.schoolRole?.loginPanel)?.schoolRole?.loginPanel || primaryRoleAssignment?.loginPanel;
 
-  let loginPanel = primaryRoleAssignment?.loginPanel || null;
+  const isAdminSystemRole = ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TENANT_ADMIN', 'ADMIN', 'PRINCIPAL'].includes(rawRole);
+
+  let loginPanel = assignedLoginPanel || null;
+
+  // If no explicit loginPanel from assigned schoolRole, default based on role & systemRole
   if (!loginPanel) {
-    if (role === 'admin' || role === 'superadmin') {
+    if (role === 'admin' || role === 'superadmin' || isAdminSystemRole) {
       loginPanel = 'admin';
     } else if (role === 'teacher' || role === 'staff') {
       loginPanel = 'teacher';
@@ -83,6 +88,12 @@ export const normalizeAuthUser = (backendUser) => {
     schoolName: backendUser.school?.name || null,
     schoolCode: backendUser.school?.code || null,
     schoolStatus: backendUser.school?.status || null,
+    assignedClassId: backendUser.staffProfile?.assignedClassId || null,
+    assignedClass: backendUser.staffProfile?.assignedClass || null,
+    employeeId: backendUser.staffProfile?.employeeId || null,
+    designation: backendUser.staffProfile?.designation || null,
+    phone: backendUser.staffProfile?.phone || null,
+    customData: backendUser.staffProfile?.customData || null,
     tokenVersion: backendUser.tokenVersion,
     isActive: backendUser.isActive !== false,
     // Optional sub-profiles from backend

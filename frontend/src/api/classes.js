@@ -193,6 +193,20 @@ export async function deleteClassCategory(id) {
   });
 }
 
+/**
+ * Bulk imports classes, sections, and categories in a single request.
+ * Calls POST /api/v1/classes/bulk-import.
+ *
+ * @param {Object} data - Payload containing `{ rows: Array<{ className, section, category }> }`
+ * @returns {Promise<{ success: boolean, data: Object, message?: string }>}
+ */
+export async function bulkImportClasses(data) {
+  return apiClient('/api/v1/classes/bulk-import', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
 export const classesApi = {
   listClasses,
   getClass,
@@ -205,7 +219,9 @@ export const classesApi = {
   deleteSection,
   listClassCategories,
   createClassCategory,
-  deleteClassCategory
+  deleteClassCategory,
+  bulkImportClasses
 };
 
 export default classesApi;
+

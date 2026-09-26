@@ -23,6 +23,16 @@ router.get(
   subjectController.listSubjects
 );
 
+// Bulk import subjects
+router.post(
+  '/bulk-import',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('subjects', 'create'),
+  validate(subjectSchemas.bulkImportSubjectsSchema),
+  subjectController.bulkImportSubjects
+);
+
 // Get single subject by ID
 router.get(
   '/:id',

@@ -134,6 +134,7 @@ async function resolveTeacherProfile(schoolId, actor, tx) {
   }
 
   const profile = await timetableRepository.findStaffProfileByUserId(schoolId, userId, tx);
+
   if (!profile) {
     throw new ForbiddenError('Staff profile not found for authenticated teacher');
   }

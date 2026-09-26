@@ -6,7 +6,7 @@ import { LuUser, LuMapPin, LuBriefcase, LuCreditCard, LuSave, LuBookOpen, LuShie
 import { normalizeGender } from '../../utils/genderUtils';
 
 export default function ProfileSetup() {
-  const { currentUser } = useAuth();
+  const { currentUser, updateProfileData } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [staffId, setStaffId] = useState(null);
@@ -64,21 +64,21 @@ export default function ProfileSetup() {
           setStaffId(data.id);
         }
 
-        const quals = (typeof data.qualifications === 'object' && data.qualifications !== null)
-          ? data.qualifications
-          : {};
-        const exp = (typeof data.experience === 'object' && data.experience !== null)
-          ? data.experience
-          : {};
-        const docs = (typeof data.documents === 'object' && data.documents !== null)
-          ? data.documents
-          : {};
-        const fin = (typeof data.financial === 'object' && data.financial !== null)
-          ? data.financial
-          : {};
         const custom = (typeof data.customData === 'object' && data.customData !== null)
           ? data.customData
           : {};
+        const quals = (typeof data.qualifications === 'object' && data.qualifications !== null)
+          ? data.qualifications
+          : ((typeof custom.qualifications === 'object' && custom.qualifications !== null) ? custom.qualifications : {});
+        const exp = (typeof data.experience === 'object' && data.experience !== null)
+          ? data.experience
+          : ((typeof custom.experience === 'object' && custom.experience !== null) ? custom.experience : {});
+        const docs = (typeof data.documents === 'object' && data.documents !== null)
+          ? data.documents
+          : ((typeof custom.documents === 'object' && custom.documents !== null) ? custom.documents : {});
+        const fin = (typeof data.financial === 'object' && data.financial !== null)
+          ? data.financial
+          : ((typeof custom.financial === 'object' && custom.financial !== null) ? custom.financial : {});
 
         setFormData(prev => ({
           ...prev,
@@ -170,6 +170,7 @@ export default function ProfileSetup() {
         },
         customData: {
           fatherGuardianName: formData.fatherGuardianName || '',
+          fatherName: formData.fatherGuardianName || '',
           financial: {
             bankAccountNumber: formData.bankAccountNumber || '',
             bankName: formData.bankName || '',
@@ -188,6 +189,9 @@ export default function ProfileSetup() {
       };
 
       await staffApi.updateStaffSelf(payload);
+      if (updateProfileData) {
+        await updateProfileData();
+      }
       toast.success("Profile updated successfully!");
     } catch (error) {
       console.error("Error updating profile", error);

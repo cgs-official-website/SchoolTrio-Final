@@ -78,3 +78,19 @@ export async function deleteStudent(req, res, next) {
     return next(error);
   }
 }
+
+/**
+ * High-performance batch bulk import for students.
+ * POST /api/v1/students/bulk-import
+ */
+export async function bulkImportStudents(req, res, next) {
+  try {
+    const schoolId = req.tenant.schoolId;
+    const actor = req.user || req.auth;
+    const result = await studentService.bulkImportStudents(schoolId, req.body.students, actor);
+    return ApiResponse.success(res, result, 'Bulk student import processed successfully', HTTP_STATUS.CREATED);
+  } catch (error) {
+    return next(error);
+  }
+}
+

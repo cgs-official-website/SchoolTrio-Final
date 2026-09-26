@@ -31,6 +31,7 @@ export const STAFF_SELECT_CONFIG = {
       email: true,
       systemRole: true,
       isActive: true,
+      passwordHash: true,
       tokenVersion: true,
       roleAssignments: {
         select: {

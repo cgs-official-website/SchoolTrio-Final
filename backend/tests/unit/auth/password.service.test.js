@@ -91,16 +91,12 @@ describe('Password Service & Security Policy', () => {
   });
 
   describe('hashPassword', () => {
-    it('successfully hashes a valid password using Argon2id', async () => {
+    it('successfully hashes a valid password using bcrypt', async () => {
       // Use lower cost parameters for fast unit test execution
-      const hash = await hashPassword('ValidPassword123', {
-        timeCost: 1,
-        memoryCost: 4096,
-        parallelism: 1
-      });
+      const hash = await hashPassword('ValidPassword123', 4);
 
       expect(typeof hash).toBe('string');
-      expect(hash.startsWith('$argon2id$')).toBe(true);
+      expect(hash.startsWith('$2a$') || hash.startsWith('$2b$')).toBe(true);
     });
 
     it('throws ValidationError if password fails policy', async () => {

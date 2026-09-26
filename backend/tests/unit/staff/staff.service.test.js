@@ -16,10 +16,12 @@ vi.mock('../../../src/database/prisma.client.js', () => {
   const mockPrisma = {
     user: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn()
     },
+
     schoolRole: {
       findFirst: vi.fn()
     },
@@ -27,8 +29,10 @@ vi.mock('../../../src/database/prisma.client.js', () => {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       count: vi.fn(),
-      findMany: vi.fn()
+      findMany: vi.fn(),
+      updateMany: vi.fn()
     },
+
     subject: {
       findMany: vi.fn()
     },
@@ -117,6 +121,7 @@ describe('Unit: Staff Service Layer — Phase 4C.4', () => {
     staffRepository.countStaffDependencies.mockResolvedValue({ total: 0, lessonPlans: 0, payroll: 0, chatRooms: 0, ptms: 0, timetables: 0 });
     auditRepository.createAuditLog.mockResolvedValue({ id: 'audit-id' });
     prisma.user.findUnique.mockResolvedValue(null);
+    prisma.user.findFirst.mockResolvedValue(null);
     prisma.schoolRole.findFirst.mockResolvedValue({ id: ROLE_ID, name: 'Staffs' });
     prisma.class.findFirst.mockResolvedValue({ id: CLASS_ID, name: 'Grade 10' });
     prisma.class.findUnique.mockResolvedValue({ id: CLASS_ID, classTeacherId: null });
@@ -219,13 +224,14 @@ describe('Unit: Staff Service Layer — Phase 4C.4', () => {
     });
 
     it('rejects duplicate email with ConflictError', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'existing-id', email: 'taken@school.edu' });
+      prisma.user.findFirst.mockResolvedValue({ id: 'existing-id', email: 'taken@school.edu' });
 
       await expect(staffService.createStaff(SCHOOL_ID, {
         firstName: 'Alex',
         email: 'taken@school.edu'
       }, ACTOR_ADMIN)).rejects.toThrow(ConflictError);
     });
+
 
     it('rejects duplicate employeeId in current school with ConflictError', async () => {
       staffRepository.findStaffByEmployeeId.mockResolvedValue({ id: 'another-staff', employeeId: 'EMP-001' });

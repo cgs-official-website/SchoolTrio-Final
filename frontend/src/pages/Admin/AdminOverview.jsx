@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { getInvoiceStats } from '../../api/invoices';
 import { notificationsApi } from '../../api/notifications';
 import { calendarApi } from '../../api/calendar';
@@ -40,6 +42,7 @@ import {
 
 export default function AdminOverview() {
   const { userProfile } = useAuth();
+  const navigate = useNavigate();
   const schoolId = userProfile?.schoolId;
 
   const hasModule = (moduleKey) => {
@@ -531,7 +534,7 @@ export default function AdminOverview() {
             </div>
 
             <div className="mt-8 pt-6 border-t border-white/10">
-              <button onClick={() => window.location.href = '/admin/setup'} className="w-full rounded-lg bg-white/10 hover:bg-white/20 px-4 py-2.5 text-sm font-semibold text-white transition-colors">
+              <button onClick={() => navigate('/admin/setup')} className="w-full rounded-lg bg-white/10 hover:bg-white/20 px-4 py-2.5 text-sm font-semibold text-white transition-colors">
                 Configure Environment
               </button>
             </div>
@@ -548,25 +551,25 @@ export default function AdminOverview() {
             </div>
             <div className="p-6 flex-1 flex flex-col justify-center">
               <div className="grid grid-cols-2 gap-4 h-full">
-                <button onClick={() => window.location.href = '/admin/students'} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
+                <button onClick={() => navigate('/admin/students')} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
                   <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                     <UserPlus size={20} />
                   </div>
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 text-center">Add Student</span>
                 </button>
-                <button onClick={() => window.location.href = '/admin/staff'} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
+                <button onClick={() => navigate('/admin/staff')} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
                   <div className="w-10 h-10 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                     <Users size={20} />
                   </div>
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 text-center">Add Staff</span>
                 </button>
-                <button onClick={() => window.location.href = '/admin/attendance'} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
+                <button onClick={() => navigate('/admin/attendance')} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
                   <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                     <ClipboardCheck size={20} />
                   </div>
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 text-center">Mark Attendance</span>
                 </button>
-                <button onClick={() => window.location.href = '/admin/notices'} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
+                <button onClick={() => navigate('/admin/notices')} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
                   <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                     <FileEdit size={20} />
                   </div>

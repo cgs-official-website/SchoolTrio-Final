@@ -3,30 +3,38 @@ import { useAuth } from '../context/AuthContext';
 import { authApi } from '../api/auth';
 import { useNavigate } from 'react-router-dom';
 import { LuClock as Clock, LuRefreshCcw as RefreshCcw, LuLogOut as LogOut } from 'react-icons/lu';
+import toast from 'react-hot-toast';
 
 export default function PendingApproval() {
   const { logoutUser } = useAuth();
   const [status, setStatus] = useState('pending');
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        const res = await authApi.getMe();
-        const school = res?.data?.user?.school || res?.data?.school;
-        const currentStatus = school?.status || 'pending';
-        setStatus(currentStatus);
-        const normalized = String(currentStatus).toLowerCase();
-        if (normalized === 'approved' || normalized === 'active') {
-          navigate('/admin');
-        }
-      } catch (error) {
-        console.error("Error checking status:", error);
-      }
-    };
+  const [checking, setChecking] = useState(false);
 
+  const checkStatus = async () => {
+    setChecking(true);
+    try {
+      const res = await authApi.getMe();
+      const school = res?.data?.user?.school || res?.data?.school;
+      const currentStatus = school?.status || 'pending';
+      setStatus(currentStatus);
+      const normalized = String(currentStatus).toLowerCase();
+      if (normalized === 'approved' || normalized === 'active') {
+        navigate('/admin');
+      } else {
+        toast.success("Status checked dynamically!");
+      }
+    } catch (error) {
+      console.error("Error checking status:", error);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  useEffect(() => {
     checkStatus();
-  }, [navigate]);
+  }, []);
 
   const handleLogout = async () => {
     await logoutUser();
@@ -55,11 +63,12 @@ export default function PendingApproval() {
 
         <div className="flex gap-4 justify-center">
           <button 
-            onClick={() => window.location.reload()}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors font-medium"
+            onClick={checkStatus}
+            disabled={checking}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors font-medium disabled:opacity-50"
           >
-            <RefreshCcw size={18} />
-            Refresh
+            <RefreshCcw size={18} className={checking ? "animate-spin" : ""} />
+            {checking ? 'Checking...' : 'Check Status'}
           </button>
           <button 
             onClick={handleLogout}

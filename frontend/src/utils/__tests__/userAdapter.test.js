@@ -39,6 +39,12 @@ describe('userAdapter (normalizeAuthUser)', () => {
       schoolName: 'Oakridge International',
       schoolCode: 'SchoolS024',
       schoolStatus: 'ACTIVE',
+      assignedClassId: null,
+      assignedClass: null,
+      employeeId: null,
+      designation: null,
+      phone: null,
+      customData: null,
       tokenVersion: 1,
       isActive: true,
       staffProfile: null,
@@ -94,5 +100,49 @@ describe('userAdapter (normalizeAuthUser)', () => {
 
     const normalized = normalizeAuthUser(backendUser);
     expect(normalized.role).toBe('superadmin');
+  });
+
+  it('preserves loginPanel from assigned schoolRole when explicitly configured in RBAC', () => {
+    const backendUser = {
+      id: 'uuid-5',
+      email: 'customteacher@school.com',
+      systemRole: 'TEACHER',
+      schoolId: 'sch-1',
+      staffProfile: { name: 'Custom Teacher' },
+      roleAssignments: [
+        {
+          schoolRole: {
+            name: 'Academic Director',
+            loginPanel: 'admin'
+          }
+        }
+      ]
+    };
+
+    const normalized = normalizeAuthUser(backendUser);
+    expect(normalized.role).toBe('teacher');
+    expect(normalized.loginPanel).toBe('admin');
+  });
+
+  it('defaults loginPanel to teacher for teaching staff without explicit loginPanel on role', () => {
+    const backendUser = {
+      id: 'uuid-6',
+      email: 'staffteacher@school.com',
+      systemRole: 'STAFF',
+      schoolId: 'sch-1',
+      staffProfile: { name: 'Teaching Staff', staffType: 'teaching' },
+      roleAssignments: [
+        {
+          schoolRole: {
+            name: 'Class Incharge'
+            // loginPanel omitted or teacher
+          }
+        }
+      ]
+    };
+
+    const normalized = normalizeAuthUser(backendUser);
+    expect(normalized.role).toBe('teacher');
+    expect(normalized.loginPanel).toBe('teacher');
   });
 });

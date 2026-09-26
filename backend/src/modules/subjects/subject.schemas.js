@@ -76,3 +76,15 @@ export const updateSubjectSchema = {
       'At least one field (name, code, or credits) must be provided for update'
     )
 };
+
+export const bulkImportSubjectsSchema = {
+  body: z.object({
+    rows: z.array(
+      z.object({
+        name: z.string().trim().min(1, 'Subject name is required'),
+        code: z.string().trim().optional().nullable()
+      })
+    ).min(1, 'At least one subject row is required for import')
+  })
+};
+

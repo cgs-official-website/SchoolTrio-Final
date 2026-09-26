@@ -16,7 +16,7 @@ export const getJwtSecret = () => {
   }
 
   if (env.isTest || env.isDevelopment) {
-    return env.JWT_SECRET || 'dev-test-fallback-jwt-secret-minimum-32-chars-012345';
+    return (env.JWT_SECRET && env.JWT_SECRET.length >= 32 ? env.JWT_SECRET : null) || 'dev-test-fallback-jwt-secret-minimum-32-chars-012345';
   }
 
   throw new Error('JWT_SECRET must be configured with at least 32 characters in production');

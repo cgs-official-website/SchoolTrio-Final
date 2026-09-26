@@ -27,8 +27,8 @@ export const envSchema = z.object({
   // Deferred feature secrets for Phase 4B+ (Optional in Phase 4A)
   JWT_SECRET: z.string().optional(),
   JWT_REFRESH_SECRET: z.string().optional(),
-  JWT_EXPIRES_IN: z.string().default('15m'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+  JWT_EXPIRES_IN: z.string().default('7d'),
+  JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
   ENCRYPTION_MASTER_KEY: z.string().optional(),
   ZUNA_SUPPORT_SERVICE_ACCOUNT: z.string().optional(),
 

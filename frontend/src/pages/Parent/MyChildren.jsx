@@ -19,6 +19,7 @@ import {
   LuUnlink as UnlinkIcon
 } from 'react-icons/lu';
 import { normalizeGender } from '../../utils/genderUtils';
+import { formatDate } from '../../utils/dateUtils';
 import toast from 'react-hot-toast';
 
 const getStoredActiveStudentId = () => {
@@ -498,7 +499,7 @@ export default function MyChildren() {
                       <div className="flex justify-between items-center">
                         <span className="text-slate-400 dark:text-slate-500 font-medium">Date of Birth</span>
                         <span className="font-bold text-slate-800 dark:text-slate-100">
-                          {child.dob ? new Date(child.dob).toLocaleDateString('en-GB') : 'N/A'}
+                          {formatDate(child.dob)}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
@@ -614,7 +615,7 @@ export default function MyChildren() {
                     <div className="flex justify-between items-center">
                       <span className="text-slate-400 dark:text-slate-500 font-medium">Date of Birth</span>
                       <span className="font-semibold text-slate-800 dark:text-slate-100">
-                        {child.dob ? new Date(child.dob).toLocaleDateString('en-GB') : 'N/A'}
+                        {formatDate(child.dob)}
                       </span>
                     </div>
                     <div className="flex justify-between items-center">

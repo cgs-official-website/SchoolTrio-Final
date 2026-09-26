@@ -188,15 +188,34 @@ export async function findSubjectByCode(schoolId, code, tx = prisma) {
  * @returns {Promise<Object>}
  */
 export async function createSubject(data, tx = prisma) {
-  return tx.subject.create({
+  const created = await tx.subject.create({
     data: {
       schoolId: data.schoolId,
       name: data.name,
       code: data.code || null,
       credits: data.credits !== undefined ? data.credits : null
     },
-    select: SUBJECT_SELECT_CONFIG
+    select: {
+      id: true,
+      schoolId: true,
+      name: true,
+      code: true,
+      credits: true,
+      createdAt: true,
+      updatedAt: true
+    }
   });
+
+  return {
+    ...created,
+    _count: {
+      timetablePeriods: 0,
+      lessonPlans: 0,
+      academicResources: 0,
+      assessments: 0,
+      homeworkAssignments: 0
+    }
+  };
 }
 
 /**

@@ -18,8 +18,10 @@ vi.mock('../../../src/database/prisma.client.js', () => {
     },
     user: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn()
     },
+
     parentProfile: {
       create: vi.fn()
     },
@@ -83,7 +85,9 @@ describe('Unit: Parent Service Layer — Phase 4C.3-B', () => {
     prisma.student.findFirst.mockResolvedValue(mockStudent);
     prisma.school.findUnique.mockResolvedValue({ code: 'SchoolS024' });
     prisma.user.findUnique.mockResolvedValue(null);
+    prisma.user.findFirst.mockResolvedValue(null);
   });
+
 
   describe('1. listParents', () => {
     it('returns paginated parents and metadata', async () => {
@@ -181,9 +185,10 @@ describe('Unit: Parent Service Layer — Phase 4C.3-B', () => {
     });
 
     it('rejects email change if new email conflicts globally with another user', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'another-user-id', email: 'taken@example.com' });
+      prisma.user.findFirst.mockResolvedValue({ id: 'another-user-id', email: 'taken@example.com' });
 
       await expect(parentService.updateParent(
+
         SCHOOL_ID,
         PARENT_ID,
         { email: 'taken@example.com' },

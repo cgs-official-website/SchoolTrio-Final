@@ -114,7 +114,12 @@ export async function findRoleByName(schoolId, name, tx = prisma) {
  * @returns {Promise<Object>}
  */
 export async function createRoleWithPermissions(data, tx = prisma) {
-  const { schoolId, name, slug, loginPanel = 'admin', isSystemDefault = false, permissions = [] } = data;
+  const { schoolId, name, slug, loginPanel, isSystemDefault = false, permissions = [] } = data;
+  const inferredPanel = loginPanel || (
+    /teacher|teaching|instructor|tutor|incharge|educator|faculty/i.test(`${name || ''} ${slug || ''}`)
+      ? 'teacher'
+      : 'admin'
+  );
 
   const execute = async (client) => {
     const createdRole = await client.schoolRole.create({
@@ -122,7 +127,7 @@ export async function createRoleWithPermissions(data, tx = prisma) {
         schoolId,
         name,
         slug,
-        loginPanel,
+        loginPanel: inferredPanel,
         isSystemDefault
       }
     });

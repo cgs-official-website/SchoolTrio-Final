@@ -23,6 +23,16 @@ router.get(
   classController.listClasses
 );
 
+// Bulk import classes
+router.post(
+  '/bulk-import',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('classes', 'create'),
+  validate(classSchemas.bulkImportClassesSchema),
+  classController.bulkImportClasses
+);
+
 // Get single class by ID
 router.get(
   '/:id',

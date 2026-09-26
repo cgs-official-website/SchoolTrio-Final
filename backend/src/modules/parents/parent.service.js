@@ -142,12 +142,12 @@ export async function updateParent(schoolId, parentId, data, actor = null) {
     const newEmail = data.email ? data.email.trim().toLowerCase() : null;
     if (newEmail !== existingParent.email) {
       if (newEmail) {
-        // Check global user email conflict
-        const conflictUser = await prisma.user.findUnique({
-          where: { email: newEmail }
+        // Check tenant user email conflict
+        const conflictUser = await prisma.user.findFirst({
+          where: { schoolId, email: newEmail, NOT: { id: existingParent.userId } }
         });
-        if (conflictUser && conflictUser.id !== existingParent.userId) {
-          throw new ConflictError('Email address is already registered');
+        if (conflictUser) {
+          throw new ConflictError('Email address is already registered in this school');
         }
         userUpdateData.email = newEmail;
       }
@@ -356,11 +356,11 @@ export async function linkParentToStudent(schoolId, studentId, data, actor = nul
   let userEmail;
   if (email) {
     userEmail = email;
-    const existingUser = await prisma.user.findUnique({
-      where: { email: userEmail }
+    const existingUser = await prisma.user.findFirst({
+      where: { schoolId, email: userEmail }
     });
     if (existingUser) {
-      throw new ConflictError('Email address is already in use');
+      throw new ConflictError('Email address is already in use in this school');
     }
   } else {
     const randomHex = crypto.randomBytes(4).toString('hex');

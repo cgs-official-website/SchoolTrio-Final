@@ -21,6 +21,8 @@ import { RedisCacheService } from '../../services/redis-cache.service.js';
 export function serializeStaff(staff, hasHRPrivilege = false) {
   if (!staff) return null;
 
+  const isRegistered = Boolean(staff.user && typeof staff.user.passwordHash === 'string' && !staff.user.passwordHash.startsWith('!'));
+
   const serialized = {
     id: staff.id,
     schoolId: staff.schoolId,
@@ -32,6 +34,7 @@ export function serializeStaff(staff, hasHRPrivilege = false) {
     phone: staff.phone,
     email: staff.email,
     status: staff.status,
+    isRegistered,
     assignedClassId: staff.assignedClassId,
     assignedClass: staff.assignedClass || null,
     headedClasses: staff.headedClasses || [],
@@ -42,6 +45,7 @@ export function serializeStaff(staff, hasHRPrivilege = false) {
       email: staff.user.email,
       systemRole: staff.user.systemRole,
       isActive: staff.user.isActive,
+      isRegistered,
       roleAssignments: staff.user.roleAssignments || []
     } : null,
     assignments: staff.customData?.assignments || {
@@ -111,7 +115,7 @@ export async function listStaff(schoolId, query = {}, requester = null) {
   }
 
   const page = Math.max(1, parseInt(query.page, 10) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(query.limit, 10) || 20));
+  const limit = Math.min(1000, Math.max(1, parseInt(query.limit, 10) || 20));
   const skip = (page - 1) * limit;
 
   const options = {
@@ -167,6 +171,50 @@ export async function getStaffById(schoolId, id, requester = null) {
 /**
  * Self-service retrieval for logged-in staff member.
  */
+/**
+ * Ensures a staff profile exists for the user, auto-linking or auto-creating if needed.
+ */
+export async function ensureStaffProfile(schoolId, userId) {
+  let staff = await staffRepository.findStaffByUserId(schoolId, userId);
+  if (staff) return staff;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, systemRole: true }
+  });
+
+  if (!user) {
+    throw new NotFoundError('User account');
+  }
+
+  const userEmail = user.email ? user.email.trim().toLowerCase() : null;
+  if (userEmail) {
+    const staffByEmail = await staffRepository.findStaffByEmail(schoolId, userEmail);
+    if (staffByEmail) {
+      await prisma.staffProfile.update({
+        where: { schoolId_id: { schoolId, id: staffByEmail.id } },
+        data: { userId }
+      });
+      return staffRepository.findStaffById(schoolId, staffByEmail.id);
+    }
+  }
+
+  // Auto-provision staff profile if none exists for this user
+  const created = await staffRepository.createStaffProfile({
+    schoolId,
+    userId,
+    name: userEmail ? userEmail.split('@')[0] : 'Staff Member',
+    email: userEmail || `${userId.slice(0, 8)}@school.local`,
+    staffType: user.systemRole === SYSTEM_ROLES.TEACHER ? 'teaching' : 'non-teaching',
+    status: 'Active'
+  });
+
+  return staffRepository.findStaffById(schoolId, created.id);
+}
+
+/**
+ * Self-service retrieval for logged-in staff member.
+ */
 export async function getStaffMe(schoolId, userId) {
   if (!schoolId) {
     throw new TenantAccessError('Tenant context required');
@@ -175,12 +223,7 @@ export async function getStaffMe(schoolId, userId) {
     throw new ValidationError('User context required');
   }
 
-  const staff = await staffRepository.findStaffByUserId(schoolId, userId);
-  if (!staff) {
-    throw new NotFoundError('Staff profile');
-  }
-
-  // Self-service view includes own HR/financial fields
+  const staff = await ensureStaffProfile(schoolId, userId);
   return serializeStaff(staff, true);
 }
 
@@ -202,12 +245,12 @@ export async function createStaff(schoolId, data, actor = null) {
   // 1. Determine System Role
   const systemRole = staffType === 'teaching' ? SYSTEM_ROLES.TEACHER : SYSTEM_ROLES.STAFF;
 
-  // 2. Validate Global Email Uniqueness
-  const existingUser = await prisma.user.findUnique({
-    where: { email }
+  // 2. Validate Tenant Email Uniqueness
+  const existingUser = await prisma.user.findFirst({
+    where: { schoolId, email }
   });
   if (existingUser) {
-    throw new ConflictError('Email address is already registered');
+    throw new ConflictError('Email address is already registered in this school');
   }
 
   // 3. Validate Tenant Employee ID Uniqueness
@@ -281,8 +324,8 @@ export async function createStaff(schoolId, data, actor = null) {
     financial: data.financial || null,
     documents: data.documents || null,
     assignments: data.assignments || {
-      assignedSubjectIds: [],
-      subjectClassIds: []
+      assignedSubjectIds: data.assignedSubjectIds || [],
+      subjectClassIds: data.subjectClassIds || []
     }
   };
 
@@ -483,11 +526,11 @@ export async function updateStaff(schoolId, id, data, actor = null) {
   if (data.email !== undefined) {
     const newEmail = data.email.trim().toLowerCase();
     if (newEmail !== existingStaff.email) {
-      const conflictUser = await prisma.user.findUnique({
-        where: { email: newEmail }
+      const conflictUser = await prisma.user.findFirst({
+        where: { schoolId, email: newEmail, NOT: { id: existingStaff.userId } }
       });
-      if (conflictUser && conflictUser.id !== existingStaff.userId) {
-        throw new ConflictError('Email address is already registered');
+      if (conflictUser) {
+        throw new ConflictError('Email address is already registered in this school');
       }
       modifiedFields.email = { old: existingStaff.email, new: newEmail };
       profileUpdateData.email = newEmail;
@@ -571,19 +614,20 @@ export async function updateStaff(schoolId, id, data, actor = null) {
   // 10. Class Teacher Assignment
   if (data.assignedClassId !== undefined && !classAssignmentUpdate) {
     const newClassId = data.assignedClassId || null;
-    if (newClassId !== existingStaff.assignedClassId) {
-      if (newClassId) {
-        const cls = await prisma.class.findFirst({
-          where: { id: newClassId, schoolId }
-        });
-        if (!cls) {
-          throw new NotFoundError('Class');
-        }
-        classAssignmentUpdate = { assignClassId: newClassId };
-      } else {
-        classAssignmentUpdate = { unassign: true };
+    if (newClassId) {
+      const cls = await prisma.class.findFirst({
+        where: { id: newClassId, schoolId }
+      });
+      if (!cls) {
+        throw new NotFoundError('Class');
       }
-      modifiedFields.assignedClassId = { old: existingStaff.assignedClassId, new: newClassId };
+      if (newClassId !== existingStaff.assignedClassId || cls.classTeacherId !== id) {
+        classAssignmentUpdate = { assignClassId: newClassId };
+        modifiedFields.assignedClassId = { old: existingStaff.assignedClassId, new: newClassId };
+      }
+    } else if (existingStaff.assignedClassId) {
+      classAssignmentUpdate = { unassign: true };
+      modifiedFields.assignedClassId = { old: existingStaff.assignedClassId, new: null };
     }
   }
 
@@ -792,10 +836,7 @@ export async function updateStaffSelf(schoolId, userId, data) {
     throw new TenantAccessError('Tenant context required');
   }
 
-  const existingStaff = await staffRepository.findStaffByUserId(schoolId, userId);
-  if (!existingStaff) {
-    throw new NotFoundError('Staff profile');
-  }
+  const existingStaff = await ensureStaffProfile(schoolId, userId);
 
   // Safe subset allowed for self-service
   const allowedData = {
@@ -821,55 +862,76 @@ export async function updateStaffSelf(schoolId, userId, data) {
   });
 }
 
-/**
- * Hard deletes a staff member ONLY if 0 historical dependencies and 0 class assignments exist.
- */
 export async function deleteStaff(schoolId, id, actor = null) {
   if (!schoolId) {
     throw new TenantAccessError('Tenant context required to delete staff');
   }
 
-  await prisma.$transaction(async (tx) => {
-    // 1. Acquire row lock on StaffProfile
-    const lockedStaff = await staffRepository.findStaffByIdForUpdate(schoolId, id, tx);
-    if (!lockedStaff) {
+  try {
+    await prisma.$transaction(async (tx) => {
+      // 1. Acquire row lock on StaffProfile
+      const lockedStaff = await staffRepository.findStaffByIdForUpdate(schoolId, id, tx);
+      if (!lockedStaff) {
+        throw new NotFoundError('Staff profile');
+      }
+
+      const userId = lockedStaff.userId || lockedStaff.user_id;
+      const assignedClassId = lockedStaff.assignedClassId || lockedStaff.assigned_class_id;
+
+      // 2. Check active class assignments
+      if (assignedClassId) {
+        throw new ConflictError('Cannot delete staff member who is currently assigned to a class. Please unassign or deactivate first.');
+      }
+
+      const headedClasses = await tx.class.count({
+        where: { schoolId, classTeacherId: id }
+      });
+      if (headedClasses > 0) {
+        throw new ConflictError('Cannot delete staff member who is currently heading one or more classes. Please unassign or deactivate first.');
+      }
+
+      // 3. Check historical dependencies
+      const deps = await staffRepository.countStaffDependencies(schoolId, id, tx);
+      if (deps.total > 0) {
+        const details = [];
+        if (deps.lessonPlans > 0) details.push(`${deps.lessonPlans} lesson plan(s)`);
+        if (deps.payroll > 0) details.push(`${deps.payroll} payroll record(s)`);
+        if (deps.chatRooms > 0) details.push(`${deps.chatRooms} chat room(s)`);
+        if (deps.ptms > 0) details.push(`${deps.ptms} PTM appointment(s)`);
+        if (deps.timetables > 0) details.push(`${deps.timetables} timetable period(s)`);
+
+        throw new ConflictError(
+          `Cannot delete staff member with existing activity history (${details.join(', ')}). Please deactivate the account instead.`
+        );
+      }
+
+      // 4. Safely clear class teacher references if any
+      await tx.class.updateMany({
+        where: { schoolId, classTeacherId: id },
+        data: { classTeacherId: null }
+      });
+
+      // 5. Delete StaffProfile, UserRoleAssignment, and User atomically
+      await staffRepository.deleteStaffProfile(schoolId, id, tx);
+      if (userId) {
+        await staffRepository.removeUserRoleAssignments(userId, tx);
+        await staffRepository.deleteUser(userId, tx);
+      }
+    }, { maxWait: 15000, timeout: 30000 });
+  } catch (error) {
+    if (error instanceof NotFoundError || error instanceof ConflictError || error instanceof TenantAccessError) {
+      throw error;
+    }
+    if (error.code === 'P2003') {
+      throw new ConflictError('Cannot delete staff member because active foreign key references exist in other modules. Please deactivate the account instead.');
+    }
+    if (error.code === 'P2025') {
       throw new NotFoundError('Staff profile');
     }
+    throw error;
+  }
 
-    // 2. Check active class assignments
-    if (lockedStaff.assigned_class_id) {
-      throw new ConflictError('Cannot delete staff member who is currently assigned as a Class Teacher. Please unassign or deactivate first.');
-    }
-
-    const headedClasses = await tx.class.count({
-      where: { schoolId, classTeacherId: id }
-    });
-    if (headedClasses > 0) {
-      throw new ConflictError('Cannot delete staff member who is currently heading one or more classes. Please unassign or deactivate first.');
-    }
-
-    // 3. Check historical dependencies
-    const deps = await staffRepository.countStaffDependencies(schoolId, id, tx);
-    if (deps.total > 0) {
-      const details = [];
-      if (deps.lessonPlans > 0) details.push(`${deps.lessonPlans} lesson plan(s)`);
-      if (deps.payroll > 0) details.push(`${deps.payroll} payroll record(s)`);
-      if (deps.chatRooms > 0) details.push(`${deps.chatRooms} chat room(s)`);
-      if (deps.ptms > 0) details.push(`${deps.ptms} PTM appointment(s)`);
-      if (deps.timetables > 0) details.push(`${deps.timetables} timetable period(s)`);
-
-      throw new ConflictError(
-        `Cannot delete staff member with existing activity history (${details.join(', ')}). Please deactivate the account instead.`
-      );
-    }
-
-    // 4. Delete StaffProfile, UserRoleAssignment, and User atomically
-    await staffRepository.deleteStaffProfile(schoolId, id, tx);
-    await staffRepository.removeUserRoleAssignments(lockedStaff.user_id, tx);
-    await staffRepository.deleteUser(lockedStaff.user_id, tx);
-  });
-
-  // 5. Canonical Audit Logging
+  // 6. Canonical Audit Logging
   await createAuditLog({
     schoolId,
     entityType: 'StaffProfile',
@@ -884,3 +946,4 @@ export async function deleteStaff(schoolId, id, actor = null) {
 
   return null;
 }
+

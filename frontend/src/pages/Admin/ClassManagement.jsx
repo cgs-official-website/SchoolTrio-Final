@@ -10,8 +10,10 @@ import {
   deleteSection,
   listClassCategories,
   createClassCategory,
-  deleteClassCategory
+  deleteClassCategory,
+  bulkImportClasses
 } from '../../api/classes';
+import { listStaff } from '../../api/staff';
 import {
   LuBookOpen as BookOpen,
   LuPlus as Plus,
@@ -22,7 +24,9 @@ import {
   LuFilter,
   LuX,
   LuFileDown,
-  LuUpload
+  LuUpload,
+  LuDownload,
+  LuGraduationCap
 } from 'react-icons/lu';
 import * as XLSX from 'xlsx';
 import { TableSkeleton } from '../../components/Skeleton';
@@ -30,6 +34,8 @@ import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
 import usePermissions from '../../hooks/usePermissions';
 import { sortClassesAscending } from '../../utils/classSorting';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function ClassManagement() {
   const { userProfile } = useAuth();
@@ -40,11 +46,12 @@ export default function ClassManagement() {
 
   const [rawClasses, setRawClasses] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [teachersList, setTeachersList] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Form State
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ name: '', section: '', categoryId: '' });
+  const [formData, setFormData] = useState({ name: '', section: '', categoryId: '', classTeacherId: '' });
   const [saving, setSaving] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, item: null });
@@ -63,16 +70,19 @@ export default function ClassManagement() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [classesRes, categoriesRes] = await Promise.all([
+      const [classesRes, categoriesRes, staffRes] = await Promise.all([
         listClasses({ limit: 100 }),
-        listClassCategories()
+        listClassCategories(),
+        listStaff({ staffType: 'teaching', limit: 100 }).catch(() => null)
       ]);
 
       const classList = Array.isArray(classesRes?.data) ? classesRes.data : [];
       const catList = Array.isArray(categoriesRes?.data) ? categoriesRes.data : [];
+      const staffList = Array.isArray(staffRes?.staff) ? staffRes.staff : (Array.isArray(staffRes?.data) ? staffRes.data : []);
 
       setRawClasses(classList);
       setCategories(catList);
+      setTeachersList(staffList);
     } catch (error) {
       console.error("Error fetching class management data:", error);
       toast.error(error.response?.data?.message || "Failed to load classes and categories");
@@ -84,6 +94,8 @@ export default function ClassManagement() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useLiveDataRefresh(fetchData, [fetchData], ['classes', 'staff', 'students']);
 
   // Flatten hierarchical Class -> Section models for card and grid display
   const flattenedClasses = useMemo(() => {
@@ -162,10 +174,11 @@ export default function ClassManagement() {
     setSaving(true);
     try {
       if (editingItem) {
-        // Update class details (name, category)
+        // Update class details (name, category, classTeacher)
         await updateClass(editingItem.classId, {
           name: normalizedName,
-          categoryId: formData.categoryId || null
+          categoryId: formData.categoryId || null,
+          classTeacherId: formData.classTeacherId || null
         });
 
         // Update section name if section exists and name changed
@@ -188,8 +201,11 @@ export default function ClassManagement() {
           }
           // Add section to existing class
           await createSection(existingClass.id, { name: normalizedSection });
-          if (formData.categoryId && existingClass.categoryId !== formData.categoryId) {
-            await updateClass(existingClass.id, { categoryId: formData.categoryId });
+          if ((formData.categoryId && existingClass.categoryId !== formData.categoryId) || formData.classTeacherId) {
+            await updateClass(existingClass.id, { 
+              categoryId: formData.categoryId || existingClass.categoryId,
+              classTeacherId: formData.classTeacherId || undefined
+            });
           }
           toast.success("Section added to existing class successfully");
         } else {
@@ -197,16 +213,18 @@ export default function ClassManagement() {
           await createClass({
             name: normalizedName,
             categoryId: formData.categoryId || null,
-            defaultSection: normalizedSection
+            defaultSection: normalizedSection,
+            classTeacherId: formData.classTeacherId || null
           });
           toast.success("Class created successfully");
         }
       }
 
-      setFormData({ name: '', section: '', categoryId: '' });
+      setFormData({ name: '', section: '', categoryId: '', classTeacherId: '' });
       setShowForm(false);
       setEditingItem(null);
       await fetchData();
+      notifyDataChanged('classes');
     } catch (error) {
       console.error("Error saving class:", error);
       const msg = error.response?.data?.message || error.message || "Failed to save class";
@@ -219,7 +237,12 @@ export default function ClassManagement() {
   const handleEditClick = (cls) => {
     if (!hasEditPermission) return;
     setEditingItem(cls);
-    setFormData({ name: cls.name, section: cls.section, categoryId: cls.categoryId || '' });
+    setFormData({ 
+      name: cls.name, 
+      section: cls.section, 
+      categoryId: cls.categoryId || '', 
+      classTeacherId: cls.classTeacherId || '' 
+    });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -323,6 +346,45 @@ export default function ClassManagement() {
     XLSX.writeFile(workbook, "Class_Import_Template.xlsx");
   };
 
+  const handleExportClasses = () => {
+    if (!rawClasses || rawClasses.length === 0) {
+      toast.error("No class data available to export.");
+      return;
+    }
+
+    const exportData = [];
+    rawClasses.forEach(cls => {
+      const categoryName = cls.category?.name || 'Unassigned';
+      const teacherName = cls.classTeacher ? cls.classTeacher.name : 'Unassigned';
+
+      if (cls.sections && cls.sections.length > 0) {
+        cls.sections.forEach(sec => {
+          exportData.push({
+            'Category': categoryName,
+            'Class Name': cls.name,
+            'Section': sec.name,
+            'Class Teacher': teacherName,
+            'Student Count': sec._count?.students || 0
+          });
+        });
+      } else {
+        exportData.push({
+          'Category': categoryName,
+          'Class Name': cls.name,
+          'Section': 'N/A',
+          'Class Teacher': teacherName,
+          'Student Count': cls._count?.students || 0
+        });
+      }
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Classes & Sections");
+    XLSX.writeFile(workbook, `Classes_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success("Class data exported successfully!");
+  };
+
   const handleFileUpload = async () => {
     if (!importFile) {
       toast.error("Please select a file first.");
@@ -346,26 +408,7 @@ export default function ClassManagement() {
           return;
         }
 
-        let addedCount = 0;
-        let skippedCount = 0;
-        let failedCount = 0;
-        let categoryCreationCount = 0;
-
-        // Fetch fresh state for accurate duplicate checks
-        const [freshClassesRes, freshCategoriesRes] = await Promise.all([
-          listClasses({ limit: 100 }),
-          listClassCategories()
-        ]);
-
-        const currentClasses = Array.isArray(freshClassesRes?.data) ? freshClassesRes.data : [];
-        const currentCategories = Array.isArray(freshCategoriesRes?.data) ? freshCategoriesRes.data : [];
-
-        const categoriesMap = new Map();
-        currentCategories.forEach(c => categoriesMap.set(c.name.toLowerCase(), c.id));
-
-        const classMap = new Map();
-        currentClasses.forEach(c => classMap.set(c.name.toLowerCase(), c));
-
+        const rows = [];
         for (let i = 0; i < jsonData.length; i++) {
           const row = jsonData[i];
           const classNameRaw = row['Class Name'] || row['class name'] || row['Class'] || '';
@@ -376,80 +419,36 @@ export default function ClassManagement() {
           const section = String(sectionRaw).trim().toUpperCase();
           const categoryText = String(categoryRaw).trim();
 
-          if (!className || !section) {
-            skippedCount++;
-            continue;
-          }
-
-          let matchedCategoryId = null;
-          if (categoryText) {
-            const catKey = categoryText.toLowerCase();
-            if (categoriesMap.has(catKey)) {
-              matchedCategoryId = categoriesMap.get(catKey);
-            } else {
-              try {
-                const newCat = await createClassCategory({ name: categoryText });
-                if (newCat?.data?.id) {
-                  matchedCategoryId = newCat.data.id;
-                  categoriesMap.set(catKey, matchedCategoryId);
-                  categoryCreationCount++;
-                }
-              } catch (catErr) {
-                console.warn("Failed to create category during import:", catErr);
-              }
-            }
-          }
-
-          const classKey = className.toLowerCase();
-          if (classMap.has(classKey)) {
-            const existing = classMap.get(classKey);
-            const secExists = existing.sections?.some(s => s.name.toUpperCase() === section);
-            if (secExists) {
-              skippedCount++;
-              continue;
-            }
-            try {
-              const secRes = await createSection(existing.id, { name: section });
-              if (secRes?.data) {
-                existing.sections = [...(existing.sections || []), secRes.data];
-                addedCount++;
-              }
-            } catch (secErr) {
-              console.error(`Row ${i + 1} section creation failed:`, secErr);
-              failedCount++;
-            }
-          } else {
-            try {
-              const classRes = await createClass({
-                name: className,
-                categoryId: matchedCategoryId || undefined,
-                defaultSection: section
-              });
-              if (classRes?.data) {
-                classMap.set(classKey, classRes.data);
-                addedCount++;
-              }
-            } catch (clsErr) {
-              console.error(`Row ${i + 1} class creation failed:`, clsErr);
-              failedCount++;
-            }
+          if (className && section) {
+            rows.push({
+              className,
+              section,
+              category: categoryText || undefined
+            });
           }
         }
+
+        if (rows.length === 0) {
+          toast.error("No valid class/section rows found in the uploaded file.");
+          setImporting(false);
+          return;
+        }
+
+        const response = await bulkImportClasses({ rows });
+        const result = response?.data || {};
+
+        const addedCount = result.addedCount || 0;
+        const categoryCreationCount = result.categoryCreationCount || 0;
+        const skippedCount = result.skippedCount || 0;
 
         await fetchData();
 
-        if (addedCount > 0 || categoryCreationCount > 0) {
-          toast.success(`Imported ${addedCount} classes/sections. Created ${categoryCreationCount} categories. Skipped: ${skippedCount}, Failed: ${failedCount}.`);
-          setShowImportModal(false);
-          setImportFile(null);
-        } else if (failedCount > 0) {
-          toast.error(`Import failed for ${failedCount} rows. Skipped ${skippedCount} rows.`);
-        } else {
-          toast.error(`No new classes to import. Skipped ${skippedCount} rows.`);
-        }
-      } catch (error) {
-        console.error("Error processing file:", error);
-        toast.error("Error parsing the file. Please check the format.");
+        toast.success(`Imported ${addedCount} classes/sections. Created ${categoryCreationCount} new categories. (Skipped: ${skippedCount})`);
+        setShowImportModal(false);
+        setImportFile(null);
+      } catch (err) {
+        console.error("Error during import:", err);
+        toast.error(err?.message || "Failed to process import file.");
       } finally {
         setImporting(false);
       }
@@ -495,6 +494,12 @@ export default function ClassManagement() {
               <LuUpload size={18} /> Bulk Import
             </button>
           )}
+          <button 
+            onClick={handleExportClasses}
+            className="px-4 py-2 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl font-medium hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm flex items-center gap-2 transition-colors"
+          >
+            <LuDownload size={18} /> Export Data
+          </button>
           {hasCreatePermission && (
             <button 
               onClick={() => { 
@@ -550,6 +555,19 @@ export default function ClassManagement() {
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:border-transparent uppercase transition-all"
                 required
               />
+            </div>
+            <div className="w-full md:w-64">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Class Teacher (Optional)</label>
+              <select
+                value={formData.classTeacherId}
+                onChange={(e) => setFormData({ ...formData, classTeacherId: e.target.value })}
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900 shadow-sm"
+              >
+                <option value="">No Teacher Assigned</option>
+                {teachersList.map(t => (
+                  <option key={t.id} value={t.id}>{t.name} ({t.employeeId || t.designation || 'Teacher'})</option>
+                ))}
+              </select>
             </div>
             <button 
               type="submit" 
@@ -674,6 +692,11 @@ export default function ClassManagement() {
                     {cls.categoryId && (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-primary-50 text-primary-700 border border-primary-100">
                         {getCategoryName(cls.categoryId)}
+                      </span>
+                    )}
+                    {cls.classTeacher?.name && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800 gap-1">
+                        <LuGraduationCap size={12} /> Teacher: {cls.classTeacher.name}
                       </span>
                     )}
                   </div>

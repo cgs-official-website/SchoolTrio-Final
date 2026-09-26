@@ -1,4 +1,5 @@
 import * as classRepository from './class.repository.js';
+import { findCategories as findCategoriesRepo, createCategory as createCategoryRepo } from '../class-categories/category.repository.js';
 import { createAuditLog } from '../audit/audit.repository.js';
 import { prisma } from '../../database/prisma.client.js';
 import {
@@ -605,3 +606,126 @@ export async function deleteSection(schoolId, classId, sectionId, actor = null) 
     }
   });
 }
+
+/**
+ * High-performance bulk import for classes, sections, and categories.
+ * Executes all lookups and creations inside a single database transaction.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Array<{ className: string, section: string, category?: string }>} rows
+ * @param {Object} [actor] - Context of requesting user
+ * @returns {Promise<{ addedCount: number, skippedCount: number, categoryCreationCount: number, failedCount: number, errors: Array }>}
+ */
+export async function bulkImportClasses(schoolId, rows = [], actor = null) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required for bulk import');
+  }
+
+  let addedCount = 0;
+  let skippedCount = 0;
+  let categoryCreationCount = 0;
+  let failedCount = 0;
+  const errors = [];
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Fetch existing categories
+    const existingCategories = await findCategoriesRepo(schoolId, tx);
+    const categoryMap = new Map(existingCategories.map(c => [c.name.trim().toLowerCase(), c.id]));
+
+    // 2. Fetch existing classes with sections for tenant
+    const existingClasses = await classRepository.findClasses(schoolId, { take: 1000 }, tx);
+    const classMap = new Map();
+    for (const cls of existingClasses) {
+      classMap.set(cls.name.trim().toLowerCase(), {
+        id: cls.id,
+        name: cls.name,
+        categoryId: cls.categoryId,
+        sections: cls.sections ? cls.sections.map(s => s.name.trim().toUpperCase()) : []
+      });
+    }
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const className = String(row.className || '').trim();
+      const sectionName = String(row.section || '').trim().toUpperCase();
+      const categoryName = String(row.category || '').trim();
+
+      if (!className || !sectionName) {
+        skippedCount++;
+        continue;
+      }
+
+      let categoryId = null;
+      if (categoryName) {
+        const catKey = categoryName.toLowerCase();
+        if (categoryMap.has(catKey)) {
+          categoryId = categoryMap.get(catKey);
+        } else {
+          const newCat = await createCategoryRepo({ schoolId, name: categoryName }, tx);
+          categoryId = newCat.id;
+          categoryMap.set(catKey, categoryId);
+          categoryCreationCount++;
+        }
+      }
+
+      const classKey = className.toLowerCase();
+      if (classMap.has(classKey)) {
+        const existingClass = classMap.get(classKey);
+        const secExists = existingClass.sections.includes(sectionName);
+        if (secExists) {
+          skippedCount++;
+        } else {
+          await classRepository.createSection({
+            schoolId,
+            classId: existingClass.id,
+            name: sectionName
+          }, tx);
+          existingClass.sections.push(sectionName);
+          addedCount++;
+        }
+      } else {
+        const newClass = await classRepository.createClass({
+          schoolId,
+          name: className,
+          categoryId
+        }, tx);
+        await classRepository.createSection({
+          schoolId,
+          classId: newClass.id,
+          name: sectionName
+        }, tx);
+        classMap.set(classKey, {
+          id: newClass.id,
+          name: className,
+          categoryId,
+          sections: [sectionName]
+        });
+        addedCount++;
+      }
+    }
+  });
+
+  await createAuditLog({
+    schoolId,
+    entityType: 'Class',
+    entityId: schoolId,
+    actionPerformed: `BULK_IMPORT_CLASSES: Imported ${addedCount} classes/sections`,
+    userName: actor?.email || actor?.userId || 'Administrator',
+    userRole: actor?.systemRole || null,
+    modifiedFields: {
+      addedCount,
+      skippedCount,
+      categoryCreationCount,
+      totalRows: rows.length
+    }
+  }).catch(err => console.warn('AuditLog failed during class bulk import:', err));
+
+  return {
+    addedCount,
+    skippedCount,
+    categoryCreationCount,
+    failedCount,
+    errors
+  };
+}
+
