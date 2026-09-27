@@ -4,21 +4,16 @@
   "private": true,
   "description": "SchoolTrio SaaS - Full Stack Educational Platform",
   "type": "module",
-  "main": "index.js",
   "workspaces": [
     "backend",
     "frontend"
   ],
   "scripts": {
-    "start": "node index.js",
-    "build": "npm --prefix backend run prisma:generate",
-    "dev": "node run-dev.js",
+    "start:backend": "cd backend && node src/server.js",
+    "build:backend": "cd backend && npx prisma generate",
+    "build:frontend": "cd frontend && npm run build",
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
-    "build:frontend": "npm --prefix frontend run build",
-    "lint:frontend": "npm --prefix frontend run lint",
-    "prisma:generate": "npm --prefix backend run prisma:generate",
-    "prisma:studio": "npm --prefix backend exec prisma studio",
     "install:all": "npm --prefix backend install && npm --prefix frontend install"
   }
 }

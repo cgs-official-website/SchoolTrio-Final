@@ -1,9 +1,10 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "buildCommand": "npm --prefix backend run prisma:generate"
+    "builder": "NIXPACKS",
+    "watchPatterns": ["backend/**"]
   },
   "deploy": {
-    "startCommand": "node index.js"
+    "startCommand": "cd backend && node src/server.js"
   }
 }
