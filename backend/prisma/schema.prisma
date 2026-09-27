@@ -103,7 +103,7 @@ model User {
   schoolId          String?  @map("school_id") @db.Uuid
   email             String   @db.VarChar(255)
   passwordHash      String   @map("password_hash") @db.VarChar(255)
-  passwordAlgorithm String   @default("argon2id") @map("password_algorithm") @db.VarChar(50)
+  passwordAlgorithm String   @default("bcrypt") @map("password_algorithm") @db.VarChar(50)
   systemRole        String   @default("TENANT_USER") @map("system_role") @db.VarChar(30)
   tokenVersion      Int      @default(1) @map("token_version")
   isActive          Boolean  @default(true) @map("is_active")

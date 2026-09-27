@@ -68,8 +68,8 @@ describe('Authentication Repository', () => {
       const mockFindUnique = vi.fn().mockResolvedValue({
         id: sampleUserId,
         email: sampleEmail,
-        passwordHash: '$argon2id$...',
-        passwordAlgorithm: 'argon2id'
+        passwordHash: '$2b$10$...',
+        passwordAlgorithm: 'bcrypt'
       });
       vi.spyOn(prisma.user, 'findUnique').mockImplementation(mockFindUnique);
 
@@ -419,7 +419,7 @@ describe('Authentication Repository', () => {
         const result = await executePasswordResetTransaction({
           tokenId: 'token-uuid-1',
           userId: sampleUserId,
-          newPasswordHash: '$argon2id$v=19$newHash'
+          newPasswordHash: '$2b$10$newHash'
         });
 
         expect(mockTx.passwordResetToken.updateMany).toHaveBeenCalledWith({
@@ -435,8 +435,8 @@ describe('Authentication Repository', () => {
         expect(mockTx.user.update).toHaveBeenCalledWith({
           where: { id: sampleUserId },
           data: {
-            passwordHash: '$argon2id$v=19$newHash',
-            passwordAlgorithm: 'argon2id',
+            passwordHash: '$2b$10$newHash',
+            passwordAlgorithm: 'bcrypt',
             tokenVersion: { increment: 1 }
           },
           select: SAFE_USER_SELECT
@@ -463,7 +463,7 @@ describe('Authentication Repository', () => {
           executePasswordResetTransaction({
             tokenId: 'token-uuid-1',
             userId: sampleUserId,
-            newPasswordHash: '$argon2id$newHash'
+            newPasswordHash: '$2b$10$newHash'
           })
         ).rejects.toThrow('TOKEN_CONCURRENCY_OR_EXPIRED');
       });
@@ -484,14 +484,14 @@ describe('Authentication Repository', () => {
 
         const result = await executePasswordChangeTransaction({
           userId: sampleUserId,
-          newPasswordHash: '$argon2id$v=19$newHash'
+          newPasswordHash: '$2b$10$newHash'
         });
 
         expect(mockTx.user.update).toHaveBeenCalledWith({
           where: { id: sampleUserId },
           data: {
-            passwordHash: '$argon2id$v=19$newHash',
-            passwordAlgorithm: 'argon2id',
+            passwordHash: '$2b$10$newHash',
+            passwordAlgorithm: 'bcrypt',
             tokenVersion: { increment: 1 }
           },
           select: SAFE_USER_SELECT

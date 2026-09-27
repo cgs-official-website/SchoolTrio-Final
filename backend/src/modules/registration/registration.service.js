@@ -50,7 +50,7 @@ export async function registerSchool(data) {
       validatedPlanId = plan.id;
     }
 
-    // 5. Hash Administrator Password with Argon2id
+    // 5. Hash Administrator Password with bcrypt
     const adminPasswordHash = await hashPassword(data.admin.password);
 
     // 6. Execute Atomic Multi-Table Transaction

@@ -27,8 +27,8 @@ describe('Unit: AdmissionAuthService (authenticateByAdmissionNumber)', () => {
     id: '87525430-ed28-4038-a74d-82e35a06529e',
     schoolId: '25e9637a-7fa4-4ac2-b43d-b4c0edcf2932',
     email: 'parent@s024.sms.internal',
-    passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$validhash',
-    passwordAlgorithm: 'argon2id',
+    passwordHash: '$2b$10$validhash',
+    passwordAlgorithm: 'bcrypt',
     systemRole: 'PARENT',
     tokenVersion: 1,
     isActive: true
@@ -347,7 +347,7 @@ describe('Unit: AdmissionAuthService (authenticateByAdmissionNumber)', () => {
       id: 'parent-user-2',
       schoolId: mockSchool.id,
       email: 'mother@s024.sms.internal',
-      passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$validmotherhash',
+      passwordHash: '$2b$10$validmotherhash',
       systemRole: 'PARENT',
       tokenVersion: 1,
       isActive: true
@@ -395,7 +395,7 @@ describe('Unit: AdmissionAuthService (authenticateByAdmissionNumber)', () => {
       id: 'parent-user-2',
       schoolId: mockSchool.id,
       email: 'mother@s024.sms.internal',
-      passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$validmotherhash',
+      passwordHash: '$2b$10$validmotherhash',
       systemRole: 'PARENT',
       tokenVersion: 1,
       isActive: true
@@ -435,7 +435,7 @@ describe('Unit: AdmissionAuthService (authenticateByAdmissionNumber)', () => {
       id: 'father-uuid',
       schoolId: mockSchool.id,
       email: 'father@s024.sms.internal',
-      passwordHash: '$argon2id$v=19$fatherhash',
+      passwordHash: '$2b$10$fatherhash',
       systemRole: 'PARENT',
       tokenVersion: 1,
       isActive: true
@@ -445,7 +445,7 @@ describe('Unit: AdmissionAuthService (authenticateByAdmissionNumber)', () => {
       id: 'mother-uuid',
       schoolId: mockSchool.id,
       email: 'mother@s024.sms.internal',
-      passwordHash: '$argon2id$v=19$motherhash',
+      passwordHash: '$2b$10$motherhash',
       systemRole: 'PARENT',
       tokenVersion: 1,
       isActive: true

@@ -29,7 +29,7 @@ describe('Audit Logs Service Unit Tests', () => {
           userRole: 'SCHOOL_ADMIN',
           modifiedFields: {
             className: 'Grade 10A',
-            passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$secret'
+            passwordHash: '$2b$10$secret'
           },
           timestamp: new Date('2026-09-18T10:00:00Z')
         }

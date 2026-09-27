@@ -42,8 +42,8 @@ describe('Security: Admission Number Tenant Isolation & Injection Resistance', (
             id: 'parent-user-a-uuid',
             schoolId: schoolA.id,
             email: 'parent.a@s024.sms.internal',
-            passwordHash: '$argon2id$v=19$validhashA',
-            passwordAlgorithm: 'argon2id',
+            passwordHash: '$2b$10$validhashA',
+            passwordAlgorithm: 'bcrypt',
             systemRole: 'PARENT',
             tokenVersion: 1,
             isActive: true,
@@ -135,7 +135,7 @@ describe('Security: Admission Number Tenant Isolation & Injection Resistance', (
     expect(res.status).toBe(200);
     const bodyStr = JSON.stringify(res.body);
 
-    expect(bodyStr).not.toContain('$argon2id');
+    expect(bodyStr).not.toContain('$2b$');
     expect(bodyStr).not.toContain('firestore-legacy-id-123');
     expect(bodyStr).not.toContain('studentA');
     expect(bodyStr).not.toContain('Student A');

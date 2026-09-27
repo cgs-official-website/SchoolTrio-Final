@@ -14,7 +14,7 @@ describe('POST /api/v1/auth/firebase-exchange Integration', () => {
     schoolId: '25e9637a-7fa4-4ac2-b43d-b4c0edcf2932',
     email: 'priyanka.s@springmount.co.in',
     passwordHash: '!LOCKED_FIREBASE_AUTH_MANAGED',
-    passwordAlgorithm: 'argon2id',
+    passwordAlgorithm: 'bcrypt',
     systemRole: 'TEACHER',
     tokenVersion: 1,
     isActive: true,
@@ -260,7 +260,7 @@ describe('POST /api/v1/auth/firebase-exchange Integration', () => {
     expect(res.body.data.user.systemRole).toBe('TEACHER');
   });
 
-  it('atomically upgrades locked password placeholder to native Argon2id when valid password is provided (FRONTEND.D5)', async () => {
+  it('atomically upgrades locked password placeholder to native bcrypt when valid password is provided (FRONTEND.D5)', async () => {
     vi.spyOn(firebaseAuthService, 'verifyFirebaseIdToken').mockResolvedValue({
       uid: 'firebase-uid-teacher-1',
       email: 'priyanka.s@springmount.co.in',
@@ -274,7 +274,7 @@ describe('POST /api/v1/auth/firebase-exchange Integration', () => {
       updated: true,
       user: {
         ...mockUser,
-        passwordHash: '$argon2id$mock-hash',
+        passwordHash: '$2b$10$mock-hash',
         tokenVersion: 2
       }
     });
@@ -310,7 +310,7 @@ describe('POST /api/v1/auth/firebase-exchange Integration', () => {
       emailVerified: true
     });
     vi.spyOn(authRepository, 'findUserForFirebaseIdentity').mockResolvedValue({
-      user: { ...mockUser, passwordHash: '$argon2id$existing-native-hash' },
+      user: { ...mockUser, passwordHash: '$2b$10$existing-native-hash' },
       conflict: false
     });
     const upgradeSpy = vi.spyOn(authRepository, 'upgradeLockedUserPassword');

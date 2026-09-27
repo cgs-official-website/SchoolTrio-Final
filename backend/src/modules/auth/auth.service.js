@@ -86,7 +86,7 @@ export const login = async ({ identifier, password, ipAddress = null, deviceInfo
       }
     }
 
-    // 6. Cryptographic password verification (Argon2id)
+    // 6. Cryptographic password verification (bcrypt)
     const isMatch = await verifyPassword(single.passwordHash, password);
     if (!isMatch) {
       throw new UnauthorizedError('Invalid email or password', ERROR_CODES.INVALID_CREDENTIALS);
@@ -362,7 +362,7 @@ export const firebaseExchange = async ({
 
   // 6. Progressive JIT Credential Migration (FRONTEND.D5)
   // If user has a locked placeholder (!LOCKED_*) and valid password was provided,
-  // atomically upgrade their passwordHash to Argon2id and increment tokenVersion.
+  // atomically upgrade their passwordHash to bcrypt and increment tokenVersion.
   let effectiveUser = user;
   if (password && isLockedPassword(user.passwordHash)) {
     const policyResult = validatePasswordPolicy(password);

@@ -7,7 +7,7 @@ import * as superAdminRepository from '../../src/modules/superadmin/superadmin.r
 import { SYSTEM_ROLES } from '../../src/config/constants.js';
 
 vi.mock('../../src/modules/auth/password.service.js', () => ({
-  hashPassword: vi.fn().mockResolvedValue('argon2id$hashed_pass')
+  hashPassword: vi.fn().mockResolvedValue('$2b$10$hashed_pass')
 }));
 
 describe('SuperAdmin Security & Access Control Tests', () => {

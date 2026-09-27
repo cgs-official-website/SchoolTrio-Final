@@ -1,5 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
-import argon2 from 'argon2';
+import { describe, it, expect } from 'vitest';
 import {
   hashPassword,
   verifyPassword,
@@ -74,13 +73,17 @@ describe('Password Service & Security Policy', () => {
       expect(isLockedPassword('!LOCKED_FIREBASE_AUTH_MANAGED')).toBe(true);
     });
 
+    it('identifies !LOCKED_PASSWORD_RESET_REQUIRED as locked', () => {
+      expect(isLockedPassword('!LOCKED_PASSWORD_RESET_REQUIRED')).toBe(true);
+    });
+
     it('identifies arbitrary !LOCKED_* prefixes as locked', () => {
       expect(isLockedPassword('!LOCKED_ADMIN_PENDING')).toBe(true);
       expect(isLockedPassword('!LOCKED_CUSTOM_REASON')).toBe(true);
     });
 
-    it('returns false for standard Argon2 hashes', () => {
-      expect(isLockedPassword('$argon2id$v=19$m=65536,t=3,p=4$someHashValue')).toBe(false);
+    it('returns false for standard bcrypt hashes', () => {
+      expect(isLockedPassword('$2b$10$someHashValue')).toBe(false);
     });
 
     it('returns false for null, undefined, or empty values', () => {
@@ -92,7 +95,6 @@ describe('Password Service & Security Policy', () => {
 
   describe('hashPassword', () => {
     it('successfully hashes a valid password using bcrypt', async () => {
-      // Use lower cost parameters for fast unit test execution
       const hash = await hashPassword('ValidPassword123', 4);
 
       expect(typeof hash).toBe('string');
@@ -106,7 +108,7 @@ describe('Password Service & Security Policy', () => {
 
     it('does not mutate or lowercase exact password characters', async () => {
       const pass = 'ExactPassword123!';
-      const hash = await hashPassword(pass, { timeCost: 1, memoryCost: 4096, parallelism: 1 });
+      const hash = await hashPassword(pass, 4);
       const verifySuccess = await verifyPassword(hash, pass);
       const verifyLower = await verifyPassword(hash, pass.toLowerCase());
 
@@ -116,30 +118,25 @@ describe('Password Service & Security Policy', () => {
   });
 
   describe('verifyPassword', () => {
-    it('verifies correct password against valid Argon2id hash', async () => {
+    it('verifies correct password against valid bcrypt hash', async () => {
       const pass = 'SecretPass123';
-      const hash = await hashPassword(pass, { timeCost: 1, memoryCost: 4096, parallelism: 1 });
+      const hash = await hashPassword(pass, 4);
 
       const isValid = await verifyPassword(hash, pass);
       expect(isValid).toBe(true);
     });
 
-    it('rejects incorrect password against valid Argon2id hash', async () => {
+    it('rejects incorrect password against valid bcrypt hash', async () => {
       const pass = 'SecretPass123';
-      const hash = await hashPassword(pass, { timeCost: 1, memoryCost: 4096, parallelism: 1 });
+      const hash = await hashPassword(pass, 4);
 
       const isValid = await verifyPassword(hash, 'WrongPassword456');
       expect(isValid).toBe(false);
     });
 
-    it('safely rejects locked migrated placeholder without invoking argon2.verify', async () => {
-      const verifySpy = vi.spyOn(argon2, 'verify');
-
+    it('safely rejects locked migrated placeholder', async () => {
       const isValid = await verifyPassword('!LOCKED_FIREBASE_AUTH_MANAGED', 'AnyPassword123');
       expect(isValid).toBe(false);
-      expect(verifySpy).not.toHaveBeenCalled();
-
-      verifySpy.mockRestore();
     });
 
     it('returns false safely for invalid inputs', async () => {

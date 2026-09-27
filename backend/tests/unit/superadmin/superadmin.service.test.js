@@ -7,7 +7,7 @@ import { NotFoundError, ConflictError } from '../../../src/utils/app-error.js';
 vi.mock('../../../src/modules/superadmin/superadmin.repository.js');
 vi.mock('../../../src/modules/audit/audit.repository.js');
 vi.mock('../../../src/modules/auth/password.service.js', () => ({
-  hashPassword: vi.fn().mockResolvedValue('argon2id$hashed_password')
+  hashPassword: vi.fn().mockResolvedValue('$2b$10$hashed_password')
 }));
 vi.mock('../../../src/database/prisma.client.js', () => ({
   prisma: {

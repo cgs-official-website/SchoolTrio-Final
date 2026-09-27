@@ -203,7 +203,7 @@ describe('Registration Service Unit Tests', () => {
         user: {
           id: 'user-uuid-1',
           email: 'teacher@school.edu',
-          passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$already-active-hash',
+          passwordHash: '$2b$10$already-active-hash',
           systemRole: 'TEACHER'
         }
       });

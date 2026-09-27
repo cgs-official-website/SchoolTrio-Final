@@ -135,7 +135,7 @@ export const confirmPasswordReset = async ({ token, newPassword, ipAddress: _ipA
     throw new UnauthorizedError('Invalid or expired password reset token', ERROR_CODES.INVALID_TOKEN);
   }
 
-  // 3. Hash new password with Argon2id
+  // 3. Hash new password with bcrypt
   const newPasswordHash = await hashPassword(newPassword);
 
   // 4. Atomically consume token, update user password, increment tokenVersion, and revoke sessions
@@ -193,10 +193,10 @@ export const confirmPasswordSetup = async ({ token, newPassword, ipAddress: _ipA
     throw new UnauthorizedError('Invalid or expired setup token', ERROR_CODES.INVALID_TOKEN);
   }
 
-  // 3. Hash new password with Argon2id
+  // 3. Hash new password with bcrypt
   const newPasswordHash = await hashPassword(newPassword);
 
-  // 4. Atomically consume setup token, set real Argon2id hash, increment tokenVersion, and revoke sessions
+  // 4. Atomically consume setup token, set real bcrypt hash, increment tokenVersion, and revoke sessions
   try {
     await authRepository.executePasswordResetTransaction({
       tokenId: setupRecord.id,
@@ -267,7 +267,7 @@ export const changePassword = async ({ userId, currentPassword, newPassword, ipA
     throw new ValidationError('Password does not meet complexity requirements', policyResult.errors);
   }
 
-  // 5. Hash new password with Argon2id
+  // 5. Hash new password with bcrypt
   const newPasswordHash = await hashPassword(newPassword);
 
   // 6. Atomically update password, increment tokenVersion, and revoke all active refresh sessions

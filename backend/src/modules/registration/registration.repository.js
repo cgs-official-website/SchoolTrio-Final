@@ -119,7 +119,7 @@ export async function createSchoolWithAdmin({ school, admin }, tx = prisma) {
       schoolId: createdSchool.id,
       email: admin.email.toLowerCase(),
       passwordHash: admin.passwordHash,
-      passwordAlgorithm: 'argon2id',
+      passwordAlgorithm: 'bcrypt',
       systemRole: 'SCHOOL_ADMIN',
       isActive: true,
       tokenVersion: 1
@@ -182,7 +182,7 @@ export async function activateTeacherAccount({ schoolId, staffId, userId, passwo
     where: { id: userId },
     data: {
       passwordHash,
-      passwordAlgorithm: 'argon2id',
+      passwordAlgorithm: 'bcrypt',
       isActive: true,
       tokenVersion: { increment: 1 }
     }
@@ -222,7 +222,7 @@ export async function createParentWithStudentLink({ schoolId, parentUser, parent
       schoolId,
       email: parentUser.email.toLowerCase(),
       passwordHash: parentUser.passwordHash,
-      passwordAlgorithm: 'argon2id',
+      passwordAlgorithm: 'bcrypt',
       systemRole: 'PARENT',
       isActive: true,
       tokenVersion: 1

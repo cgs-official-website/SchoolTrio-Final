@@ -13,8 +13,8 @@ describe('Password Lifecycle Domain Service (password-reset.service.js)', () => 
     id: 'e9c4e270-26e1-43ac-8279-886ec13f4776',
     schoolId: '25e9637a-7fa4-4ac2-b43d-b4c0edcf2932',
     email: 'teacher@school.edu',
-    passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$someArgonHash',
-    passwordAlgorithm: 'argon2id',
+    passwordHash: '$2b$10$someBcryptHash',
+    passwordAlgorithm: 'bcrypt',
     systemRole: 'TENANT_USER',
     tokenVersion: 1,
     isActive: true,
@@ -144,9 +144,9 @@ describe('Password Lifecycle Domain Service (password-reset.service.js)', () => 
       user: mockUser
     };
 
-    it('successfully confirms reset, hashes password with Argon2id, and executes atomic transaction', async () => {
+    it('successfully confirms reset, hashes password with bcrypt, and executes atomic transaction', async () => {
       vi.spyOn(authRepository, 'findPasswordResetTokenByHash').mockResolvedValue(mockResetRecord);
-      vi.spyOn(passwordService, 'hashPassword').mockResolvedValue('$argon2id$v=19$m=65536,t=3,p=4$newArgonHash');
+      vi.spyOn(passwordService, 'hashPassword').mockResolvedValue('$2b$10$newBcryptHash');
       vi.spyOn(authRepository, 'executePasswordResetTransaction').mockResolvedValue({
         user: { ...mockUser, tokenVersion: 2 },
         token: { ...mockResetRecord, usedAt: new Date() },
@@ -166,7 +166,7 @@ describe('Password Lifecycle Domain Service (password-reset.service.js)', () => 
       expect(authRepository.executePasswordResetTransaction).toHaveBeenCalledWith({
         tokenId: mockResetRecord.id,
         userId: mockUser.id,
-        newPasswordHash: '$argon2id$v=19$m=65536,t=3,p=4$newArgonHash'
+        newPasswordHash: '$2b$10$newBcryptHash'
       });
     });
 
@@ -285,9 +285,9 @@ describe('Password Lifecycle Domain Service (password-reset.service.js)', () => 
 
     it('successfully confirms password setup for locked account using valid SETUP token', async () => {
       vi.spyOn(authRepository, 'findPasswordResetTokenByHash').mockResolvedValue(mockSetupRecord);
-      vi.spyOn(passwordService, 'hashPassword').mockResolvedValue('$argon2id$v=19$m=65536,t=3,p=4$newArgonHash');
+      vi.spyOn(passwordService, 'hashPassword').mockResolvedValue('$2b$10$newBcryptHash');
       vi.spyOn(authRepository, 'executePasswordResetTransaction').mockResolvedValue({
-        user: { ...mockUser, passwordHash: '$argon2id$newArgonHash', tokenVersion: 2 },
+        user: { ...mockUser, passwordHash: '$2b$10$newBcryptHash', tokenVersion: 2 },
         token: { ...mockSetupRecord, usedAt: new Date() },
         revokedSessions: { count: 0 }
       });
@@ -305,7 +305,7 @@ describe('Password Lifecycle Domain Service (password-reset.service.js)', () => 
       expect(authRepository.executePasswordResetTransaction).toHaveBeenCalledWith({
         tokenId: mockSetupRecord.id,
         userId: mockUser.id,
-        newPasswordHash: '$argon2id$v=19$m=65536,t=3,p=4$newArgonHash'
+        newPasswordHash: '$2b$10$newBcryptHash'
       });
     });
 
@@ -342,7 +342,7 @@ describe('Password Lifecycle Domain Service (password-reset.service.js)', () => 
     it('successfully changes password, verifies current password, hashes new password, and revokes sessions', async () => {
       vi.spyOn(authRepository, 'findUserById').mockResolvedValue(mockUser);
       vi.spyOn(passwordService, 'verifyPassword').mockResolvedValue(true);
-      vi.spyOn(passwordService, 'hashPassword').mockResolvedValue('$argon2id$v=19$m=65536,t=3,p=4$changedArgonHash');
+      vi.spyOn(passwordService, 'hashPassword').mockResolvedValue('$2b$10$changedBcryptHash');
       vi.spyOn(authRepository, 'executePasswordChangeTransaction').mockResolvedValue({
         user: { ...mockUser, tokenVersion: 2 },
         revokedSessions: { count: 2 }
@@ -362,7 +362,7 @@ describe('Password Lifecycle Domain Service (password-reset.service.js)', () => 
       expect(passwordService.hashPassword).toHaveBeenCalledWith('NewBrandPassword123!');
       expect(authRepository.executePasswordChangeTransaction).toHaveBeenCalledWith({
         userId: mockUser.id,
-        newPasswordHash: '$argon2id$v=19$m=65536,t=3,p=4$changedArgonHash'
+        newPasswordHash: '$2b$10$changedBcryptHash'
       });
     });
 

@@ -20,8 +20,8 @@ describe('POST /api/v1/auth/admission-login Integration', () => {
     id: '87525430-ed28-4038-a74d-82e35a06529e',
     schoolId: '25e9637a-7fa4-4ac2-b43d-b4c0edcf2932',
     email: 'parent.ananthakumar@s024.sms.internal',
-    passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$someArgonHash',
-    passwordAlgorithm: 'argon2id',
+    passwordHash: '$2b$10$someBcryptHash',
+    passwordAlgorithm: 'bcrypt',
     systemRole: 'PARENT',
     tokenVersion: 1,
     isActive: true

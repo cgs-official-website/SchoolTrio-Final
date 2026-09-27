@@ -3,11 +3,11 @@
  *
  * Coverage:
  * 1. Password policy boundary tests (min, max, exact boundaries, weak, short, long)
- * 2. Account-state guard tests (native argon2id, !LOCKED_FUTURE_AUTH_REQUIRED, !LOCKED_PARENT_NO_DIRECT_AUTH, inactive user, suspended tenant)
+ * 2. Account-state guard tests (native bcrypt, !LOCKED_FUTURE_AUTH_REQUIRED, !LOCKED_PARENT_NO_DIRECT_AUTH, inactive user, suspended tenant)
  * 3. Identity security tests (invalid Firebase token, identity conflict, wrong tenant, client identity injection)
  * 4. Credential hygiene tests (no plaintext password in response/user payload)
  * 5. Concurrency tests (simultaneous JIT, JIT + reset race, JIT + no-password race)
- * 6. Native login after migration (verifies Argon2id works and isn't overwritten by subsequent exchange)
+ * 6. Native login after migration (verifies bcrypt works and isn't overwritten by subsequent exchange)
  * 7. D3 interaction tests (JIT first, reset first, weak password, FUTURE_AUTH_REQUIRED protection)
  * 8. Rate limiting preserved
  */
@@ -60,11 +60,11 @@ const LOCKED_PARENT_USER = {
   passwordHash: '!LOCKED_PARENT_NO_DIRECT_AUTH_ghi789'
 };
 
-const NATIVE_ARGON2_USER = {
+const NATIVE_BCRYPT_USER = {
   ...BASE_USER,
   id: 'aa000000-0000-0000-0000-000000000004',
   email: 'native@testschool.dev',
-  passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$existingNativeHash'
+  passwordHash: '$2b$10$existingNativeHash'
 };
 
 const FIREBASE_CLAIMS = {
@@ -79,7 +79,7 @@ const SESSION_MOCK = {
   expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
 };
 
-const UPGRADED_USER = { ...BASE_USER, passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$newHash', tokenVersion: 2 };
+const UPGRADED_USER = { ...BASE_USER, passwordHash: '$2b$10$newHash', tokenVersion: 2 };
 
 function mockFirebase() {
   vi.spyOn(firebaseAuthService, 'verifyFirebaseIdToken').mockResolvedValue(FIREBASE_CLAIMS);
@@ -230,10 +230,10 @@ describe('D5 JIT — Password policy boundary tests', () => {
 describe('D5 JIT — Account state protection tests', () => {
   beforeEach(() => { vi.restoreAllMocks(); });
 
-  it('AS-01: Existing native Argon2id user → password cannot be overwritten, no tokenVersion increment', async () => {
+  it('AS-01: Existing native bcrypt user → password cannot be overwritten, no tokenVersion increment', async () => {
     mockFirebase();
     vi.spyOn(authRepository, 'findUserForFirebaseIdentity').mockResolvedValue({
-      user: NATIVE_ARGON2_USER, conflict: false
+      user: NATIVE_BCRYPT_USER, conflict: false
     });
     const upgradeSpy = vi.spyOn(authRepository, 'upgradeLockedUserPassword');
     mockSession();
@@ -705,8 +705,8 @@ describe('D5 JIT — Native login after migration', () => {
     // Mock the native login flow directly against auth.service.login behavior
     const migratedUser = {
       ...BASE_USER,
-      passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$migratedHash',
-      passwordAlgorithm: 'argon2id',
+      passwordHash: '$2b$10$migratedHash',
+      passwordAlgorithm: 'bcrypt',
       tokenVersion: 2
     };
 
@@ -727,10 +727,10 @@ describe('D5 JIT — Native login after migration', () => {
   });
 
   it('NL-02: After JIT migration, subsequent Firebase exchange does NOT overwrite native password', async () => {
-    // User now has a native argon2id hash; subsequent JIT must be skipped
+    // User now has a native bcrypt hash; subsequent JIT must be skipped
     const migratedUser = {
       ...BASE_USER,
-      passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$migratedHash',
+      passwordHash: '$2b$10$migratedHash',
       tokenVersion: 2
     };
 
@@ -754,7 +754,7 @@ describe('D5 JIT — Native login after migration', () => {
   it('NL-03: Incorrect password on native login after migration → 401', async () => {
     const migratedUser = {
       ...BASE_USER,
-      passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$migratedHash',
+      passwordHash: '$2b$10$migratedHash',
       tokenVersion: 2
     };
 
@@ -781,7 +781,7 @@ describe('D5 JIT — D3 interaction tests', () => {
     // This is covered by NL-01 above; confirm here end-to-end
     const migratedUser = {
       ...BASE_USER,
-      passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$jitMigratedHash',
+      passwordHash: '$2b$10$jitMigratedHash',
       tokenVersion: 2
     };
 
@@ -800,10 +800,10 @@ describe('D5 JIT — D3 interaction tests', () => {
   });
 
   it('D3-B: Reset first (D3) → subsequent Firebase exchange does NOT overwrite native password', async () => {
-    // After D3 reset, user has native argon2id hash
+    // After D3 reset, user has native hash
     const resetUser = {
       ...BASE_USER,
-      passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$resetHash',
+      passwordHash: '$2b$10$resetHash',
       tokenVersion: 3 // reset incremented this
     };
 

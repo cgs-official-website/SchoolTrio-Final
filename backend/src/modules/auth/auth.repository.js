@@ -638,7 +638,7 @@ export const invalidateUserResetTokens = async (userId, tokenType = 'RESET', { t
  * @param {Object} params
  * @param {string} params.tokenId - PasswordResetToken UUID
  * @param {string} params.userId - User UUID
- * @param {string} params.newPasswordHash - Argon2id password hash
+ * @param {string} params.newPasswordHash - bcrypt password hash
  * @param {Object} [options]
  * @param {Object} [options.tx] - Optional outer transaction client
  * @returns {Promise<{ success: boolean, user: Object }>}
@@ -671,7 +671,7 @@ export const executePasswordResetTransaction = async (
       where: { id: userId },
       data: {
         passwordHash: newPasswordHash,
-        passwordAlgorithm: 'argon2id',
+        passwordAlgorithm: 'bcrypt',
         tokenVersion: {
           increment: 1
         }
@@ -706,7 +706,7 @@ export const executePasswordResetTransaction = async (
  *
  * @param {Object} params
  * @param {string} params.userId - User UUID
- * @param {string} params.newPasswordHash - Argon2id password hash
+ * @param {string} params.newPasswordHash - bcrypt password hash
  * @param {Object} [options]
  * @param {Object} [options.tx] - Optional outer transaction client
  * @returns {Promise<{ success: boolean, user: Object }>}
@@ -721,7 +721,7 @@ export const executePasswordChangeTransaction = async (
       where: { id: userId },
       data: {
         passwordHash: newPasswordHash,
-        passwordAlgorithm: 'argon2id',
+        passwordAlgorithm: 'bcrypt',
         tokenVersion: {
           increment: 1
         }
@@ -751,12 +751,12 @@ export const executePasswordChangeTransaction = async (
 };
 
 /**
- * Atomically upgrades a locked user's password placeholder to a native Argon2id hash.
+ * Atomically upgrades a locked user's password placeholder to a native bcrypt hash.
  * Only executes if the user currently possesses a locked password placeholder (!LOCKED_*).
  *
  * @param {Object} params
  * @param {string} params.userId - User UUID
- * @param {string} params.newPasswordHash - Argon2id password hash
+ * @param {string} params.newPasswordHash - bcrypt password hash
  * @param {Object} [options]
  * @param {Object} [options.tx] - Optional outer transaction client
  * @returns {Promise<{ updated: boolean, user: Object|null }>}
@@ -774,12 +774,12 @@ export const upgradeLockedUserPassword = async (
       where: {
         id: userId,
         passwordHash: {
-          startsWith: AUTH_CONSTANTS.FIREBASE_LOCKED_PASSWORD_PREFIX
+          startsWith: AUTH_CONSTANTS.LOCKED_PASSWORD_PREFIX
         }
       },
       data: {
         passwordHash: newPasswordHash,
-        passwordAlgorithm: 'argon2id',
+        passwordAlgorithm: 'bcrypt',
         tokenVersion: {
           increment: 1
         }

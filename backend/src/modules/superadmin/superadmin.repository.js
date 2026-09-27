@@ -190,7 +190,7 @@ export async function createTenantWithAdmin(data, tx = prisma) {
       schoolId: school.id,
       email: data.adminEmail.toLowerCase(),
       passwordHash: data.adminPasswordHash,
-      passwordAlgorithm: 'argon2id',
+      passwordAlgorithm: 'bcrypt',
       systemRole: 'SCHOOL_ADMIN',
       isActive: true
     }

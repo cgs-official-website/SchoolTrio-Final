@@ -375,7 +375,7 @@ export async function linkParentToStudent(schoolId, studentId, data, actor = nul
         schoolId,
         email: userEmail,
         passwordHash: '!LOCKED_NO_PASSWORD_SET',
-        passwordAlgorithm: 'argon2id',
+        passwordAlgorithm: 'bcrypt',
         systemRole: 'PARENT',
         tokenVersion: 1,
         isActive: true

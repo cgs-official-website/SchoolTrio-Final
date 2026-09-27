@@ -1,5 +1,4 @@
 import bcrypt from 'bcryptjs';
-import argon2 from 'argon2';
 import { AUTH_CONSTANTS } from '../../config/constants.js';
 import { ValidationError } from '../../utils/app-error.js';
 
@@ -100,7 +99,7 @@ export const hashPassword = async (password, customOptions = {}) => {
 };
 
 /**
- * Verifies a candidate plaintext password against an encoded hash (bcrypt or legacy argon2).
+ * Verifies a candidate plaintext password against an encoded bcrypt hash.
  * Safely guards against locked placeholder accounts and invalid hash formats.
  *
  * @param {string} passwordHash - Encoded hash from database
@@ -122,9 +121,6 @@ export const verifyPassword = async (passwordHash, password) => {
   }
 
   try {
-    if (passwordHash.startsWith('$argon2')) {
-      return await argon2.verify(passwordHash, password);
-    }
     return await bcrypt.compare(password, passwordHash);
   } catch (_error) {
     // Malformed hash or internal verification error safely yields false

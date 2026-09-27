@@ -36,7 +36,7 @@ describe('Registration Security & Boundary Tests', () => {
         admin: {
           id: 'admin-1',
           email: 'admin@secure.edu',
-          passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$somehash'
+          passwordHash: '$2b$10$somehash'
         }
       });
 
@@ -60,7 +60,7 @@ describe('Registration Security & Boundary Tests', () => {
       expect(auditSpy).toHaveBeenCalled();
       const auditPayload = auditSpy.mock.calls[0][0];
       expect(JSON.stringify(auditPayload)).not.toContain('ComplexPassword123');
-      expect(JSON.stringify(auditPayload)).not.toContain('$argon2id$');
+      expect(JSON.stringify(auditPayload)).not.toContain('$2b$');
     });
 
     it('teacher registration response excludes password and password hash', async () => {
@@ -75,7 +75,7 @@ describe('Registration Security & Boundary Tests', () => {
       vi.spyOn(prisma, '$transaction').mockImplementation(async (callback) => callback({}));
       vi.spyOn(registrationRepo, 'activateTeacherAccount').mockResolvedValue({
         staff: { id: 'st-1', name: 'Teacher Jane', email: 'jane@s.edu', status: 'Active' },
-        user: { id: 'u-1', email: 'jane@s.edu', passwordHash: '$argon2id$hash' }
+        user: { id: 'u-1', email: 'jane@s.edu', passwordHash: '$2b$10$hash' }
       });
       vi.spyOn(auditRepository, 'createAuditLog').mockResolvedValue({});
 
@@ -191,7 +191,7 @@ describe('Registration Security & Boundary Tests', () => {
         user: {
           id: 'u-1',
           email: 'active@school.edu',
-          passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$existingvalidhash' // Active account
+          passwordHash: '$2b$10$existingvalidhash' // Active account
         }
       });
 

@@ -9,7 +9,7 @@ describe('SuperAdmin Native REST Authentication & Platform E2E Integration', () 
   const superAdminEmail = 'superadmin-e2e@platform.com';
   const superAdminPassword = 'SuperAdmin123!';
 
-  it('1. Prepares SuperAdmin PostgreSQL user account with Argon2id hash', async () => {
+  it('1. Prepares SuperAdmin PostgreSQL user account with bcrypt hash', async () => {
     const passwordHash = await hashPassword(superAdminPassword);
     let user = await prisma.user.findFirst({
       where: { email: superAdminEmail, schoolId: null }
@@ -20,7 +20,7 @@ describe('SuperAdmin Native REST Authentication & Platform E2E Integration', () 
         data: {
           systemRole: 'SUPER_ADMIN',
           passwordHash,
-          passwordAlgorithm: 'argon2id',
+          passwordAlgorithm: 'bcrypt',
           isActive: true
         }
       });
@@ -29,7 +29,7 @@ describe('SuperAdmin Native REST Authentication & Platform E2E Integration', () 
         data: {
           email: superAdminEmail,
           passwordHash,
-          passwordAlgorithm: 'argon2id',
+          passwordAlgorithm: 'bcrypt',
           systemRole: 'SUPER_ADMIN',
           isActive: true,
           schoolId: null,
