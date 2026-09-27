@@ -1,0 +1,9 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "buildCommand": "npm --prefix backend install && npm --prefix backend run prisma:generate"
+  },
+  "deploy": {
+    "startCommand": "node index.js"
+  }
+}
