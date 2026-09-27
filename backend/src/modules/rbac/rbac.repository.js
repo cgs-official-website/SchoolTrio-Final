@@ -122,40 +122,48 @@ export async function createRoleWithPermissions(data, tx = prisma) {
   );
 
   const execute = async (client) => {
-    const createdRole = await client.schoolRole.create({
-      data: {
-        schoolId,
-        name,
-        slug,
-        loginPanel: inferredPanel,
-        isSystemDefault
-      }
-    });
-
-    if (Array.isArray(permissions) && permissions.length > 0) {
-      await client.rolePermission.createMany({
-        data: permissions.map(p => ({
-          schoolRoleId: createdRole.id,
-          moduleKey: p.moduleKey,
-          canRead: Boolean(p.canRead),
-          canCreate: Boolean(p.canCreate),
-          canEdit: Boolean(p.canEdit),
-          canDelete: Boolean(p.canDelete)
-        }))
-      });
-    }
-
-    return client.schoolRole.findFirst({
-      where: {
-        id: createdRole.id,
-        schoolId
-      },
-      include: {
-        permissions: {
-          orderBy: { moduleKey: 'asc' }
+    try {
+      const createdRole = await client.schoolRole.create({
+        data: {
+          schoolId,
+          name,
+          slug,
+          loginPanel: inferredPanel,
+          isSystemDefault
         }
+      });
+
+      if (Array.isArray(permissions) && permissions.length > 0) {
+        await client.rolePermission.createMany({
+          data: permissions.map(p => ({
+            schoolRoleId: createdRole.id,
+            moduleKey: p.moduleKey,
+            canRead: Boolean(p.canRead),
+            canCreate: Boolean(p.canCreate),
+            canEdit: Boolean(p.canEdit),
+            canDelete: Boolean(p.canDelete)
+          }))
+        });
       }
-    });
+
+      return client.schoolRole.findFirst({
+        where: {
+          id: createdRole.id,
+          schoolId
+        },
+        include: {
+          permissions: {
+            orderBy: { moduleKey: 'asc' }
+          }
+        }
+      });
+    } catch (err) {
+      if (err.code === 'P2002') {
+        const { ConflictError } = await import('../../utils/app-error.js');
+        throw new ConflictError(`A role with name '${name}' or slug '${slug}' already exists for this school`);
+      }
+      throw err;
+    }
   };
 
   // If already in a transaction context, execute directly; otherwise use $transaction on basePrisma

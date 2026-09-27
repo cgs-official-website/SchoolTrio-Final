@@ -76,8 +76,16 @@ export async function createRole(schoolId, data, actor = null) {
     throw new TenantAccessError('Tenant context required to create role');
   }
 
+  if (!data?.name || typeof data.name !== 'string' || !data.name.trim()) {
+    throw new ValidationError('Role name is required');
+  }
+
   const roleName = data.name.trim();
   const slug = data.slug ? data.slug.trim().toLowerCase() : slugifyRoleName(roleName);
+
+  if (!slug) {
+    throw new ValidationError('Role slug could not be generated from role name');
+  }
 
   // Check for duplicate slug within the tenant
   const existingBySlug = await rbacRepository.findRoleBySlug(schoolId, slug);
@@ -110,23 +118,31 @@ export async function createRole(schoolId, data, actor = null) {
   });
 
   // Invalidate tenant RBAC cache
-  await RedisCacheService.delPattern(`rbac:perms:${schoolId}:*`);
+  try {
+    await RedisCacheService.delPattern(`rbac:perms:${schoolId}:*`);
+  } catch (_err) {
+    // Non-blocking cache error
+  }
 
   // Record audit log
-  await rbacRepository.createAuditLog({
-    schoolId,
-    entityType: 'SchoolRole',
-    entityId: createdRole.id,
-    actionPerformed: `CREATE_ROLE: ${createdRole.name} (${createdRole.slug})`,
-    userName: actor?.email || actor?.userId || 'Administrator',
-    userRole: actor?.systemRole || null,
-    modifiedFields: {
-      name: createdRole.name,
-      slug: createdRole.slug,
-      loginPanel: createdRole.loginPanel,
-      permissionsCount: normalizedPermissions.length
-    }
-  });
+  try {
+    await rbacRepository.createAuditLog({
+      schoolId,
+      entityType: 'SchoolRole',
+      entityId: createdRole.id,
+      actionPerformed: `CREATE_ROLE: ${createdRole.name} (${createdRole.slug})`,
+      userName: actor?.email || actor?.userId || 'Administrator',
+      userRole: actor?.systemRole || null,
+      modifiedFields: {
+        name: createdRole.name,
+        slug: createdRole.slug,
+        loginPanel: createdRole.loginPanel,
+        permissionsCount: normalizedPermissions.length
+      }
+    });
+  } catch (_err) {
+    // Non-blocking audit log error
+  }
 
   return createdRole;
 }

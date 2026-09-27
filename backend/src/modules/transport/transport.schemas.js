@@ -60,7 +60,7 @@ export const createVehicleSchema = z.object({
         message: 'Please enter a valid vehicle registration number (e.g. TN 56 K 1146 or MH-12-PQ-4567)'
       }),
     model: z.string().trim().max(100).nullable().optional(),
-    capacity: z.coerce.number().int().min(1, 'Capacity must be a positive integer').max(200, 'Capacity cannot exceed 200'),
+    capacity: z.coerce.number().int().min(1, 'Capacity must be a positive integer').max(200, 'Capacity cannot exceed 200').default(30),
     insuranceExpiry: z.string().regex(DATE_REGEX, { message: 'insuranceExpiry must be in YYYY-MM-DD format' }).nullable().optional(),
     pollutionExpiry: z.string().regex(DATE_REGEX, { message: 'pollutionExpiry must be in YYYY-MM-DD format' }).nullable().optional(),
     fitnessExpiry: z.string().regex(DATE_REGEX, { message: 'fitnessExpiry must be in YYYY-MM-DD format' }).nullable().optional(),
@@ -111,21 +111,26 @@ export const routeIdParamSchema = z.object({
 });
 
 export const createRouteSchema = z.object({
-  body: z.object({
-    name: z.string().trim().min(2, 'Route name must be at least 2 characters').max(150, 'Route name cannot exceed 150 characters'),
-    routeNumber: z.string().trim().max(50).nullable().optional(),
-    vehicleId: z.string().uuid({ message: 'vehicleId must be a valid UUID' }).nullable().optional(),
-    driverName: z.string().trim().max(100).nullable().optional(),
-    driverPhone: z
-      .string()
-      .trim()
-      .refine((val) => !val || PHONE_REGEX.test(val.replace(/[\s()-]/g, '')), {
-        message: 'Please enter a valid 10-digit driver phone number'
-      })
-      .nullable()
-      .optional(),
-    capacity: z.coerce.number().int().min(1, 'Capacity must be a positive integer').max(200).default(30)
-  })
+  body: z
+    .object({
+      name: z.string().trim().min(2, 'Route name must be at least 2 characters').max(150, 'Route name cannot exceed 150 characters').optional(),
+      routeNumber: z.string().trim().max(50).nullable().optional(),
+      vehicleId: z.string().uuid({ message: 'vehicleId must be a valid UUID' }).nullable().optional(),
+      driverName: z.string().trim().max(100).nullable().optional(),
+      driverPhone: z
+        .string()
+        .trim()
+        .refine((val) => !val || PHONE_REGEX.test(val.replace(/[\s()-]/g, '')), {
+          message: 'Please enter a valid 10-digit driver phone number'
+        })
+        .nullable()
+        .optional(),
+      capacity: z.coerce.number().int().min(1, 'Capacity must be a positive integer').max(200).default(30)
+    })
+    .refine((data) => (data.name && data.name.trim().length >= 2) || (data.routeNumber && data.routeNumber.trim().length >= 1), {
+      message: 'Route name or routeNumber is required',
+      path: ['name']
+    })
 });
 
 export const updateRouteSchema = z.object({

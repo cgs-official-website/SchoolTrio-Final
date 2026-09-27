@@ -82,7 +82,16 @@ export async function createVehicle(schoolId, data, actor = {}) {
     throw new TenantAccessError('Tenant context required to create vehicle');
   }
 
+  const capacity = data.capacity !== undefined && data.capacity !== null ? Number(data.capacity) : 30;
+  if (isNaN(capacity) || capacity < 1) {
+    throw new ValidationError('Vehicle capacity must be a positive integer');
+  }
+
   const normalizedReg = normalizeRegistrationNumber(data.registrationNumber);
+  if (!normalizedReg || normalizedReg.length < 4) {
+    throw new ValidationError('Valid vehicle registration number is required');
+  }
+
   const existing = await transportRepository.findVehicleByRegistrationNumber(schoolId, normalizedReg);
   if (existing) {
     throw new ConflictError(`Vehicle with registration number '${normalizedReg}' already exists in this school`);
@@ -90,7 +99,8 @@ export async function createVehicle(schoolId, data, actor = {}) {
 
   const vehicle = await transportRepository.createVehicle(schoolId, {
     ...data,
-    registrationNumber: normalizedReg
+    registrationNumber: normalizedReg,
+    capacity
   });
 
   createAuditLog({
@@ -199,6 +209,16 @@ export async function createRoute(schoolId, data, actor = {}) {
     throw new TenantAccessError('Tenant context required to create route');
   }
 
+  const routeName = (data.name || data.routeName || data.routeNumber || '').trim();
+  if (!routeName || routeName.length < 2) {
+    throw new ValidationError('Route name must be at least 2 characters');
+  }
+
+  const capacity = data.capacity !== undefined && data.capacity !== null ? Number(data.capacity) : 30;
+  if (isNaN(capacity) || capacity < 1) {
+    throw new ValidationError('Route capacity must be a positive integer');
+  }
+
   // Verify vehicle exists in tenant if supplied
   if (data.vehicleId) {
     const vehicle = await transportRepository.findVehicleById(schoolId, data.vehicleId);
@@ -211,6 +231,8 @@ export async function createRoute(schoolId, data, actor = {}) {
 
   const route = await transportRepository.createRoute(schoolId, {
     ...data,
+    name: routeName,
+    capacity,
     driverPhone: cleanPhone
   });
 
@@ -305,12 +327,20 @@ export async function createRouteStop(schoolId, routeId, data, actor = {}) {
     throw new TenantAccessError('Tenant context required to create stop');
   }
 
+  const stopName = (data.stopName || data.name || '').trim();
+  if (!stopName || stopName.length < 2) {
+    throw new ValidationError('stopName must be at least 2 characters');
+  }
+
   const route = await transportRepository.findRouteById(schoolId, routeId);
   if (!route) {
     throw new NotFoundError('Route not found in active school');
   }
 
-  const stop = await transportRepository.createRouteStop(schoolId, routeId, data);
+  const stop = await transportRepository.createRouteStop(schoolId, routeId, {
+    ...data,
+    stopName
+  });
 
   createAuditLog({
     schoolId,
@@ -435,18 +465,16 @@ export async function assignStudentToRoute(schoolId, routeId, data, actor = {}) 
 
   const { studentId, pickupStopId } = data;
 
-  // Execute inside serialized transaction to prevent capacity races
+  if (!studentId) {
+    throw new ValidationError('studentId is required');
+  }
+
+  // Execute inside transaction to prevent capacity races
   const updatedStudent = await transportRepository.runTransaction(async (tx) => {
-    // 1. Lock route row for update to serialize competing assignments
-    let route;
-    try {
-      route = await transportRepository.lockRouteForUpdate(schoolId, routeId, tx);
-    } catch {
-      // Fallback to transactional find if locking raw query is unavailable
-      route = await tx.transportRoute.findFirst({
-        where: { schoolId, id: routeId }
-      });
-    }
+    // 1. Verify route exists in active tenant
+    const route = await tx.transportRoute.findFirst({
+      where: { schoolId, id: routeId }
+    });
 
     if (!route) {
       throw new NotFoundError('Route not found in active school');

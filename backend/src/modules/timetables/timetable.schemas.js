@@ -100,11 +100,17 @@ export const createTimetablePeriodSchema = z.object({
       subjectId: z.string().uuid({ message: 'subjectId must be a valid UUID' }).nullable().optional(),
       teacherId: z.string().uuid({ message: 'teacherId must be a valid UUID' }).nullable().optional(),
       dayOfWeek: z
-        .preprocess((val) => normalizeDayOfWeek(val), z.number().int().min(1, 'dayOfWeek must be between 1 and 6').max(6, 'dayOfWeek must be between 1 and 6')),
+        .preprocess((val) => normalizeDayOfWeek(val), z.number({ required_error: 'dayOfWeek (1-6 or valid day name) is required' }).int().min(1, 'dayOfWeek must be between 1 and 6').max(6, 'dayOfWeek must be between 1 and 6'))
+        .optional(),
+      day: z.string().optional(),
       periodNumber: z.coerce.number().int().min(1, 'periodNumber must be a positive integer').default(1),
       startTime: z.string().regex(TIME_24HR_REGEX, { message: 'startTime must be in 24-hour HH:mm format' }),
       endTime: z.string().regex(TIME_24HR_REGEX, { message: 'endTime must be in 24-hour HH:mm format' }),
       roomNumber: z.string().max(50, 'roomNumber cannot exceed 50 characters').trim().nullable().optional()
+    })
+    .refine((data) => normalizeDayOfWeek(data.dayOfWeek ?? data.day) !== null, {
+      message: 'dayOfWeek (integer 1-6 or valid day name like Monday) is required',
+      path: ['dayOfWeek']
     })
     .refine((data) => isEndTimeAfterStartTime(data.startTime, data.endTime), {
       message: 'endTime must be later than startTime',

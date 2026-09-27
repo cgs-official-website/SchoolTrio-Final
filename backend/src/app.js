@@ -5,6 +5,7 @@ import { env } from './config/env.js';
 import { logger } from './utils/logger.js';
 import { corsMiddleware } from './middleware/cors.middleware.js';
 import { requestIdMiddleware } from './middleware/request-id.middleware.js';
+import { requestTimeoutMiddleware } from './middleware/timeout.middleware.js';
 import { errorMiddleware, notFoundHandler } from './middleware/error.middleware.js';
 import healthRoutes from './modules/health/health.routes.js';
 import apiV1Router from './routes/index.js';
@@ -20,6 +21,7 @@ export const createApp = () => {
   app.use(helmet());
   app.use(corsMiddleware);
   app.use(requestIdMiddleware);
+  app.use(requestTimeoutMiddleware());
 
   // 2. HTTP Request Logging (suppress /health and /health/live to reduce log noise)
   if (!env.isTest) {

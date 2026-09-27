@@ -11,20 +11,45 @@ import { HTTP_STATUS, ERROR_CODES } from '../config/constants.js';
  * @returns {{ statusCode: number, code: string, message: string, details: any } | null}
  */
 const mapPrismaError = (err) => {
-  if (err.name === 'PrismaClientInitializationError' || err.message?.includes('connection pool')) {
+  // 1. Prisma Client Initialization Error or Connection Reset (P1001 / ConnectionReset / 10054)
+  if (
+    err.name === 'PrismaClientInitializationError' ||
+    err.code === 'P1001' ||
+    err.code === 'P1000' ||
+    err.message?.includes('10054') ||
+    err.message?.includes('ConnectionReset') ||
+    err.message?.includes('forcibly closed')
+  ) {
     logger.error({
-      msg: '[PRISMA CONNECTION POOL TIMEOUT] Database connection pool exhausted',
+      msg: '[PRISMA CONNECTION ERROR] Database connection reset or server unreachable',
+      errorCode: err.code || 'P1001',
+      errorName: err.name,
       errorMessage: err.message
     });
     return {
-      statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR,
-      code: ERROR_CODES.INTERNAL_SERVER_ERROR,
+      statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
+      code: ERROR_CODES.SERVICE_UNAVAILABLE,
+      message: 'Database service temporarily unavailable. Please retry.',
+      details: null
+    };
+  }
+
+  // 2. Connection Pool Timeout (P2024 / pool timeout message)
+  if (err.code === 'P2024' || err.message?.includes('connection pool')) {
+    logger.error({
+      msg: '[PRISMA CONNECTION POOL TIMEOUT] Database connection pool exhausted',
+      errorCode: err.code || 'P2024',
+      errorMessage: err.message
+    });
+    return {
+      statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
+      code: ERROR_CODES.SERVICE_UNAVAILABLE,
       message: 'Database connection pool busy. Please retry.',
       details: null
     };
   }
 
-  // Prisma Known Request Error (e.g. P2002, P2025, P2003)
+  // 3. Prisma Known Request Error (e.g. P2002, P2025, P2003, P2010, P2028)
   if (typeof err.code === 'string' && /^P\d{4}$/.test(err.code)) {
     switch (err.code) {
       // P2002: Unique constraint failed
@@ -69,6 +94,49 @@ const mapPrismaError = (err) => {
           statusCode: HTTP_STATUS.BAD_REQUEST,
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Input value exceeds allowable column length or range',
+          details: null
+        };
+      }
+
+      // P2010: Raw query failed / Statement Timeout (PostgreSQL SQLSTATE 57014)
+      case 'P2010': {
+        const isStatementTimeout = err.message?.includes('57014') || err.message?.includes('statement timeout');
+        if (isStatementTimeout) {
+          logger.error({
+            msg: '[PRISMA STATEMENT TIMEOUT] Query execution cancelled due to statement timeout (30s)',
+            errorMessage: err.message
+          });
+          return {
+            statusCode: HTTP_STATUS.GATEWAY_TIMEOUT,
+            code: ERROR_CODES.GATEWAY_TIMEOUT,
+            message: 'Database query timed out',
+            details: null
+          };
+        }
+        logger.error({
+          msg: '[PRISMA P2010 RAW QUERY ERROR] Raw query execution failed',
+          meta: err.meta,
+          errorMessage: err.message
+        });
+        return {
+          statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR,
+          code: ERROR_CODES.INTERNAL_SERVER_ERROR,
+          message: 'Database operation failed',
+          details: null
+        };
+      }
+
+      // P2028: Transaction API error / timeout
+      case 'P2028': {
+        logger.error({
+          msg: '[PRISMA P2028 TRANSACTION ERROR] Transaction timed out or was closed',
+          meta: err.meta,
+          errorMessage: err.message
+        });
+        return {
+          statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR,
+          code: ERROR_CODES.INTERNAL_SERVER_ERROR,
+          message: 'Transaction timed out or failed. Please retry.',
           details: null
         };
       }

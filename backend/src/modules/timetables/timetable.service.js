@@ -267,6 +267,11 @@ export async function createTimetablePeriod(schoolId, data, actor = {}) {
     throw new TenantAccessError('Tenant context required to create timetable period');
   }
 
+  const normalizedDay = normalizeDayOfWeek(data.dayOfWeek ?? data.day);
+  if (!normalizedDay) {
+    throw new ValidationError('dayOfWeek (1-6 or valid day name) is required and must be valid');
+  }
+
   // 1. Verify class in tenant
   const targetClass = await timetableRepository.findClassInTenant(schoolId, data.classId);
   if (!targetClass) {
@@ -297,7 +302,10 @@ export async function createTimetablePeriod(schoolId, data, actor = {}) {
     }
   }
 
-  const created = await timetableRepository.createTimetablePeriod(schoolId, data);
+  const created = await timetableRepository.createTimetablePeriod(schoolId, {
+    ...data,
+    dayOfWeek: normalizedDay
+  });
 
   createAuditLog({
     schoolId,
