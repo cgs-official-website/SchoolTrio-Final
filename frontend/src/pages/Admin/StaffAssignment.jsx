@@ -1637,7 +1637,7 @@ export default function StaffAssignment() {
                   >
                     <option value="">-- None --</option>
                     {classes.map(c => (
-                      <option key={c.id} value={c.id}>{c.name} - Section {c.section}</option>
+                      <option key={c.id} value={c.id}>{getClassName(c)}</option>
                     ))}
                   </select>
                 </div>
@@ -1659,7 +1659,7 @@ export default function StaffAssignment() {
                           }}
                           className="w-4 h-4 text-primary-600 rounded border-slate-300 dark:border-slate-600 focus:ring-primary-500"
                         />
-                        <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{c.name} - Section {c.section}</span>
+                        <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{getClassName(c)}</span>
                       </label>
                     ))}
                     {classes.length === 0 && <span className="text-sm text-slate-500 dark:text-slate-400 italic p-2">No classes available.</span>}
@@ -2090,7 +2090,7 @@ export default function StaffAssignment() {
                       >
                         <option value="">-- Unassigned --</option>
                         {classes.map(c => (
-                          <option key={c.id} value={c.id}>{c.name} - Section {c.section}</option>
+                          <option key={c.id} value={c.id}>{getClassName(c)}</option>
                         ))}
                       </select>
                     </div>
