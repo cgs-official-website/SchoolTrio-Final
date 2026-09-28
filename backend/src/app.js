@@ -19,7 +19,6 @@ export const createApp = () => {
 
   // 1. Global Security Middlewares
   app.use(corsMiddleware);
-  app.options('*', corsMiddleware);
   app.use(helmet());
   app.use(requestIdMiddleware);
   app.use(requestTimeoutMiddleware());

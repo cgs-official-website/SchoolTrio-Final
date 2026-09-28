@@ -39,13 +39,14 @@ export const parseCookies = (req) => {
 
 /**
  * Returns standardized options for the HttpOnly refresh cookie.
+ * In production (cross-domain Vercel -> Railway), sameSite must be 'none' with secure: true.
  *
  * @returns {import('express').CookieOptions} Cookie configuration
  */
 export const getRefreshCookieOptions = () => ({
   httpOnly: true,
   secure: env.isProduction,
-  sameSite: 'Strict',
+  sameSite: env.isProduction ? 'none' : 'lax',
   maxAge: AUTH_CONSTANTS.REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
   path: AUTH_CONSTANTS.REFRESH_COOKIE_PATH || '/api/v1/auth'
 });
@@ -58,7 +59,7 @@ export const getRefreshCookieOptions = () => ({
 export const getClearRefreshCookieOptions = () => ({
   httpOnly: true,
   secure: env.isProduction,
-  sameSite: 'Strict',
+  sameSite: env.isProduction ? 'none' : 'lax',
   path: AUTH_CONSTANTS.REFRESH_COOKIE_PATH || '/api/v1/auth'
 });
 
