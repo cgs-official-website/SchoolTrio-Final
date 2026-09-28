@@ -809,17 +809,26 @@ export async function assignStaff(schoolId, id, data, actor = null) {
 
   const updatePayload = {};
 
+  // Sanitize: filter subjectClassIds to valid UUIDs only (guards against legacy composite IDs)
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const sanitizedSubjectClassIds = data.subjectClassIds
+    ? data.subjectClassIds.filter(id => UUID_REGEX.test(id))
+    : undefined;
+  const sanitizedSubjectIds = data.assignedSubjectIds
+    ? data.assignedSubjectIds.filter(id => UUID_REGEX.test(id))
+    : undefined;
+
   if (data.assignedClassId !== undefined) {
     updatePayload.assignedClassId = data.assignedClassId;
   }
 
   const existingAssignments = existingStaff.customData?.assignments || {};
   const newAssignments = {
-    assignedSubjectIds: data.assignedSubjectIds !== undefined
-      ? Array.from(new Set(data.assignedSubjectIds))
+    assignedSubjectIds: sanitizedSubjectIds !== undefined
+      ? Array.from(new Set(sanitizedSubjectIds))
       : (existingAssignments.assignedSubjectIds || []),
-    subjectClassIds: data.subjectClassIds !== undefined
-      ? Array.from(new Set(data.subjectClassIds))
+    subjectClassIds: sanitizedSubjectClassIds !== undefined
+      ? Array.from(new Set(sanitizedSubjectClassIds))
       : (existingAssignments.subjectClassIds || [])
   };
 

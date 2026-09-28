@@ -299,7 +299,7 @@ export default function StaffAssignment() {
       const [staffRes, classesRes, subjectsRes, rolesRes] = await Promise.all([
         listStaff({ limit: 100 }),
         listClasses({ limit: 100 }),
-        listSubjects(),
+        listSubjects({ limit: 100 }),
         listRoles().catch(() => ({ data: [] }))
       ]);
 
@@ -419,8 +419,11 @@ export default function StaffAssignment() {
       toast.success("Assignments updated successfully.");
       await fetchStaffData();
     } catch (error) {
-      console.error("Error updating assignment:", error);
-      toast.error(error.message || "Failed to assign classes/subjects.");
+      console.error("Error updating assignment:", error, { status: error?.status, code: error?.code, details: error?.details });
+      const msg = error?.details
+        ? `Validation failed: ${Array.isArray(error.details) ? error.details.map(d => d.message).join(', ') : JSON.stringify(error.details)}`
+        : (error.message || "Failed to assign classes/subjects.");
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -1682,20 +1685,20 @@ export default function StaffAssignment() {
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Subject Teacher Assignments</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800">
                     {flattenedClasses.map(fc => {
-                      const isChecked = selectedSubjectClassIds.includes(fc.classId) || selectedSubjectClassIds.includes(fc.id);
+                      const storedId = fc.classId;
+                      const isChecked = selectedSubjectClassIds.includes(storedId);
                       return (
                         <label key={`subj-${fc.id}`} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg cursor-pointer">
                           <input
                             type="checkbox"
                             checked={isChecked}
                             onChange={(e) => {
-                              const targetId = fc.classId || fc.id;
                               if (e.target.checked) {
-                                if (!selectedSubjectClassIds.includes(targetId)) {
-                                  setSelectedSubjectClassIds([...selectedSubjectClassIds, targetId]);
+                                if (!selectedSubjectClassIds.includes(storedId)) {
+                                  setSelectedSubjectClassIds([...selectedSubjectClassIds, storedId]);
                                 }
                               } else {
-                                setSelectedSubjectClassIds(selectedSubjectClassIds.filter(id => id !== targetId && id !== fc.id));
+                                setSelectedSubjectClassIds(selectedSubjectClassIds.filter(id => id !== storedId));
                               }
                             }}
                             className="w-4 h-4 text-primary-600 rounded border-slate-300 dark:border-slate-600 focus:ring-primary-500"
