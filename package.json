@@ -4,6 +4,9 @@
   "private": true,
   "description": "SchoolTrio SaaS - Full Stack Educational Platform",
   "type": "module",
+  "engines": {
+    "node": "20.x"
+  },
   "workspaces": [
     "backend",
     "frontend"
