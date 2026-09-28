@@ -12,13 +12,15 @@ export const corsMiddleware = cors({
       return callback(null, true);
     }
 
+    const cleanOrigin = origin.replace(/\/+$/, '');
+
     const isAllowed = env.parsedCorsOrigins.some(allowedOrigin => {
       if (allowedOrigin === '*') return true;
       if (allowedOrigin.startsWith('*.')) {
         const domainSuffix = allowedOrigin.slice(1); // e.g. .vercel.app
-        return origin.endsWith(domainSuffix);
+        return cleanOrigin.endsWith(domainSuffix);
       }
-      return allowedOrigin === origin;
+      return allowedOrigin === cleanOrigin;
     });
 
     if (isAllowed || env.isDevelopment) {
@@ -26,7 +28,7 @@ export const corsMiddleware = cors({
     }
 
     console.warn(`[CORS REJECTED] Origin: "${origin}". Allowed origins:`, env.parsedCorsOrigins);
-    return callback(new Error(`CORS origin not allowed: ${origin}`));
+    return callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

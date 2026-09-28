@@ -13,7 +13,7 @@ export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5000),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   REDIS_URL: z.string().min(1, 'REDIS_URL is required'),
-  CORS_ORIGINS: z.string().default('http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173'),
+  CORS_ORIGINS: z.string().default('http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,*.vercel.app,https://school-trio-final-frontend.vercel.app'),
 
   // Rate Limiting defaults
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
@@ -53,9 +53,9 @@ const parseEnv = () => {
     throw new Error(`Invalid environment configuration:\n${errorDetails}`);
   }
 
-  // Parse CORS origins into clean array
+  // Parse CORS origins into clean array (strip quotes, trailing slashes, whitespace)
   const parsedOrigins = result.data.CORS_ORIGINS.split(',')
-    .map(origin => origin.trim())
+    .map(origin => origin.trim().replace(/^["']|["']$/g, '').replace(/\/+$/, ''))
     .filter(Boolean);
 
   // Enforce critical production security secrets
