@@ -40,7 +40,17 @@ router.get(
   staffController.listStaff
 );
 
-// 4. Get single staff member by ID
+// 4. Bulk import staff members (must precede /:id)
+router.post(
+  '/bulk-import',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('staff', 'create'),
+  validate(staffSchemas.bulkImportStaffSchema),
+  staffController.bulkImportStaff
+);
+
+// 5. Get single staff member by ID
 router.get(
   '/:id',
   authenticate,

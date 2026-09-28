@@ -1,5 +1,5 @@
 import * as staffRepository from './staff.repository.js';
-import { prisma } from '../../database/prisma.client.js';
+import { prisma, basePrisma } from '../../database/prisma.client.js';
 import { createAuditLog } from '../audit/audit.repository.js';
 import {
   NotFoundError,
@@ -946,4 +946,309 @@ export async function deleteStaff(schoolId, id, actor = null) {
 
   return null;
 }
+
+/**
+ * High-performance batch bulk import for staff.
+ * Preloads existing records and roles to eliminate N+1 DB loop overhead.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Array<Object>} staffPayload - Array of staff objects to import
+ * @param {Object} [actor] - Requesting actor context
+ * @returns {Promise<Object>} Summary of created, updated, and failed staff
+ */
+export async function bulkImportStaff(schoolId, staffPayload = [], actor = null) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required for bulk import');
+  }
+
+  if (!Array.isArray(staffPayload) || staffPayload.length === 0) {
+    throw new ValidationError('Bulk import payload must contain at least one staff object');
+  }
+
+  // 1. Extract unique email addresses, employee IDs, and class IDs
+  const emails = Array.from(new Set(staffPayload.map(s => s.email?.trim()?.toLowerCase()).filter(Boolean)));
+  const employeeIds = Array.from(new Set(staffPayload.map(s => s.employeeId?.trim()).filter(Boolean)));
+  const assignedClassIds = Array.from(new Set(staffPayload.map(s => s.assignedClassId).filter(Boolean)));
+
+  // 2. Pre-fetch existing staff, users, school roles, and classes in parallel
+  const [existingStaffProfiles, existingUsers, schoolRoles, schoolClasses] = await Promise.all([
+    prisma.staffProfile.findMany({
+      where: {
+        schoolId,
+        OR: [
+          emails.length > 0 ? { email: { in: emails, mode: 'insensitive' } } : undefined,
+          employeeIds.length > 0 ? { employeeId: { in: employeeIds, mode: 'insensitive' } } : undefined
+        ].filter(Boolean)
+      },
+      select: staffRepository.STAFF_SELECT_CONFIG
+    }),
+    prisma.user.findMany({
+      where: {
+        schoolId,
+        email: { in: emails, mode: 'insensitive' }
+      },
+      select: {
+        id: true,
+        email: true,
+        systemRole: true,
+        isActive: true,
+        roleAssignments: {
+          select: {
+            id: true,
+            schoolRoleId: true
+          }
+        }
+      }
+    }),
+    prisma.schoolRole.findMany({
+      where: { schoolId }
+    }),
+    assignedClassIds.length > 0
+      ? prisma.class.findMany({
+          where: { schoolId, id: { in: assignedClassIds } }
+        })
+      : Promise.resolve([])
+  ]);
+
+  // Index existing records for O(1) in-memory lookups
+  const existingByEmail = new Map();
+  const existingByEmpId = new Map();
+  for (const st of existingStaffProfiles) {
+    if (st.email) existingByEmail.set(st.email.toLowerCase(), st);
+    if (st.employeeId) existingByEmpId.set(st.employeeId.toLowerCase(), st);
+  }
+
+  const userByEmail = new Map();
+  for (const u of existingUsers) {
+    if (u.email) userByEmail.set(u.email.toLowerCase(), u);
+  }
+
+  // Index school roles
+  const roleMap = new Map();
+  for (const r of schoolRoles) {
+    roleMap.set(r.id, r);
+    if (r.name) roleMap.set(r.name.toLowerCase(), r);
+    if (r.slug) roleMap.set(r.slug.toLowerCase(), r);
+  }
+
+  const classMap = new Map(schoolClasses.map(c => [c.id, c]));
+
+  const resultStaff = [];
+  const toCreatePayloads = [];
+  const toUpdateItems = [];
+  let createdCount = 0;
+  let updatedCount = 0;
+  const errors = [];
+
+  // 3. Process rows in-memory and categorize into create vs update
+  for (let i = 0; i < staffPayload.length; i++) {
+    const data = staffPayload[i];
+    const email = data.email?.trim()?.toLowerCase();
+    const firstName = data.firstName?.trim();
+
+    if (!email || !firstName) {
+      errors.push({ index: i, email, message: 'Missing required email or first name' });
+      continue;
+    }
+
+    const employeeId = data.employeeId ? data.employeeId.trim() : null;
+    const existing = existingByEmail.get(email) || (employeeId ? existingByEmpId.get(employeeId.toLowerCase()) : null);
+
+    const staffType = data.staffType || 'teaching';
+    const status = data.status || 'Active';
+    const isActive = status !== 'Inactive';
+    const systemRole = staffType === 'teaching' ? SYSTEM_ROLES.TEACHER : SYSTEM_ROLES.STAFF;
+    const name = `${firstName} ${data.lastName ? data.lastName.trim() : ''}`.trim();
+
+    // Resolve School Role ID
+    let assignedRoleId = data.roleId || null;
+    if (assignedRoleId && !roleMap.has(assignedRoleId)) {
+      assignedRoleId = null;
+    }
+    if (!assignedRoleId) {
+      const roleName = data.designation || 'Staffs';
+      const matchedRole = roleMap.get(roleName.toLowerCase()) || roleMap.get('staffs');
+      if (matchedRole) {
+        assignedRoleId = matchedRole.id;
+      }
+    }
+
+    // Validate assigned class
+    let assignedClassId = data.assignedClassId || null;
+    if (assignedClassId && !classMap.has(assignedClassId)) {
+      assignedClassId = null;
+    }
+
+    const customData = {
+      ...(data.customData || {}),
+      firstName,
+      lastName: data.lastName ? data.lastName.trim() : '',
+      gender: data.gender || 'Male',
+      dob: data.dob || null,
+      bloodGroup: data.bloodGroup || null,
+      maritalStatus: data.maritalStatus || null,
+      nationality: data.nationality || null,
+      address: data.address || null,
+      emergencyContact: data.emergencyContact || null,
+      fatherGuardianName: data.fatherGuardianName || null,
+      languagesKnown: data.languagesKnown || null,
+      qualifications: data.qualifications || null,
+      experience: data.experience || null,
+      financial: data.financial || null,
+      documents: data.documents || null,
+      assignments: data.assignments || {
+        assignedSubjectIds: data.assignedSubjectIds || [],
+        subjectClassIds: data.subjectClassIds || []
+      }
+    };
+
+    if (existing) {
+      const updateData = {};
+      if (name !== existing.name) updateData.name = name;
+      if (data.phone !== undefined && data.phone !== existing.phone) updateData.phone = data.phone ? data.phone.trim() : null;
+      if (employeeId && employeeId !== existing.employeeId) updateData.employeeId = employeeId;
+      if (staffType !== existing.staffType) updateData.staffType = staffType;
+      if (data.designation !== undefined && data.designation !== existing.designation) updateData.designation = data.designation ? data.designation.trim() : null;
+      if (assignedClassId !== existing.assignedClassId) updateData.assignedClassId = assignedClassId;
+      if (data.baseSalary !== undefined && data.baseSalary !== existing.baseSalary) updateData.baseSalary = Number(data.baseSalary) || 0;
+      if (status !== existing.status) updateData.status = status;
+
+      const mergedCustomData = { ...(existing.customData || {}), ...customData };
+      if (JSON.stringify(mergedCustomData) !== JSON.stringify(existing.customData || {})) {
+        updateData.customData = mergedCustomData;
+      }
+
+      toUpdateItems.push({
+        id: existing.id,
+        userId: existing.userId,
+        existing,
+        updateData,
+        systemRole,
+        isActive,
+        assignedRoleId,
+        assignedClassId
+      });
+    } else {
+      toCreatePayloads.push({
+        name,
+        firstName,
+        lastName: data.lastName ? data.lastName.trim() : '',
+        email,
+        phone: data.phone ? data.phone.trim() : null,
+        employeeId,
+        staffType,
+        designation: data.designation ? data.designation.trim() : null,
+        assignedClassId,
+        baseSalary: Number(data.baseSalary) || 0,
+        status,
+        isActive,
+        systemRole,
+        assignedRoleId,
+        customData
+      });
+    }
+  }
+
+  // 4. Perform atomic batch transaction with 30s timeout option
+  await basePrisma.$transaction(async (tx) => {
+    // A. Handle updates
+    for (const item of toUpdateItems) {
+      let updatedProfile = item.existing;
+      if (Object.keys(item.updateData).length > 0) {
+        updatedProfile = await staffRepository.updateStaffProfile(schoolId, item.id, item.updateData, tx);
+      }
+
+      if (item.userId) {
+        await staffRepository.updateUser(item.userId, {
+          isActive: item.isActive,
+          systemRole: item.systemRole
+        }, tx);
+
+        if (item.assignedRoleId) {
+          await staffRepository.removeUserRoleAssignments(item.userId, tx);
+          await staffRepository.assignUserRole(item.userId, item.assignedRoleId, schoolId, tx);
+        }
+      }
+
+      if (item.assignedClassId && item.assignedClassId !== item.existing.assignedClassId) {
+        await staffRepository.updateClassTeacher(schoolId, item.assignedClassId, item.id, tx);
+      }
+
+      const reloaded = await staffRepository.findStaffById(schoolId, item.id, tx);
+      resultStaff.push(reloaded || updatedProfile);
+      updatedCount++;
+    }
+
+    // B. Handle creations
+    for (const item of toCreatePayloads) {
+      let user = userByEmail.get(item.email);
+      if (!user) {
+        user = await staffRepository.createUser({
+          schoolId,
+          email: item.email,
+          passwordHash: '!LOCKED_NO_PASSWORD_SET',
+          systemRole: item.systemRole,
+          tokenVersion: 1,
+          isActive: item.isActive
+        }, tx);
+      }
+
+      const profile = await staffRepository.createStaffProfile({
+        schoolId,
+        userId: user.id,
+        name: item.name,
+        email: item.email,
+        phone: item.phone,
+        employeeId: item.employeeId,
+        staffType: item.staffType,
+        designation: item.designation,
+        assignedClassId: item.assignedClassId,
+        baseSalary: item.baseSalary,
+        status: item.status,
+        customData: item.customData
+      }, tx);
+
+      if (item.assignedRoleId) {
+        await staffRepository.assignUserRole(user.id, item.assignedRoleId, schoolId, tx);
+      }
+
+      if (item.assignedClassId) {
+        await staffRepository.updateClassTeacher(schoolId, item.assignedClassId, profile.id, tx);
+      }
+
+      const reloaded = await staffRepository.findStaffById(schoolId, profile.id, tx);
+      resultStaff.push(reloaded || profile);
+      createdCount++;
+    }
+  }, { timeout: 30000, maxWait: 10000 });
+
+  // 5. Non-blocking audit log
+  createAuditLog({
+    schoolId,
+    entityType: 'StaffProfile',
+    entityId: schoolId,
+    actionPerformed: `BULK_IMPORT_STAFF: ${createdCount} created, ${updatedCount} updated`,
+    userName: actor?.email || actor?.userId || 'Administrator',
+    userRole: actor?.systemRole || null,
+    modifiedFields: {
+      createdCount,
+      updatedCount,
+      failedCount: errors.length
+    }
+  }).catch(() => {});
+
+  const hasHRAccess = hasHRPayrollAccess(actor);
+  const serialized = resultStaff.map(s => serializeStaff(s, hasHRAccess));
+
+  return {
+    success: true,
+    totalProcessed: serialized.length,
+    createdCount,
+    updatedCount,
+    failedCount: errors.length,
+    staff: serialized,
+    errors
+  };
+}
+
 

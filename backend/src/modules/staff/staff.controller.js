@@ -52,6 +52,21 @@ export async function createStaff(req, res, next) {
 }
 
 /**
+ * High-performance batch bulk import for staff.
+ * POST /api/v1/staff/bulk-import
+ */
+export async function bulkImportStaff(req, res, next) {
+  try {
+    const schoolId = req.tenant.schoolId;
+    const actor = req.user || req.auth;
+    const result = await staffService.bulkImportStaff(schoolId, req.body.staff, actor);
+    return ApiResponse.success(res, result, 'Staff bulk import completed successfully', HTTP_STATUS.CREATED);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+/**
  * Updates a staff member profile, status, or role.
  * PATCH /api/v1/staff/:id
  */

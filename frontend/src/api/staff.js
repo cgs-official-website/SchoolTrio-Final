@@ -147,10 +147,25 @@ export async function updateStaffSelf(data) {
   });
 }
 
+/**
+ * High-performance batch bulk import for staff.
+ * Calls POST /api/v1/staff/bulk-import.
+ *
+ * @param {Array<Object>} staff - Array of staff creation payloads
+ * @returns {Promise<{ success: boolean, data: Object, message?: string }>}
+ */
+export async function bulkImportStaff(staff) {
+  return apiClient('/api/v1/staff/bulk-import', {
+    method: 'POST',
+    body: JSON.stringify({ staff })
+  });
+}
+
 export const staffApi = {
   listStaff,
   getStaff,
   createStaff,
+  bulkImportStaff,
   updateStaff,
   assignStaff,
   deleteStaff,
@@ -160,3 +175,4 @@ export const staffApi = {
 };
 
 export default staffApi;
+

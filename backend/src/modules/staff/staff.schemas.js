@@ -385,3 +385,42 @@ export const updateStaffSelfSchema = {
       'At least one field must be provided for update'
     )
 };
+
+export const bulkImportStaffSchema = {
+  body: z.object({
+    staff: z
+      .array(
+        z.object({
+          firstName: z.string().trim().min(1, 'First name is required').max(100),
+          lastName: z.string().trim().max(100).nullable().optional(),
+          email: z.string().trim().toLowerCase().email('Invalid email address format'),
+          phone: z.string().trim().max(20).nullable().optional(),
+          employeeId: z.string().trim().max(100).nullable().optional(),
+          staffType: z.enum(['teaching', 'non-teaching']).optional().default('teaching'),
+          designation: z.string().trim().max(100).nullable().optional(),
+          roleId: z.string().regex(REGEX.UUID).nullable().optional(),
+          assignedClassId: z.string().regex(REGEX.UUID).nullable().optional(),
+          baseSalary: z.coerce.number().min(0).nullable().optional(),
+          status: z.enum(['Active', 'Inactive', 'On Leave']).optional().default('Active'),
+          dob: z.string().trim().max(30).nullable().optional(),
+          gender: z.string().trim().max(20).optional().default('Male'),
+          bloodGroup: z.string().trim().max(10).nullable().optional(),
+          maritalStatus: z.string().trim().max(30).nullable().optional(),
+          nationality: z.string().trim().max(50).nullable().optional(),
+          address: z.string().trim().nullable().optional(),
+          emergencyContact: z.string().trim().max(20).nullable().optional(),
+          fatherGuardianName: z.string().trim().max(100).nullable().optional(),
+          languagesKnown: z.string().trim().max(200).nullable().optional(),
+          qualifications: z.record(z.unknown()).optional(),
+          experience: z.record(z.unknown()).optional(),
+          financial: z.record(z.unknown()).optional(),
+          documents: z.record(z.unknown()).optional(),
+          assignments: z.record(z.unknown()).optional(),
+          customData: z.record(z.unknown()).optional()
+        })
+      )
+      .min(1, 'Bulk import payload must contain at least one staff object')
+      .max(100, 'Cannot import more than 100 staff members in a single request')
+  })
+};
+

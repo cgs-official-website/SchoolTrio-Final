@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { listStaff, createStaff, updateStaff, assignStaff, deleteStaff, listRoles } from '../../api/staff';
+import { listStaff, createStaff, bulkImportStaff, updateStaff, assignStaff, deleteStaff, listRoles } from '../../api/staff';
 import { listClasses } from '../../api/classes';
 import { listSubjects } from '../../api/subjects';
 import { uploadFileToCloudinaryOrFirebase, uploadCustomDataFiles } from '../../utils/cloudinary';
@@ -526,7 +526,7 @@ export default function StaffAssignment() {
             return s || null;
           };
 
-          let successCount = 0;
+          const payloads = [];
           let skippedCount = 0;
 
           for (let i = 0; i < rawData.length; i++) {
@@ -601,43 +601,75 @@ export default function StaffAssignment() {
                 branchName: getField(row, 'branch name', 'branch') || null,
                 ifscCode: getField(row, 'ifsc code', 'ifsc') || null
               },
+              assignments: {
+                assignedSubjectIds: [],
+                subjectClassIds: matchedSubjectClassIds
+              },
               customData: {
                 aadharNumber: getField(row, 'aadhaar / govt id', 'aadhaar/govt id', 'aadhar number', 'aadhar', 'aadhaar number', 'aadhaar') || null,
                 govtIdNumber: getField(row, 'government-issued id', 'government id', 'govt id', 'govt_id') || null
               }
             };
 
-            try {
-              const existingStaffMember = staff.find(s => s.email?.toLowerCase() === email.toLowerCase());
-              let targetStaffId = null;
-
-              if (existingStaffMember) {
-                await updateStaff(existingStaffMember.id, staffPayload);
-                targetStaffId = existingStaffMember.id;
-              } else {
-                const createRes = await createStaff(staffPayload);
-                targetStaffId = createRes?.data?.id || createRes?.data?.staff?.id || createRes?.id;
-              }
-
-              if (targetStaffId && (matchedClass?.id || matchedSubjectClassIds.length > 0)) {
-                await assignStaff(targetStaffId, {
-                  assignedClassId: matchedClass?.id || null,
-                  subjectClassIds: matchedSubjectClassIds
-                }).catch(err => console.warn('Assignment update warning:', err));
-              }
-
-              successCount++;
-            } catch (innerRowErr) {
-              console.warn(`Row ${i + 1} skipped during import:`, innerRowErr);
-              skippedCount++;
-            }
+            payloads.push(staffPayload);
           }
 
-          const skippedMsg = skippedCount > 0 ? ` (${skippedCount} row(s) skipped)` : '';
-          toast.success(`Successfully imported ${successCount} staff member(s)!${skippedMsg}`, { id: loadingToastId });
+          if (payloads.length === 0) {
+            toast.error(`No valid staff rows found to import.${skippedCount > 0 ? ` (${skippedCount} row(s) skipped)` : ''}`, { id: loadingToastId });
+            setUploading(false);
+            return;
+          }
+
+          // Chunk payloads into batches of 25 for parallel speed & live progress updates
+          const BATCH_SIZE = 25;
+          const batches = [];
+          for (let b = 0; b < payloads.length; b += BATCH_SIZE) {
+            batches.push(payloads.slice(b, b + BATCH_SIZE));
+          }
+
+          toast.loading(`Processing bulk import... (0/${payloads.length})`, { id: loadingToastId });
+
+          let totalCreated = 0;
+          let totalUpdated = 0;
+          let totalFailed = 0;
+
+          for (let k = 0; k < batches.length; k++) {
+            const currentBatchPayloads = batches[k];
+            try {
+              const res = await bulkImportStaff(currentBatchPayloads);
+              const batchResult = res?.data || {};
+
+              totalCreated += (batchResult.createdCount || 0);
+              totalUpdated += (batchResult.updatedCount || 0);
+              totalFailed += (batchResult.failedCount || 0);
+
+              if (Array.isArray(batchResult.staff) && batchResult.staff.length > 0) {
+                const formatted = batchResult.staff.map(normalizeStaffMember);
+
+                setStaff(prev => {
+                  const map = new Map(prev.map(item => [item.id, item]));
+                  for (const item of formatted) {
+                    map.set(item.id, item);
+                  }
+                  return Array.from(map.values());
+                });
+              }
+            } catch (batchErr) {
+              console.error(`Batch ${k + 1} bulk import error:`, batchErr);
+              totalFailed += currentBatchPayloads.length;
+            }
+
+            const processedSoFar = Math.min(payloads.length, (k + 1) * BATCH_SIZE);
+            toast.loading(`Processing bulk import... (${processedSoFar}/${payloads.length})`, { id: loadingToastId });
+          }
+
+          notifyDataChanged('staff');
+          await fetchStaffData();
+
+          const skippedMsg = skippedCount > 0 ? `, ${skippedCount} skipped` : '';
+          toast.success(`Import complete! ${totalCreated} created, ${totalUpdated} updated${totalFailed > 0 ? `, ${totalFailed} failed` : ''}${skippedMsg}.`, { id: loadingToastId, duration: 5000 });
           setUploadModalOpen(false);
           setUploadFile(null);
-          await fetchStaffData();
         } catch (innerErr) {
           console.error("Bulk import processing error:", innerErr);
           toast.error(`Import failed: ${innerErr.message || 'Check file format.'}`, { id: loadingToastId });
