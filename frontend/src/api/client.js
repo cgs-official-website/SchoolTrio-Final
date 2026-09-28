@@ -90,6 +90,11 @@ export const refreshTokenSingleFlight = async () => {
           );
         }
 
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new ApiError('Invalid response from auth server', res.status, 'INVALID_REFRESH_RESPONSE');
+        }
+
         const data = await res.json();
         const newAccessToken = data.data?.accessToken;
         if (!newAccessToken) {
@@ -214,6 +219,16 @@ export const apiClient = async (endpoint, options = {}) => {
 
   if (response.status === 204) {
     return null;
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
   }
 
   return response.json();

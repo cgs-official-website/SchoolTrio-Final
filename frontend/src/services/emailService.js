@@ -127,7 +127,10 @@ export const sendEmail = async ({ to, templateType, data }) => {
     });
 
     if (response.ok) {
-      return await response.json();
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        return await response.json();
+      }
     }
   } catch (error) {
     console.warn("Serverless API endpoint unavailable, attempting direct Resend API call...", error);
