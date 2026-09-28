@@ -87,23 +87,52 @@ export const AUTH_USER_SELECT = Object.freeze({
 });
 
 /**
+ * Lightweight user field selection for rapid JWT authentication verification.
+ * Avoids expensive joins on roleAssignments, staffProfile, and parentProfile on every API request.
+ */
+export const AUTH_VERIFY_USER_SELECT = Object.freeze({
+  id: true,
+  schoolId: true,
+  email: true,
+  systemRole: true,
+  tokenVersion: true,
+  isActive: true,
+  school: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      status: true
+    }
+  }
+});
+
+/**
  * Retrieves a user by their unique UUID.
  *
  * @param {string} userId - User UUID
  * @param {Object} [options] - Query options
  * @param {boolean} [options.includePassword=false] - Whether to include passwordHash
+ * @param {boolean} [options.lean=false] - Whether to use lightweight AUTH_VERIFY_USER_SELECT (for auth middleware)
  * @param {Object} [options.tx] - Optional Prisma transaction client
  * @returns {Promise<Object|null>} User object or null
  */
-export const findUserById = async (userId, { includePassword = false, tx = null } = {}) => {
+export const findUserById = async (userId, { includePassword = false, lean = false, tx = null } = {}) => {
   if (!userId || typeof userId !== 'string') {
     return null;
   }
 
   const client = getClient(tx);
+  let select = SAFE_USER_SELECT;
+  if (includePassword) {
+    select = AUTH_USER_SELECT;
+  } else if (lean) {
+    select = AUTH_VERIFY_USER_SELECT;
+  }
+
   return client.user.findUnique({
     where: { id: userId },
-    select: includePassword ? AUTH_USER_SELECT : SAFE_USER_SELECT
+    select
   });
 };
 

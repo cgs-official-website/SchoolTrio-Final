@@ -27,7 +27,11 @@ export const parseCookies = (req) => {
   return cookieHeader.split(';').reduce((acc, cookie) => {
     const [key, ...val] = cookie.trim().split('=');
     if (key) {
-      acc[key] = decodeURIComponent(val.join('='));
+      try {
+        acc[key] = decodeURIComponent(val.join('='));
+      } catch (_e) {
+        acc[key] = val.join('=');
+      }
     }
     return acc;
   }, {});

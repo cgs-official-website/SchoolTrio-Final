@@ -2,6 +2,37 @@ import { UnauthorizedError, ForbiddenError } from '../utils/app-error.js';
 import { ERROR_CODES } from '../config/constants.js';
 import { verifyAccessToken } from '../modules/auth/token.service.js';
 import * as authRepository from '../modules/auth/auth.repository.js';
+import { RedisCacheService } from '../services/redis-cache.service.js';
+
+/**
+ * Resolves authenticated user with short-lived memory cache (60s) to prevent parallel query hammering.
+ * Bypasses cache in test environments to ensure mock isolation.
+ *
+ * @param {string} userId - User UUID
+ * @returns {Promise<Object|null>}
+ */
+const resolveAuthUser = async (userId) => {
+  const useCache = process.env.NODE_ENV !== 'test';
+  const cacheKey = `auth:user:${userId}`;
+  let user = null;
+
+  if (useCache) {
+    try {
+      user = await RedisCacheService.get(cacheKey);
+    } catch (_err) {}
+  }
+
+  if (!user) {
+    user = await authRepository.findUserById(userId);
+    if (user && user.isActive && useCache) {
+      try {
+        await RedisCacheService.set(cacheKey, user, 60);
+      } catch (_err) {}
+    }
+  }
+
+  return user;
+};
 
 /**
  * Authentication Middleware (Phase 4B.3 Authoritative Implementation)
@@ -46,8 +77,8 @@ export const authenticate = async (req, _res, next) => {
       throw new UnauthorizedError('Invalid access token: missing tokenVersion claim', ERROR_CODES.INVALID_TOKEN);
     }
 
-    // 2. Authoritative PostgreSQL User lookup
-    const user = await authRepository.findUserById(decoded.sub);
+    // 2. Authoritative User lookup (cached in-memory for 60s during concurrent bursts)
+    const user = await resolveAuthUser(decoded.sub);
 
     if (!user) {
       throw new UnauthorizedError('User account not found', ERROR_CODES.UNAUTHORIZED);
@@ -80,7 +111,10 @@ export const authenticate = async (req, _res, next) => {
       tokenVersion: user.tokenVersion,
       jti: decoded.jti || null,
       email: user.email,
-      school: user.school || null
+      school: user.school || null,
+      roleAssignments: user.roleAssignments || [],
+      staffProfile: user.staffProfile || null,
+      parentProfile: user.parentProfile || null
     };
 
     next();
@@ -112,7 +146,7 @@ export const optionalAuth = async (req, _res, next) => {
   try {
     const decoded = verifyAccessToken(token);
     if (decoded && decoded.sub && typeof decoded.tokenVersion === 'number') {
-      const user = await authRepository.findUserById(decoded.sub);
+      const user = await resolveAuthUser(decoded.sub);
       if (user && user.isActive && decoded.tokenVersion === user.tokenVersion) {
         req.auth = {
           userId: user.id,

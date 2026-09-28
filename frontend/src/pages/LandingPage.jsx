@@ -11,10 +11,10 @@ function Hero3DBackground() {
   const meshRef = useRef(null);
   const reducedMotion = useReducedMotion();
   
-  useFrame((state) => {
+  useFrame((_state, delta) => {
     if (meshRef.current && !reducedMotion) {
-      meshRef.current.rotation.x = state.clock.elapsedTime * 0.1;
-      meshRef.current.rotation.y = state.clock.elapsedTime * 0.15;
+      meshRef.current.rotation.x += delta * 0.1;
+      meshRef.current.rotation.y += delta * 0.15;
     }
   });
 

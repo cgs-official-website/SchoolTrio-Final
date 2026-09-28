@@ -207,9 +207,18 @@ export const errorMiddleware = (err, req, res, _next) => {
   }
 
   // 5. In production mode, redact unexpected 500 error messages
-  if (env.isProduction && statusCode === HTTP_STATUS.INTERNAL_SERVER_ERROR) {
-    message = 'An unexpected internal server error occurred';
-    details = null;
+  if (statusCode === HTTP_STATUS.INTERNAL_SERVER_ERROR) {
+    logger.error({
+      msg: '[INTERNAL SERVER ERROR]',
+      path: req.originalUrl || req.url,
+      method: req.method,
+      error: err.message,
+      stack: err.stack
+    });
+    if (env.isProduction) {
+      message = 'An unexpected internal server error occurred';
+      details = null;
+    }
   }
 
   // 6. Assemble standardized response envelope

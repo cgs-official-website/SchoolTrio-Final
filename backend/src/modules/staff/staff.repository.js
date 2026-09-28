@@ -31,7 +31,6 @@ export const STAFF_SELECT_CONFIG = {
       email: true,
       systemRole: true,
       isActive: true,
-      passwordHash: true,
       tokenVersion: true,
       roleAssignments: {
         select: {
@@ -55,6 +54,43 @@ export const STAFF_SELECT_CONFIG = {
     }
   },
   headedClasses: {
+    select: {
+      id: true,
+      name: true
+    }
+  }
+};
+
+/**
+ * Lightweight staff selection configuration for rapid listings and count checks.
+ * Avoids joining deep role assignments and headed classes.
+ */
+export const LEAN_STAFF_SELECT_CONFIG = {
+  id: true,
+  schoolId: true,
+  userId: true,
+  employeeId: true,
+  name: true,
+  staffType: true,
+  designation: true,
+  phone: true,
+  email: true,
+  assignedClassId: true,
+  baseSalary: true,
+  status: true,
+  customData: true,
+  createdAt: true,
+  updatedAt: true,
+  user: {
+    select: {
+      id: true,
+      email: true,
+      systemRole: true,
+      isActive: true,
+      tokenVersion: true
+    }
+  },
+  assignedClass: {
     select: {
       id: true,
       name: true
@@ -138,9 +174,11 @@ export async function findStaff(schoolId, options = {}, tx = prisma) {
     orderBy.push({ name: options.order || 'asc' });
   }
 
+  const select = (options.take <= 1 || options.lean) ? LEAN_STAFF_SELECT_CONFIG : STAFF_SELECT_CONFIG;
+
   return tx.staffProfile.findMany({
     where,
-    select: STAFF_SELECT_CONFIG,
+    select,
     skip: options.skip,
     take: options.take,
     orderBy

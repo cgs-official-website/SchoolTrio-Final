@@ -1,4 +1,4 @@
-import { prisma } from '../../database/prisma.client.js';
+import { prisma, basePrisma } from '../../database/prisma.client.js';
 import { AUTH_CONSTANTS, ERROR_CODES } from '../../config/constants.js';
 import { UnauthorizedError } from '../../utils/app-error.js';
 import { generateRefreshToken, hashRefreshToken } from './token.service.js';
@@ -75,7 +75,7 @@ export const rotateSession = async (rawToken, metadata = {}) => {
 
   const tokenHash = hashRefreshToken(rawToken);
 
-  return prisma.$transaction(async (tx) => {
+  return basePrisma.$transaction(async (tx) => {
     // 1. Locate session by token hash with associated user data
     const session = await authRepository.findRefreshSessionByTokenHash(tokenHash, { tx });
 
@@ -91,7 +91,18 @@ export const rotateSession = async (rawToken, metadata = {}) => {
         const latestSession = await tx.refreshSession.findFirst({
           where: { userId: session.userId, revokedAt: null },
           orderBy: { createdAt: 'desc' },
-          include: { user: { include: { staffProfile: true, parentProfile: true, school: true } } }
+          include: {
+            user: {
+              select: {
+                id: true,
+                schoolId: true,
+                email: true,
+                systemRole: true,
+                tokenVersion: true,
+                isActive: true
+              }
+            }
+          }
         });
         if (latestSession && latestSession.expiresAt.getTime() > Date.now()) {
           return {
@@ -145,7 +156,18 @@ export const rotateSession = async (rawToken, metadata = {}) => {
           const latestSession = await tx.refreshSession.findFirst({
             where: { userId: session.userId, revokedAt: null },
             orderBy: { createdAt: 'desc' },
-            include: { user: { include: { staffProfile: true, parentProfile: true, school: true } } }
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  schoolId: true,
+                  email: true,
+                  systemRole: true,
+                  tokenVersion: true,
+                  isActive: true
+                }
+              }
+            }
           });
           if (latestSession && latestSession.expiresAt.getTime() > Date.now()) {
             return {
@@ -191,6 +213,9 @@ export const rotateSession = async (rawToken, metadata = {}) => {
       expiresAt: newSession.expiresAt,
       user: session.user
     };
+  }, {
+    maxWait: 15000,
+    timeout: 30000
   });
 };
 

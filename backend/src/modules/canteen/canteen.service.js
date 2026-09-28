@@ -1,6 +1,7 @@
 import * as canteenRepository from './canteen.repository.js';
 import { createAuditLog } from '../audit/audit.repository.js';
 import { SYSTEM_ROLES } from '../../config/constants.js';
+import { RedisCacheService } from '../../services/redis-cache.service.js';
 import {
   TenantAccessError,
   NotFoundError,
@@ -62,6 +63,7 @@ export function formatCanteenRequestDto(record) {
 
 /**
  * Retrieves the count of pending canteen meal requests for the authoritative tenant.
+ * Cached in-memory for 30s to prevent dashboard query contention.
  *
  * @param {string} schoolId - Validated School UUID from tenant context
  * @param {Object} [_actor] - Authenticated user context
@@ -72,9 +74,16 @@ export async function getPendingCanteenCount(schoolId, _actor) {
     throw new ValidationError('Tenant context required: schoolId is missing');
   }
 
-  const count = await canteenRepository.countPendingCanteenRequests(schoolId);
+  if (process.env.NODE_ENV === 'test') {
+    const count = await canteenRepository.countPendingCanteenRequests(schoolId);
+    return { count };
+  }
 
-  return { count };
+  const cacheKey = `canteen:pending-count:${schoolId}`;
+  return RedisCacheService.wrap(cacheKey, 30, async () => {
+    const count = await canteenRepository.countPendingCanteenRequests(schoolId);
+    return { count };
+  });
 }
 
 /**
@@ -203,6 +212,9 @@ export async function createCanteenRequest(schoolId, data, actor = {}) {
     }
   }).catch(() => {});
 
+  // Invalidate cached pending count
+  RedisCacheService.del(`canteen:pending-count:${schoolId}`).catch(() => {});
+
   return formatCanteenRequestDto(createdRecord);
 }
 
@@ -294,6 +306,9 @@ export async function updateCanteenRequestStatus(schoolId, id, data, actor = {})
       newStatus
     }
   }).catch(() => {});
+
+  // Invalidate cached pending count
+  RedisCacheService.del(`canteen:pending-count:${schoolId}`).catch(() => {});
 
   return formatCanteenRequestDto(updatedRecord);
 }

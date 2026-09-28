@@ -2,6 +2,7 @@ import { prisma } from '../../database/prisma.client.js';
 import * as complaintRepository from './complaint.repository.js';
 import { createAuditLog } from '../audit/audit.repository.js';
 import { SYSTEM_ROLES } from '../../config/constants.js';
+import { RedisCacheService } from '../../services/redis-cache.service.js';
 import {
   ValidationError,
   NotFoundError,
@@ -50,6 +51,7 @@ export function formatComplaintDto(record) {
 
 /**
  * Retrieves the count of pending complaints for the authoritative tenant.
+ * Cached in-memory for 30s to prevent dashboard sidebar contention.
  *
  * @param {string} schoolId - Validated School UUID from tenant context
  * @param {Object} [_actor] - Authenticated user context
@@ -60,9 +62,16 @@ export async function getPendingComplaintsCount(schoolId, _actor) {
     throw new ValidationError('Tenant context required: schoolId is missing');
   }
 
-  const count = await complaintRepository.countPendingComplaints(schoolId);
+  if (process.env.NODE_ENV === 'test') {
+    const count = await complaintRepository.countPendingComplaints(schoolId);
+    return { count };
+  }
 
-  return { count };
+  const cacheKey = `complaints:pending-count:${schoolId}`;
+  return RedisCacheService.wrap(cacheKey, 30, async () => {
+    const count = await complaintRepository.countPendingComplaints(schoolId);
+    return { count };
+  });
 }
 
 /**
@@ -181,6 +190,9 @@ export async function createComplaint(schoolId, actor, { title, description }) {
     console.error('[AUDIT LOG WARNING] Failed to record complaint creation audit log:', err.message);
   });
 
+  // Invalidate cached pending count
+  RedisCacheService.del(`complaints:pending-count:${schoolId}`).catch(() => {});
+
   return formatComplaintDto(complaint);
 }
 
@@ -251,6 +263,9 @@ export async function updateComplaintStatus(schoolId, id, actor, { status, resol
   }).catch(err => {
     console.error('[AUDIT LOG WARNING] Failed to record complaint status update audit log:', err.message);
   });
+
+  // Invalidate cached pending count
+  RedisCacheService.del(`complaints:pending-count:${schoolId}`).catch(() => {});
 
   return formatComplaintDto(updatedRecord);
 }

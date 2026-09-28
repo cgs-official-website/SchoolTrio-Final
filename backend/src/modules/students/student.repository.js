@@ -161,7 +161,7 @@ export async function findStudents(schoolId, options = {}, tx = prisma) {
 
   return tx.student.findMany({
     where,
-    select: STUDENT_SELECT_CONFIG,
+    select: options.includeCounts ? STUDENT_SELECT_CONFIG : BULK_STUDENT_SELECT_CONFIG,
     skip: options.skip,
     take: options.take,
     orderBy

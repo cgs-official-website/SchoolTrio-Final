@@ -7,7 +7,5 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(self.clients.claim());
 });
 
-self.addEventListener('fetch', (e) => {
-  // Do nothing, just pass through.
-  // A fetch event listener is required by Chrome to trigger the install prompt.
-});
+// Fetch event handler omitted to prevent navigation overhead warnings.
+// Modern Chromium PWA installability does not require an empty fetch handler.

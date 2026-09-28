@@ -1,12 +1,55 @@
 import { redis } from '../database/redis.client.js';
 import { logger } from '../utils/logger.js';
 
+// In-memory fallback cache when Redis is offline
+const memoryStore = new Map();
+const MAX_MEMORY_ITEMS = 5000;
+
+export const clearMemoryCache = () => memoryStore.clear();
+
+const getFromMemory = (key) => {
+  const item = memoryStore.get(key);
+  if (!item) return null;
+  if (item.expiresAt && Date.now() > item.expiresAt) {
+    memoryStore.delete(key);
+    return null;
+  }
+  return item.value;
+};
+
+const setToMemory = (key, value, ttlSeconds) => {
+  if (memoryStore.size >= MAX_MEMORY_ITEMS) {
+    const oldestKey = memoryStore.keys().next().value;
+    if (oldestKey) memoryStore.delete(oldestKey);
+  }
+  memoryStore.set(key, {
+    value,
+    expiresAt: ttlSeconds > 0 ? Date.now() + ttlSeconds * 1000 : null
+  });
+};
+
+const delFromMemory = (key) => {
+  return memoryStore.delete(key);
+};
+
+const delPatternFromMemory = (pattern) => {
+  const regex = new RegExp('^' + pattern.replace(/[-[\]{}()+?.,\\^$|#\s]/g, '\\$&').replace(/\*/g, '.*') + '$');
+  let count = 0;
+  for (const k of memoryStore.keys()) {
+    if (regex.test(k)) {
+      memoryStore.delete(k);
+      count++;
+    }
+  }
+  return count;
+};
+
 /**
- * Robust Redis Caching Service with Fail-Open Semantics
+ * Robust Redis Caching Service with Fail-Open Semantics and In-Memory Fallback
  */
 export class RedisCacheService {
   /**
-   * Retrieves and deserializes a value from Redis.
+   * Retrieves and deserializes a value from Redis or in-memory fallback.
    *
    * @param {string} key - Cache key
    * @returns {Promise<any|null>} Deserialized value or null
@@ -14,7 +57,7 @@ export class RedisCacheService {
   static async get(key) {
     try {
       if (redis.status !== 'ready' && redis.status !== 'connect') {
-        return null;
+        return getFromMemory(key);
       }
       const raw = await redis.get(key);
       if (!raw) return null;
@@ -26,7 +69,7 @@ export class RedisCacheService {
   }
 
   /**
-   * Serializes and sets a value in Redis with TTL.
+   * Serializes and sets a value in Redis with TTL or in-memory fallback.
    *
    * @param {string} key - Cache key
    * @param {any} value - Value to cache
@@ -36,7 +79,8 @@ export class RedisCacheService {
   static async set(key, value, ttlSeconds = 300) {
     try {
       if (redis.status !== 'ready' && redis.status !== 'connect') {
-        return false;
+        setToMemory(key, value, ttlSeconds);
+        return true;
       }
       const serialized = JSON.stringify(value);
       if (ttlSeconds > 0) {
@@ -44,6 +88,7 @@ export class RedisCacheService {
       } else {
         await redis.set(key, serialized);
       }
+      setToMemory(key, value, ttlSeconds);
       return true;
     } catch (err) {
       logger.warn({ msg: '[CACHE SET ERROR] Failing open', key, error: err.message });
@@ -52,15 +97,16 @@ export class RedisCacheService {
   }
 
   /**
-   * Deletes a key from Redis.
+   * Deletes a key from Redis and in-memory fallback.
    *
    * @param {string} key - Cache key
    * @returns {Promise<boolean>} True if key was deleted
    */
   static async del(key) {
+    delFromMemory(key);
     try {
       if (redis.status !== 'ready' && redis.status !== 'connect') {
-        return false;
+        return true;
       }
       const result = await redis.del(key);
       return result > 0;
@@ -71,15 +117,16 @@ export class RedisCacheService {
   }
 
   /**
-   * Deletes all keys matching a glob-style pattern using SCAN (production-safe).
+   * Deletes all keys matching a glob-style pattern using SCAN or in-memory fallback.
    *
    * @param {string} pattern - Key pattern (e.g. 'school:123:*')
    * @returns {Promise<number>} Number of keys deleted
    */
   static async delPattern(pattern) {
+    const memoryDeleted = delPatternFromMemory(pattern);
     try {
       if (redis.status !== 'ready' && redis.status !== 'connect') {
-        return 0;
+        return memoryDeleted;
       }
 
       let cursor = '0';
@@ -103,7 +150,7 @@ export class RedisCacheService {
   }
 
   /**
-   * Checks if a key exists in Redis.
+   * Checks if a key exists in Redis or in-memory fallback.
    *
    * @param {string} key - Cache key
    * @returns {Promise<boolean>}
@@ -111,7 +158,7 @@ export class RedisCacheService {
   static async has(key) {
     try {
       if (redis.status !== 'ready' && redis.status !== 'connect') {
-        return false;
+        return getFromMemory(key) !== null;
       }
       const exists = await redis.exists(key);
       return exists === 1;
