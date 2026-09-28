@@ -298,7 +298,7 @@ export default function StaffAssignment() {
     try {
       const [staffRes, classesRes, subjectsRes, rolesRes] = await Promise.all([
         listStaff({ limit: 100 }),
-        listClasses(),
+        listClasses({ limit: 100 }),
         listSubjects(),
         listRoles().catch(() => ({ data: [] }))
       ]);

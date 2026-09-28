@@ -168,7 +168,7 @@ export default function AdminOverview() {
         const [studentsRes, staffRes, classesRes, noticesRes, payrollRes] = await Promise.allSettled([
           listStudents({ limit: 1 }),
           listStaff({ limit: 1 }),
-          listClasses(),
+          listClasses({ limit: 100 }),
           listNotices({ limit: 10 }),
           listPayroll({ limit: 50 })
         ]);
@@ -178,6 +178,15 @@ export default function AdminOverview() {
         const studentCount = studentsRes.status === 'fulfilled' ? (studentsRes.value?.pagination?.total ?? (Array.isArray(studentsRes.value?.data) ? studentsRes.value.data.length : 0)) : 0;
         const staffCount = staffRes.status === 'fulfilled' ? (staffRes.value?.pagination?.total ?? (Array.isArray(staffRes.value?.data) ? staffRes.value.data.length : 0)) : 0;
         const classesData = classesRes.status === 'fulfilled' && Array.isArray(classesRes.value?.data) ? classesRes.value.data : (classesRes.status === 'fulfilled' && Array.isArray(classesRes.value) ? classesRes.value : []);
+        
+        // Calculate total active classes by counting flattened active sections (matching Class Management)
+        const totalActiveClasses = classesData.reduce((acc, c) => {
+          if (Array.isArray(c.sections) && c.sections.length > 0) {
+            return acc + c.sections.length;
+          }
+          return acc + 1;
+        }, 0);
+
         const noticesData = noticesRes.status === 'fulfilled' && Array.isArray(noticesRes.value?.data) ? noticesRes.value.data : [];
         const payrollData = payrollRes.status === 'fulfilled' && Array.isArray(payrollRes.value?.data) ? payrollRes.value.data : [];
 
@@ -185,7 +194,7 @@ export default function AdminOverview() {
           ...prev,
           students: studentCount,
           staff: staffCount,
-          classes: classesData.length,
+          classes: totalActiveClasses,
           notices: noticesData.length
         }));
 
