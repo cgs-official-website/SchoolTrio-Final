@@ -26,10 +26,31 @@ export class ApiError extends Error {
 
 /**
  * Returns configured API base URL.
+ * Ensures URL starts with http://, https://, or / and removes trailing slashes.
  * @returns {string}
  */
 export const getApiBaseUrl = () => {
-  return import.meta.env.VITE_API_BASE_URL || '';
+  let rawUrl = (import.meta.env.VITE_API_BASE_URL || '').trim();
+  if (!rawUrl) return '';
+
+  // Warn if user supplied an internal Railway domain unreachable from browser clients
+  if (rawUrl.includes('.railway.internal')) {
+    console.warn(
+      `[apiClient] WARNING: VITE_API_BASE_URL is set to an internal Railway hostname ("${rawUrl}"). ` +
+      `Railway internal domains are not reachable from public browser clients. ` +
+      `Please set VITE_API_BASE_URL to your public Railway backend URL (e.g., https://your-backend.up.railway.app).`
+    );
+  }
+
+  // Strip trailing slashes
+  let cleanUrl = rawUrl.replace(/\/+$/, '');
+
+  // If protocol missing (e.g. "schooltrio-final-production.up.railway.app"), default to https://
+  if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://') && !cleanUrl.startsWith('/')) {
+    cleanUrl = `https://${cleanUrl}`;
+  }
+
+  return cleanUrl;
 };
 
 /**

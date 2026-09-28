@@ -143,4 +143,15 @@ describe('apiClient', () => {
     const refreshCalls = global.fetch.mock.calls.filter(([url]) => url.includes('/api/v1/auth/refresh'));
     expect(refreshCalls.length).toBe(0);
   });
+
+  it('sanitizes VITE_API_BASE_URL missing protocol and handles trailing slashes', async () => {
+    const { getApiBaseUrl } = await import('../client.js');
+    
+    // Set VITE_API_BASE_URL without https://
+    import.meta.env.VITE_API_BASE_URL = 'schooltrio-final.up.railway.app/';
+    expect(getApiBaseUrl()).toBe('https://schooltrio-final.up.railway.app');
+
+    // Clean up
+    delete import.meta.env.VITE_API_BASE_URL;
+  });
 });
