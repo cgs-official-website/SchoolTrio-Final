@@ -6,12 +6,15 @@ import { HTTP_STATUS, ERROR_CODES } from '../config/constants.js';
  *
  * @param {number} [timeoutMs=30000] - Request timeout in milliseconds (default 30 seconds)
  */
-export const requestTimeoutMiddleware = (timeoutMs = 30000) => {
+export const requestTimeoutMiddleware = (timeoutMs = 60000) => {
   return (req, res, next) => {
     // Allow bypassing timeout during standard unit tests unless explicitly enabled
     if (process.env.NODE_ENV === 'test' && !req.headers['x-test-timeout']) {
       return next();
     }
+
+    // Extend timeout for bulk operations (/bulk-import, /bulk) to 120 seconds
+    const effectiveTimeoutMs = req.originalUrl?.includes('/bulk') ? 120000 : timeoutMs;
 
     const timer = setTimeout(() => {
       if (!res.headersSent) {
@@ -28,7 +31,7 @@ export const requestTimeoutMiddleware = (timeoutMs = 30000) => {
         };
         res.status(HTTP_STATUS.GATEWAY_TIMEOUT || 504).json(responsePayload);
       }
-    }, timeoutMs);
+    }, effectiveTimeoutMs);
 
     if (timer.unref) {
       timer.unref();

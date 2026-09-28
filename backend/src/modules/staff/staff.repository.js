@@ -259,6 +259,25 @@ export async function findStaffById(schoolId, id, tx = prisma) {
 }
 
 /**
+ * Finds multiple staff profiles by IDs within a tenant in a single batch query.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string[]} ids - Array of StaffProfile UUIDs
+ * @param {Object} [tx] - Optional transaction client
+ * @returns {Promise<Array>}
+ */
+export async function findStaffByIds(schoolId, ids, tx = prisma) {
+  if (!Array.isArray(ids) || ids.length === 0) return [];
+  return tx.staffProfile.findMany({
+    where: {
+      id: { in: ids },
+      schoolId
+    },
+    select: STAFF_SELECT_CONFIG
+  });
+}
+
+/**
  * Acquires a row-level lock on a StaffProfile for safe mutation/deletion.
  *
  * @param {string} schoolId - Tenant UUID

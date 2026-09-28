@@ -1149,7 +1149,9 @@ export async function bulkImportStaff(schoolId, staffPayload = [], actor = null)
     }
   }
 
-  // 4. Perform atomic batch transaction with 30s timeout option
+  const affectedIds = [];
+
+  // 4. Perform atomic batch transaction with 60s timeout option
   await basePrisma.$transaction(async (tx) => {
     // A. Handle updates
     for (const item of toUpdateItems) {
@@ -1174,8 +1176,7 @@ export async function bulkImportStaff(schoolId, staffPayload = [], actor = null)
         await staffRepository.updateClassTeacher(schoolId, item.assignedClassId, item.id, tx);
       }
 
-      const reloaded = await staffRepository.findStaffById(schoolId, item.id, tx);
-      resultStaff.push(reloaded || updatedProfile);
+      affectedIds.push(item.id);
       updatedCount++;
     }
 
@@ -1216,11 +1217,16 @@ export async function bulkImportStaff(schoolId, staffPayload = [], actor = null)
         await staffRepository.updateClassTeacher(schoolId, item.assignedClassId, profile.id, tx);
       }
 
-      const reloaded = await staffRepository.findStaffById(schoolId, profile.id, tx);
-      resultStaff.push(reloaded || profile);
+      affectedIds.push(profile.id);
       createdCount++;
     }
-  }, { timeout: 30000, maxWait: 10000 });
+  }, { timeout: 60000, maxWait: 15000 });
+
+  // 4b. Single batch query to re-fetch all created/updated staff with full relations
+  if (affectedIds.length > 0) {
+    const reloadedStaff = await staffRepository.findStaffByIds(schoolId, affectedIds);
+    resultStaff.push(...reloadedStaff);
+  }
 
   // 5. Non-blocking audit log
   createAuditLog({

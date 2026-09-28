@@ -243,6 +243,11 @@ export const errorMiddleware = (err, req, res, _next) => {
     res.setHeader('Retry-After', String(details.retryAfter));
   }
 
+  // Prevent ERR_HTTP_HEADERS_SENT if response was already sent (e.g. by timeout middleware)
+  if (res.headersSent) {
+    return next(err);
+  }
+
   res.status(statusCode).json(responsePayload);
 };
 

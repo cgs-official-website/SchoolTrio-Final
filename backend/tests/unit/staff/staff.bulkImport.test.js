@@ -14,7 +14,8 @@ vi.mock('../../../src/modules/staff/staff.repository.js', async (importOriginal)
     updateUser: vi.fn(),
     removeUserRoleAssignments: vi.fn(),
     assignUserRole: vi.fn(),
-    findStaffById: vi.fn()
+    findStaffById: vi.fn(),
+    findStaffByIds: vi.fn()
   };
 });
 
@@ -124,20 +125,18 @@ describe('Staff Service - High-Performance Bulk Import', () => {
       staffType: 'TEACHING'
     });
 
-    staffRepository.findStaffById.mockImplementation(async (schoolId, id) => {
-      if (id === 'staff-alice') {
-        return {
-          id: 'staff-alice',
-          schoolId,
-          user: {
-            id: 'user-alice',
-            email: 'alice@school.com',
-            name: 'Alice Smith',
-            roleAssignments: [{ schoolRoleId: 'role-teacher', schoolRole: { name: 'Teacher' } }]
-          }
-        };
-      }
-      return {
+    staffRepository.findStaffByIds.mockResolvedValue([
+      {
+        id: 'staff-alice',
+        schoolId,
+        user: {
+          id: 'user-alice',
+          email: 'alice@school.com',
+          name: 'Alice Smith',
+          roleAssignments: [{ schoolRoleId: 'role-teacher', schoolRole: { name: 'Teacher' } }]
+        }
+      },
+      {
         id: 'staff-bob',
         schoolId,
         user: {
@@ -146,8 +145,8 @@ describe('Staff Service - High-Performance Bulk Import', () => {
           name: 'Bob Jones',
           roleAssignments: [{ schoolRoleId: 'role-staff', schoolRole: { name: 'Staffs' } }]
         }
-      };
-    });
+      }
+    ]);
 
     const result = await staffService.bulkImportStaff(schoolId, rawStaffList, actor);
 
