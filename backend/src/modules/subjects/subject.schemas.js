@@ -10,7 +10,7 @@ export const listSubjectsSchema = {
     search: z.string().trim().max(100).optional(),
     code: z.string().trim().max(50).optional(),
     page: z.coerce.number().int().min(1, 'Page must be at least 1').optional(),
-    limit: z.coerce.number().int().min(1, 'Limit must be at least 1').max(100, 'Limit cannot exceed 100').optional(),
+    limit: z.coerce.number().int().min(1, 'Limit must be at least 1').max(500, 'Limit cannot exceed 500').optional(),
     sort: z.string().trim().max(50).optional(),
     order: z.enum(['asc', 'desc'], {
       errorMap: () => ({ message: 'Order must be either "asc" or "desc"' })

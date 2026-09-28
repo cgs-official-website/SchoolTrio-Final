@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { listStaff, createStaff, bulkImportStaff, updateStaff, assignStaff, deleteStaff, listRoles } from '../../api/staff';
 import { listClasses } from '../../api/classes';
@@ -200,7 +200,7 @@ export default function StaffAssignment() {
     assignedClassId: '',
     staff_type: 'teaching',
     status: 'Active',
-    
+
     // Educational Information
     highestQualification: '',
     degreeSpecialization: '',
@@ -241,7 +241,7 @@ export default function StaffAssignment() {
     referenceLetters: [],
     govtIdDocument: [],
     salarySlips: [],
-    
+
     // Custom Data
     customData: {}
   };
@@ -392,7 +392,7 @@ export default function StaffAssignment() {
     setSelectedStaff(staffMember);
     setSelectedClassId(staffMember.assignedClassId || '');
     setSelectedSubjectClassIds(staffMember.subjectClassIds || staffMember.customData?.assignments?.subjectClassIds || []);
-    
+
     const assigned = staffMember.assignedSubjectIds || staffMember.customData?.assignments?.assignedSubjectIds;
     if (Array.isArray(assigned) && assigned.length > 0) {
       setSelectedSubjectIds(assigned);
@@ -746,7 +746,7 @@ export default function StaffAssignment() {
     const emailChanged = currentEmail !== originalEmail;
     const isDupEmail = emailChanged && currentEmail !== '' && staff.some(s => s.id !== selectedStaffToView.id && (s.email || '').trim().toLowerCase() === currentEmail);
     if (isDupEmail) errors.email = 'Email already in use by another staff member';
-    
+
     const currentStaffId = (editStaffData.staffId || '').trim().toLowerCase();
     const originalStaffId = (selectedStaffToView.staffId || '').trim().toLowerCase();
     const staffIdChanged = currentStaffId !== originalStaffId;
@@ -773,7 +773,7 @@ export default function StaffAssignment() {
       for (const cat of docCategories) {
         const newFiles = editStaffDocFiles[cat] || [];
         const existingDocs = editStaffData[cat] || [];
-        
+
         if (newFiles.length > 0 || (editStaffData[cat] !== undefined && editStaffData[cat].length !== (selectedStaffToView[cat] || []).length)) {
           const uploadedDocs = [];
           for (const file of newFiles) {
@@ -884,7 +884,7 @@ export default function StaffAssignment() {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(newStaff.email)) errors.email = "Invalid email format";
     }
-    
+
     // Check duplicates
     if (newStaff.staffId && newStaff.email) {
       const { isIdDuplicate, isEmailDuplicate } = checkStaffUniqueness(newStaff.staffId, newStaff.email);
@@ -957,14 +957,14 @@ export default function StaffAssignment() {
   const uploadAllDocuments = async (staffIdOrEmail) => {
     const urls = {};
     const baseFolder = `schools/${schoolId}/teachers/${staffIdOrEmail}`;
-    
+
     // Photo
     if (addStaffFiles.photo) {
       urls.photoUrl = await uploadStaffFile(addStaffFiles.photo, `${baseFolder}/photo_${addStaffFiles.photo.name}`);
     }
 
     const docKeys = [
-      'academicCertificates', 'markSheets', 'experienceCertificates', 
+      'academicCertificates', 'markSheets', 'experienceCertificates',
       'relievingLetter', 'resume', 'referenceLetters', 'govtIdDocument', 'salarySlips'
     ];
 
@@ -1249,13 +1249,13 @@ export default function StaffAssignment() {
 
   const filteredStaff = staff.filter(member => {
     const name = member.name || `${member.firstName} ${member.lastName}`;
-    const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-           (member.email && member.email.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesRole = roleFilter === 'all' || 
-                         (member.roles || [member.role || 'Staffs']).includes(roleFilter);
+    const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (member.email && member.email.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesRole = roleFilter === 'all' ||
+      (member.roles || [member.role || 'Staffs']).includes(roleFilter);
     const matchesStatus = statusFilter === 'all' || (member.status || 'Active') === statusFilter;
     const matchesGender = genderFilter === 'all' || normalizeGender(member.gender, '') === genderFilter;
-    
+
     if (!(matchesSearch && matchesRole && matchesStatus && matchesGender)) return false;
 
     if (staffTypeFilter === 'teaching') {
@@ -1302,7 +1302,7 @@ export default function StaffAssignment() {
           <p className="text-slate-500 dark:text-slate-400 mt-1">Manage your teachers, upload documents, and assign classes.</p>
         </div>
         <div className="flex flex-wrap gap-3 mt-4 sm:mt-0">
-          <button 
+          <button
             onClick={() => {
               const regUrl = `${window.location.origin}/register/teacher/${schoolId}`;
               navigator.clipboard.writeText(regUrl);
@@ -1313,7 +1313,7 @@ export default function StaffAssignment() {
           >
             <LinkIcon size={18} /> Registration Link
           </button>
-          <button 
+          <button
             onClick={() => {
               if (staff.length === 0) {
                 toast.error("No staff data available to export.");
@@ -1327,7 +1327,7 @@ export default function StaffAssignment() {
             <FileDown size={18} /> Export
           </button>
           {hasCreatePermission && (
-            <button 
+            <button
               onClick={() => {
                 setAddStaffActiveTab('Personal');
                 setAddStaffModalOpen(true);
@@ -1338,7 +1338,7 @@ export default function StaffAssignment() {
             </button>
           )}
           {hasCreatePermission && (
-            <button 
+            <button
               onClick={() => {
                 setUploadFile(null);
                 setSelectedStaffForUpload(null);
@@ -1385,16 +1385,16 @@ export default function StaffAssignment() {
         <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-wrap gap-4 items-center justify-between bg-white dark:bg-slate-900">
           <div className="relative flex-1 min-w-[250px] max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-300" size={18} />
-            <input 
-              type="text" 
-              placeholder="Search staff by name or email..." 
+            <input
+              type="text"
+              placeholder="Search staff by name or email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
             />
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <select 
+            <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
               className="px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -1416,7 +1416,7 @@ export default function StaffAssignment() {
               <option value="Inventory">Inventory</option>
               <option value="Security">Security</option>
             </select>
-            <select 
+            <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -1425,7 +1425,7 @@ export default function StaffAssignment() {
               <option value="Active">Active</option>
               <option value="Inactive">Inactive</option>
             </select>
-            <select 
+            <select
               value={genderFilter}
               onChange={(e) => setGenderFilter(e.target.value)}
               className="px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -1459,27 +1459,24 @@ export default function StaffAssignment() {
                   <div className="flex flex-col space-y-1">
                     <button
                       onClick={() => { setStaffTypeFilter('all'); setIsFilterDropdownOpen(false); }}
-                      className={`w-full px-3 py-2 text-left text-sm font-medium rounded-lg transition-colors flex items-center justify-between ${
-                        staffTypeFilter === 'all' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                      }`}
+                      className={`w-full px-3 py-2 text-left text-sm font-medium rounded-lg transition-colors flex items-center justify-between ${staffTypeFilter === 'all' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        }`}
                     >
                       <span>All Staff</span>
                       {staffTypeFilter === 'all' && <CheckCircle2 size={16} className="text-indigo-600" />}
                     </button>
                     <button
                       onClick={() => { setStaffTypeFilter('teaching'); setIsFilterDropdownOpen(false); }}
-                      className={`w-full px-3 py-2 text-left text-sm font-medium rounded-lg transition-colors flex items-center justify-between ${
-                        staffTypeFilter === 'teaching' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                      }`}
+                      className={`w-full px-3 py-2 text-left text-sm font-medium rounded-lg transition-colors flex items-center justify-between ${staffTypeFilter === 'teaching' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        }`}
                     >
                       <span>Teaching Staff</span>
                       {staffTypeFilter === 'teaching' && <CheckCircle2 size={16} className="text-indigo-600" />}
                     </button>
                     <button
                       onClick={() => { setStaffTypeFilter('non-teaching'); setIsFilterDropdownOpen(false); }}
-                      className={`w-full px-3 py-2 text-left text-sm font-medium rounded-lg transition-colors flex items-center justify-between ${
-                        staffTypeFilter === 'non-teaching' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                      }`}
+                      className={`w-full px-3 py-2 text-left text-sm font-medium rounded-lg transition-colors flex items-center justify-between ${staffTypeFilter === 'non-teaching' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        }`}
                     >
                       <span>Non-Teaching Staff</span>
                       {staffTypeFilter === 'non-teaching' && <CheckCircle2 size={16} className="text-indigo-600" />}
@@ -1490,7 +1487,7 @@ export default function StaffAssignment() {
             </div>
 
             <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block mx-1"></div>
-            <select 
+            <select
               value={rowsPerPage}
               onChange={(e) => setRowsPerPage(Number(e.target.value))}
               className="px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -1579,7 +1576,7 @@ export default function StaffAssignment() {
                               <LinkIcon size={18} />
                             </button>
                           )}
-                          <button 
+                          <button
                             onClick={() => {
                               setSelectedStaffToView(member);
                               setAddStaffActiveTab('Personal Info');
@@ -1594,23 +1591,23 @@ export default function StaffAssignment() {
                           >
                             <Eye size={18} />
                           </button>
-                            {hasDeletePermission && (
-                              <button 
-                                onClick={() => setConfirmDeleteState({ isOpen: true, id: member.id, name: member.name || `${member.firstName} ${member.lastName}` })}
-                                className="p-2 text-slate-500 dark:text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
-                                title="Delete Staff Member"
-                              >
-                                <Trash size={18} />
-                              </button>
-                            )}
-                            {hasEditPermission && (
-                              <button 
-                                onClick={() => openAssignModal(member)}
-                                className="px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-md transition-colors"
-                              >
-                                {isAssigned ? 'Edit' : 'Assign'}
-                              </button>
-                            )}
+                          {hasDeletePermission && (
+                            <button
+                              onClick={() => setConfirmDeleteState({ isOpen: true, id: member.id, name: member.name || `${member.firstName} ${member.lastName}` })}
+                              className="p-2 text-slate-500 dark:text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                              title="Delete Staff Member"
+                            >
+                              <Trash size={18} />
+                            </button>
+                          )}
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => openAssignModal(member)}
+                              className="px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-md transition-colors"
+                            >
+                              {isAssigned ? 'Edit' : 'Assign'}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1628,7 +1625,7 @@ export default function StaffAssignment() {
               Showing {(currentPage - 1) * rowsPerPage + 1} to {Math.min(currentPage * rowsPerPage, filteredStaff.length)} of {filteredStaff.length} entries
             </span>
             <div className="flex gap-2">
-              <button 
+              <button
                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1}
                 className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
@@ -1638,7 +1635,7 @@ export default function StaffAssignment() {
               <div className="flex items-center justify-center px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">
                 Page {currentPage} of {totalPages}
               </div>
-              <button 
+              <button
                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                 disabled={currentPage === totalPages}
                 className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
@@ -1669,7 +1666,7 @@ export default function StaffAssignment() {
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Class Teacher Assignment (Optional)</label>
-                  <select 
+                  <select
                     value={selectedClassId}
                     onChange={(e) => setSelectedClassId(e.target.value)}
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
@@ -1688,8 +1685,8 @@ export default function StaffAssignment() {
                       const isChecked = selectedSubjectClassIds.includes(fc.classId) || selectedSubjectClassIds.includes(fc.id);
                       return (
                         <label key={`subj-${fc.id}`} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg cursor-pointer">
-                          <input 
-                            type="checkbox" 
+                          <input
+                            type="checkbox"
                             checked={isChecked}
                             onChange={(e) => {
                               const targetId = fc.classId || fc.id;
@@ -1722,8 +1719,8 @@ export default function StaffAssignment() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800">
                     {subjects.map(s => (
                       <label key={`spec-${s.id}`} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg cursor-pointer">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={selectedSubjectIds.includes(s.id)}
                           onChange={(e) => {
                             if (e.target.checked) {
@@ -1744,13 +1741,13 @@ export default function StaffAssignment() {
             </div>
 
             <div className="p-6 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setAssignModalOpen(false)}
                 className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleAssign}
                 disabled={saving || classes.length === 0}
                 className="px-6 py-2.5 bg-primary-600 text-white font-bold hover:bg-primary-700 rounded-xl shadow-sm disabled:opacity-50 transition-colors"
@@ -1779,8 +1776,8 @@ export default function StaffAssignment() {
             <div className="p-6 flex-1 overflow-y-auto custom-scrollbar">
               {selectedStaffForUpload ? (
                 <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
-                  Upload a document (e.g. Resume, ID) for <span className="font-bold text-slate-900 dark:text-white">{selectedStaffForUpload.name || selectedStaffForUpload.firstName}</span>. 
-                  <br/><span className="text-xs text-slate-400 dark:text-slate-300 mt-1 block">File will be securely stored in: {schoolName}/Teachers/...</span>
+                  Upload a document (e.g. Resume, ID) for <span className="font-bold text-slate-900 dark:text-white">{selectedStaffForUpload.name || selectedStaffForUpload.firstName}</span>.
+                  <br /><span className="text-xs text-slate-400 dark:text-slate-300 mt-1 block">File will be securely stored in: {schoolName}/Teachers/...</span>
                 </p>
               ) : (
                 <div className="mb-4">
@@ -1819,11 +1816,11 @@ export default function StaffAssignment() {
               )}
 
               <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-8 bg-slate-50 dark:bg-slate-800 relative overflow-hidden group hover:border-primary-400 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-all text-center">
-                <input 
-                  type="file" 
+                <input
+                  type="file"
                   accept={selectedStaffForUpload ? "image/*, .pdf" : ".xlsx, .csv"}
                   onChange={(e) => setUploadFile(e.target.files[0])}
-                  className="absolute inset-0 opacity-0 cursor-pointer z-10" 
+                  className="absolute inset-0 opacity-0 cursor-pointer z-10"
                 />
                 <UploadCloud size={32} className={`mx-auto mb-3 ${uploadFile ? 'text-green-500' : 'text-slate-400 dark:text-slate-300 group-hover:text-primary-500'}`} />
                 {uploadFile ? (
@@ -1841,13 +1838,13 @@ export default function StaffAssignment() {
             </div>
 
             <div className="p-6 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setUploadModalOpen(false)}
                 className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleUpload}
                 disabled={uploading || !uploadFile}
                 className="px-6 py-2.5 bg-primary-600 text-white font-bold hover:bg-primary-700 rounded-xl shadow-sm disabled:opacity-50 transition-colors flex items-center gap-2"
@@ -1874,7 +1871,8 @@ export default function StaffAssignment() {
             </div>
 
             {/* Custom CSS to hide scrollbars cleanly */}
-            <style dangerouslySetInnerHTML={{__html: `
+            <style dangerouslySetInnerHTML={{
+              __html: `
               .hide-scrollbar::-webkit-scrollbar {
                 display: none;
               }
@@ -1905,11 +1903,10 @@ export default function StaffAssignment() {
                       onClick={() => setAddStaffActiveTab(id)}
                       aria-selected={isActive}
                       role="tab"
-                      className={`relative py-3.5 px-5 text-xs font-bold whitespace-nowrap transition-all duration-200 flex-shrink-0 focus:outline-none flex items-center gap-2 ${
-                        isActive
+                      className={`relative py-3.5 px-5 text-xs font-bold whitespace-nowrap transition-all duration-200 flex-shrink-0 focus:outline-none flex items-center gap-2 ${isActive
                           ? 'text-indigo-600 dark:text-indigo-400 font-extrabold bg-indigo-50/50 dark:bg-slate-800/60'
                           : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800'
-                      }`}
+                        }`}
                     >
                       <TabIcon size={16} className={isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'} />
                       <span>{label}</span>
@@ -2100,7 +2097,7 @@ export default function StaffAssignment() {
                           );
                         })}
                       </select>
-                      
+
                       {/* Render assigned roles as tags */}
                       <div className="flex flex-wrap gap-2 mt-2">
                         {(newStaff.roles || (newStaff.role ? [newStaff.role] : ['Staffs'])).map(role => (
@@ -2649,11 +2646,10 @@ export default function StaffAssignment() {
                   key={tab}
                   type="button"
                   onClick={() => setAddStaffActiveTab(tab)}
-                  className={`px-5 py-3.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-all ${
-                    addStaffActiveTab === tab
+                  className={`px-5 py-3.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-all ${addStaffActiveTab === tab
                       ? 'border-indigo-600 text-indigo-700 bg-white dark:bg-slate-900'
                       : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                  }`}
+                    }`}
                 >
                   {tab}
                 </button>
@@ -2669,17 +2665,17 @@ export default function StaffAssignment() {
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         {[
-                          ['staffId','Staff ID'], ['firstName','First Name *'], ['lastName','Last Name'],
-                          ['mobileNumber','Mobile Number'], ['email','Email Address *'], ['dob','Date of Birth'],
-                          ['bloodGroup','Blood Group'], ['nationality','Nationality'], ['languagesKnown','Languages Known'],
-                          ['emergencyContact','Emergency Contact'], ['fatherName','Father / Guardian Name']
+                          ['staffId', 'Staff ID'], ['firstName', 'First Name *'], ['lastName', 'Last Name'],
+                          ['mobileNumber', 'Mobile Number'], ['email', 'Email Address *'], ['dob', 'Date of Birth'],
+                          ['bloodGroup', 'Blood Group'], ['nationality', 'Nationality'], ['languagesKnown', 'Languages Known'],
+                          ['emergencyContact', 'Emergency Contact'], ['fatherName', 'Father / Guardian Name']
                         ].map(([field, label]) => (
                           <div key={field}>
                             <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">{label}</label>
                             <input
                               type={field === 'dob' ? 'date' : field === 'email' ? 'email' : 'text'}
                               value={editStaffData[field] || ''}
-                              onChange={e => setEditStaffData({...editStaffData, [field]: e.target.value})}
+                              onChange={e => setEditStaffData({ ...editStaffData, [field]: e.target.value })}
                               className={`w-full px-3 py-2 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editStaffErrors[field] ? 'border-red-400 bg-red-50' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'}`}
                             />
                             {editStaffErrors[field] && <p className="text-red-500 text-xs mt-1">{editStaffErrors[field]}</p>}
@@ -2687,32 +2683,32 @@ export default function StaffAssignment() {
                         ))}
                         <div>
                           <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Gender</label>
-                          <select value={normalizeGender(editStaffData.gender, 'Male')} onChange={e => setEditStaffData({...editStaffData, gender: e.target.value})} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                            {['Male','Female','Other'].map(g => <option key={g} value={g}>{g}</option>)}
+                          <select value={normalizeGender(editStaffData.gender, 'Male')} onChange={e => setEditStaffData({ ...editStaffData, gender: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+                            {['Male', 'Female', 'Other'].map(g => <option key={g} value={g}>{g}</option>)}
                           </select>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Marital Status</label>
-                          <select value={editStaffData.maritalStatus || 'Single'} onChange={e => setEditStaffData({...editStaffData, maritalStatus: e.target.value})} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                            {['Single','Married','Divorced','Widowed'].map(s => <option key={s}>{s}</option>)}
+                          <select value={editStaffData.maritalStatus || 'Single'} onChange={e => setEditStaffData({ ...editStaffData, maritalStatus: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+                            {['Single', 'Married', 'Divorced', 'Widowed'].map(s => <option key={s}>{s}</option>)}
                           </select>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Status</label>
-                          <select value={editStaffData.status || 'Active'} onChange={e => setEditStaffData({...editStaffData, status: e.target.value})} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+                          <select value={editStaffData.status || 'Active'} onChange={e => setEditStaffData({ ...editStaffData, status: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                             <option>Active</option><option>Inactive</option>
                           </select>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Staff Type</label>
-                          <select value={editStaffData.staff_type || 'teaching'} onChange={e => setEditStaffData({...editStaffData, staff_type: e.target.value})} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+                          <select value={editStaffData.staff_type || 'teaching'} onChange={e => setEditStaffData({ ...editStaffData, staff_type: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                             <option value="teaching">Teaching Staff</option>
                             <option value="non-teaching">Non-Teaching Staff</option>
                           </select>
                         </div>
                         <div className="sm:col-span-3">
                           <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Residential Address</label>
-                          <textarea rows={2} value={editStaffData.residentialAddress || ''} onChange={e => setEditStaffData({...editStaffData, residentialAddress: e.target.value})} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                          <textarea rows={2} value={editStaffData.residentialAddress || ''} onChange={e => setEditStaffData({ ...editStaffData, residentialAddress: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
                         </div>
                       </div>
 
@@ -2720,7 +2716,7 @@ export default function StaffAssignment() {
                         <CustomFieldsRenderer
                           moduleKey="staff"
                           customData={editStaffData.customData}
-                          onChange={(k, v) => setEditStaffData(prev => ({...prev, customData: {...(prev.customData || {}), [k]: v}}))}
+                          onChange={(k, v) => setEditStaffData(prev => ({ ...prev, customData: { ...(prev.customData || {}), [k]: v } }))}
                         />
                       </div>
                     </div>
@@ -2731,19 +2727,19 @@ export default function StaffAssignment() {
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {[
-                          ['highestQualification','Highest Qualification'],
-                          ['degreeSpecialization','Degree & Specialization'],
-                          ['universityName','University / College'],
-                          ['yearOfPassing','Year of Passing'],
-                          ['previousExperience','Previous Experience (Years)'],
-                          ['previousOrganization','Previous School / Organization'],
-                          ['subjectSpecialization','Subject Specialization'],
-                          ['gradesClassesHandled','Grades / Classes Handled'],
-                          ['professionalCertifications','Professional Certifications']
+                          ['highestQualification', 'Highest Qualification'],
+                          ['degreeSpecialization', 'Degree & Specialization'],
+                          ['universityName', 'University / College'],
+                          ['yearOfPassing', 'Year of Passing'],
+                          ['previousExperience', 'Previous Experience (Years)'],
+                          ['previousOrganization', 'Previous School / Organization'],
+                          ['subjectSpecialization', 'Subject Specialization'],
+                          ['gradesClassesHandled', 'Grades / Classes Handled'],
+                          ['professionalCertifications', 'Professional Certifications']
                         ].map(([field, label]) => (
                           <div key={field}>
                             <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">{label}</label>
-                            <input type="text" value={editStaffData[field] || ''} onChange={e => setEditStaffData({...editStaffData, [field]: e.target.value})} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                            <input type="text" value={editStaffData[field] || ''} onChange={e => setEditStaffData({ ...editStaffData, [field]: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
                           </div>
                         ))}
                         <div className="col-span-1 sm:col-span-2">
@@ -2805,7 +2801,7 @@ export default function StaffAssignment() {
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Staff Type</label>
-                          <select value={editStaffData.staff_type || 'teaching'} onChange={e => setEditStaffData({...editStaffData, staff_type: e.target.value})} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+                          <select value={editStaffData.staff_type || 'teaching'} onChange={e => setEditStaffData({ ...editStaffData, staff_type: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                             <option value="teaching">Teaching Staff</option>
                             <option value="non-teaching">Non-Teaching Staff</option>
                           </select>
@@ -2820,16 +2816,16 @@ export default function StaffAssignment() {
                       {(userProfile?.role?.toLowerCase() === 'admin' || userProfile?.role?.toLowerCase() === 'superadmin') ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           {[
-                            ['govtIdType','Govt ID Type'], ['govtIdNumber','Govt ID Number'],
-                            ['aadharNumber','Aadhaar Number'], ['panNumber','PAN Number'],
-                            ['pfNumber','PF Number'], ['esicNumber','ESIC Number'],
-                            ['uanNumber','UAN Number'], ['taxIdDetails','Tax ID Details'],
-                            ['bankName','Bank Name & Branch'], ['bankAccountNumber','Account Number'],
-                            ['branchName','Branch Name'], ['ifscCode','IFSC Code']
+                            ['govtIdType', 'Govt ID Type'], ['govtIdNumber', 'Govt ID Number'],
+                            ['aadharNumber', 'Aadhaar Number'], ['panNumber', 'PAN Number'],
+                            ['pfNumber', 'PF Number'], ['esicNumber', 'ESIC Number'],
+                            ['uanNumber', 'UAN Number'], ['taxIdDetails', 'Tax ID Details'],
+                            ['bankName', 'Bank Name & Branch'], ['bankAccountNumber', 'Account Number'],
+                            ['branchName', 'Branch Name'], ['ifscCode', 'IFSC Code']
                           ].map(([field, label]) => (
                             <div key={field}>
                               <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">{label}</label>
-                              <input type="text" value={editStaffData[field] || ''} onChange={e => setEditStaffData({...editStaffData, [field]: e.target.value})} className={`w-full px-3 py-2 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editStaffErrors[field] ? 'border-red-400 bg-red-50' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'}`} />
+                              <input type="text" value={editStaffData[field] || ''} onChange={e => setEditStaffData({ ...editStaffData, [field]: e.target.value })} className={`w-full px-3 py-2 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editStaffErrors[field] ? 'border-red-400 bg-red-50' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'}`} />
                               {editStaffErrors[field] && <p className="text-red-500 text-xs mt-1">{editStaffErrors[field]}</p>}
                             </div>
                           ))}
@@ -2952,275 +2948,275 @@ export default function StaffAssignment() {
               ) : (
                 /* ── VIEW MODE ── */
                 <>
-              {addStaffActiveTab === 'Personal Info' && (
-                <div className="space-y-6 animate-fade-in">
-                  <div className="flex items-center gap-4 pb-6 border-b border-slate-100 dark:border-slate-800">
-                    {selectedStaffToView.photoUrl ? (
-                      <img src={selectedStaffToView.photoUrl} alt="Staff Photograph" className="w-16 h-16 rounded-full object-cover border border-slate-200 dark:border-slate-700" />
-                    ) : (
-                      <div className="w-16 h-16 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-2xl">
-                        {(selectedStaffToView.name || `${selectedStaffToView.firstName} ${selectedStaffToView.lastName}`).charAt(0)}
-                      </div>
-                    )}
-                    <div>
-                      <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                        {selectedStaffToView.name || `${selectedStaffToView.firstName} ${selectedStaffToView.lastName}`}
-                      </h3>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {(selectedStaffToView.roles || [selectedStaffToView.role || 'Staffs']).map(r => (
-                          <span key={r} className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-lg border border-indigo-150 uppercase tracking-wider">{r}</span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Staff ID</label>
-                      <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.staffId || '—'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Email Address</label>
-                      <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.email || '—'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Mobile Number</label>
-                      <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.mobileNumber || '—'}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Date of Birth</label>
-                      <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.dob || '—'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Gender</label>
-                      <p className="text-slate-900 dark:text-white font-semibold">{normalizeGender(selectedStaffToView.gender, '—')}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Nationality</label>
-                      <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.nationality || '—'}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Marital Status</label>
-                      <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.maritalStatus || '—'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Blood Group</label>
-                      <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.bloodGroup || '—'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Emergency Contact</label>
-                      <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.emergencyContact || '—'}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Father / Guardian Name</label>
-                      <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.fatherGuardianName || '—'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Languages Known</label>
-                      <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.languagesKnown || '—'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Joined Date</label>
-                      <p className="text-slate-900 dark:text-white font-semibold">
-                        {selectedStaffToView.createdAt ? new Date(selectedStaffToView.createdAt).toLocaleDateString('en-GB') : 'N/A'}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Staff Type</label>
-                      <p className="text-slate-900 dark:text-white font-semibold capitalize">
-                        {selectedStaffToView.staff_type || 'teaching'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Residential Address</label>
-                    <p className="text-slate-900 dark:text-white font-semibold whitespace-pre-line">{selectedStaffToView.residentialAddress || '—'}</p>
-                  </div>
-
-                  <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
-                    <CustomFieldsRenderer 
-                      moduleKey="staff"
-                      customData={selectedStaffToView.customData || {}}
-                      readOnly={true}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {addStaffActiveTab === 'Education & Work' && (
-                <div className="space-y-6 animate-fade-in">
-                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200/60">
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">Academic Qualifications</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Highest Qualification</label>
-                        <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.highestQualification || '—'}</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Degree & Specialization</label>
-                        <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.degreeSpecialization || '—'}</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">University / College</label>
-                        <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.universityName || '—'}</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Year of Passing</label>
-                        <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.yearOfPassing || '—'}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200/60">
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">Professional Experience</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Previous Experience (Years)</label>
-                        <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.previousExperience || '0'}</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Previous Organization</label>
-                        <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.previousOrganization || '—'}</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Subject Specialization</label>
-                        <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.subjectSpecialization || '—'}</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Grades/Classes Handled</label>
-                        <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.gradesClassesHandled || '—'}</p>
-                      </div>
-                      <div className="col-span-1 sm:col-span-2">
-                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Professional Certifications</label>
-                        <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.professionalCertifications || '—'}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {addStaffActiveTab === 'Identity & Banking' && (
-                <div className="space-y-6 animate-fade-in">
-                  {/* Authorized check */}
-                  {(userProfile?.role?.toLowerCase() === 'admin' || userProfile?.role?.toLowerCase() === 'superadmin') ? (
-                    <>
-                      <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200/60">
-                        <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">Government Identity & Payroll</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Government ID Type</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.govtIdType || '—'}</p>
+                  {addStaffActiveTab === 'Personal Info' && (
+                    <div className="space-y-6 animate-fade-in">
+                      <div className="flex items-center gap-4 pb-6 border-b border-slate-100 dark:border-slate-800">
+                        {selectedStaffToView.photoUrl ? (
+                          <img src={selectedStaffToView.photoUrl} alt="Staff Photograph" className="w-16 h-16 rounded-full object-cover border border-slate-200 dark:border-slate-700" />
+                        ) : (
+                          <div className="w-16 h-16 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-2xl">
+                            {(selectedStaffToView.name || `${selectedStaffToView.firstName} ${selectedStaffToView.lastName}`).charAt(0)}
                           </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Government ID Number</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.govtIdNumber || '—'}</p>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Aadhaar Number</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.aadharNumber || '—'}</p>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">PAN Number</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.panNumber || '—'}</p>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">PF Number</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.pfNumber || '—'}</p>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">ESIC Number</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.esicNumber || '—'}</p>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">UAN Number</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.uanNumber || '—'}</p>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Tax Identification Details</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.taxIdDetails || '—'}</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200/60">
-                        <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">Banking Details</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Bank Name</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.bankName || '—'}</p>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Bank Account Number</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.bankAccountNumber || '—'}</p>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Branch Name</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.branchName || '—'}</p>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">IFSC Code</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.ifscCode || '—'}</p>
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 text-amber-700 text-sm font-medium flex items-center gap-2">
-                      <ShieldCheck /> Government, salary, and banking details are restricted to authorized administrators.
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {addStaffActiveTab === 'Documents' && (
-                <div className="space-y-4 animate-fade-in">
-                  {[
-                    { key: 'academicCertificates', label: 'Academic Certificates' },
-                    { key: 'markSheets', label: 'Mark Sheets' },
-                    { key: 'experienceCertificates', label: 'Experience Certificates' },
-                    { key: 'relievingLetter', label: 'Relieving Letter' },
-                    { key: 'resume', label: 'Resume / CV' },
-                    { key: 'referenceLetters', label: 'Reference Letters' },
-                    { key: 'govtIdDocument', label: 'Government ID Document' },
-                    { key: 'salarySlips', label: 'Salary Slips' }
-                  ].map(({ key, label }) => {
-                    const files = selectedStaffToView[key] || [];
-                    return (
-                      <div key={key} className="border border-slate-200 dark:border-slate-700 rounded-xl p-4 bg-slate-50/50 dark:bg-slate-800/50">
-                        <label className="block text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{label}</label>
-                        {files.length > 0 ? (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {files.map((file, idx) => (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => setPreviewUrl(file.url)}
-                                className="flex items-center gap-2 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-xs font-semibold text-indigo-600 text-left"
-                              >
-                                <Eye size={14} />
-                                <span className="truncate">{file.name}</span>
-                              </button>
+                        )}
+                        <div>
+                          <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                            {selectedStaffToView.name || `${selectedStaffToView.firstName} ${selectedStaffToView.lastName}`}
+                          </h3>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {(selectedStaffToView.roles || [selectedStaffToView.role || 'Staffs']).map(r => (
+                              <span key={r} className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-lg border border-indigo-150 uppercase tracking-wider">{r}</span>
                             ))}
                           </div>
-                        ) : (
-                          <span className="text-xs text-slate-400 dark:text-slate-300 italic">No documents uploaded</span>
-                        )}
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-              </>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Staff ID</label>
+                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.staffId || '—'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Email Address</label>
+                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.email || '—'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Mobile Number</label>
+                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.mobileNumber || '—'}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Date of Birth</label>
+                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.dob || '—'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Gender</label>
+                          <p className="text-slate-900 dark:text-white font-semibold">{normalizeGender(selectedStaffToView.gender, '—')}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Nationality</label>
+                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.nationality || '—'}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Marital Status</label>
+                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.maritalStatus || '—'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Blood Group</label>
+                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.bloodGroup || '—'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Emergency Contact</label>
+                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.emergencyContact || '—'}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Father / Guardian Name</label>
+                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.fatherGuardianName || '—'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Languages Known</label>
+                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.languagesKnown || '—'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Joined Date</label>
+                          <p className="text-slate-900 dark:text-white font-semibold">
+                            {selectedStaffToView.createdAt ? new Date(selectedStaffToView.createdAt).toLocaleDateString('en-GB') : 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Staff Type</label>
+                          <p className="text-slate-900 dark:text-white font-semibold capitalize">
+                            {selectedStaffToView.staff_type || 'teaching'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Residential Address</label>
+                        <p className="text-slate-900 dark:text-white font-semibold whitespace-pre-line">{selectedStaffToView.residentialAddress || '—'}</p>
+                      </div>
+
+                      <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
+                        <CustomFieldsRenderer
+                          moduleKey="staff"
+                          customData={selectedStaffToView.customData || {}}
+                          readOnly={true}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {addStaffActiveTab === 'Education & Work' && (
+                    <div className="space-y-6 animate-fade-in">
+                      <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200/60">
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">Academic Qualifications</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Highest Qualification</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.highestQualification || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Degree & Specialization</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.degreeSpecialization || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">University / College</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.universityName || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Year of Passing</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.yearOfPassing || '—'}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200/60">
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">Professional Experience</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Previous Experience (Years)</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.previousExperience || '0'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Previous Organization</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.previousOrganization || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Subject Specialization</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.subjectSpecialization || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Grades/Classes Handled</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.gradesClassesHandled || '—'}</p>
+                          </div>
+                          <div className="col-span-1 sm:col-span-2">
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Professional Certifications</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.professionalCertifications || '—'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {addStaffActiveTab === 'Identity & Banking' && (
+                    <div className="space-y-6 animate-fade-in">
+                      {/* Authorized check */}
+                      {(userProfile?.role?.toLowerCase() === 'admin' || userProfile?.role?.toLowerCase() === 'superadmin') ? (
+                        <>
+                          <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200/60">
+                            <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">Government Identity & Payroll</h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Government ID Type</label>
+                                <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.govtIdType || '—'}</p>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Government ID Number</label>
+                                <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.govtIdNumber || '—'}</p>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Aadhaar Number</label>
+                                <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.aadharNumber || '—'}</p>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">PAN Number</label>
+                                <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.panNumber || '—'}</p>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">PF Number</label>
+                                <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.pfNumber || '—'}</p>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">ESIC Number</label>
+                                <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.esicNumber || '—'}</p>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">UAN Number</label>
+                                <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.uanNumber || '—'}</p>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Tax Identification Details</label>
+                                <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.taxIdDetails || '—'}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200/60">
+                            <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">Banking Details</h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Bank Name</label>
+                                <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.bankName || '—'}</p>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Bank Account Number</label>
+                                <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.bankAccountNumber || '—'}</p>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Branch Name</label>
+                                <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.branchName || '—'}</p>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">IFSC Code</label>
+                                <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.ifscCode || '—'}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 text-amber-700 text-sm font-medium flex items-center gap-2">
+                          <ShieldCheck /> Government, salary, and banking details are restricted to authorized administrators.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {addStaffActiveTab === 'Documents' && (
+                    <div className="space-y-4 animate-fade-in">
+                      {[
+                        { key: 'academicCertificates', label: 'Academic Certificates' },
+                        { key: 'markSheets', label: 'Mark Sheets' },
+                        { key: 'experienceCertificates', label: 'Experience Certificates' },
+                        { key: 'relievingLetter', label: 'Relieving Letter' },
+                        { key: 'resume', label: 'Resume / CV' },
+                        { key: 'referenceLetters', label: 'Reference Letters' },
+                        { key: 'govtIdDocument', label: 'Government ID Document' },
+                        { key: 'salarySlips', label: 'Salary Slips' }
+                      ].map(({ key, label }) => {
+                        const files = selectedStaffToView[key] || [];
+                        return (
+                          <div key={key} className="border border-slate-200 dark:border-slate-700 rounded-xl p-4 bg-slate-50/50 dark:bg-slate-800/50">
+                            <label className="block text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{label}</label>
+                            {files.length > 0 ? (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {files.map((file, idx) => (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => setPreviewUrl(file.url)}
+                                    className="flex items-center gap-2 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-xs font-semibold text-indigo-600 text-left"
+                                  >
+                                    <Eye size={14} />
+                                    <span className="truncate">{file.name}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400 dark:text-slate-300 italic">No documents uploaded</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -3245,7 +3241,7 @@ export default function StaffAssignment() {
                 <>
                   <button
                     onClick={() => {
-                      setEditStaffData({ 
+                      setEditStaffData({
                         ...selectedStaffToView,
                         firstName: selectedStaffToView.firstName || selectedStaffToView.name?.split(' ')[0] || '',
                         lastName: selectedStaffToView.lastName || selectedStaffToView.name?.split(' ').slice(1).join(' ') || ''
@@ -3293,7 +3289,7 @@ export default function StaffAssignment() {
                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">Export Staff Directory</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Customize file settings and select columns to export.</p>
               </div>
-              <button 
+              <button
                 onClick={() => setShowExportModal(false)}
                 className="p-2 text-slate-400 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors"
               >
@@ -3330,13 +3326,12 @@ export default function StaffAssignment() {
                     { key: 'mobile', label: 'Mobile' },
                     { key: 'qualification', label: 'Highest Qualification' }
                   ].map(({ key, label }) => (
-                    <label 
-                      key={key} 
-                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer select-none transition-all ${
-                        selectedFields[key] 
-                          ? 'border-primary-200 bg-primary-50/30 text-primary-900 font-semibold' 
+                    <label
+                      key={key}
+                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer select-none transition-all ${selectedFields[key]
+                          ? 'border-primary-200 bg-primary-50/30 text-primary-900 font-semibold'
                           : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
-                      }`}
+                        }`}
                     >
                       <input
                         type="checkbox"
@@ -3352,13 +3347,13 @@ export default function StaffAssignment() {
             </div>
 
             <div className="p-6 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setShowExportModal(false)}
                 className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors text-sm"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={exportToExcel}
                 className="px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl shadow-sm transition-colors flex items-center gap-2 text-sm"
               >
