@@ -33,6 +33,11 @@ vi.mock('../../../src/database/prisma.client.js', () => {
       updateMany: vi.fn()
     },
 
+    section: {
+      findFirst: vi.fn(),
+      findMany: vi.fn()
+    },
+
     subject: {
       findMany: vi.fn()
     },
@@ -375,6 +380,64 @@ describe('Unit: Staff Service Layer — Phase 4C.4', () => {
         SCHOOL_ID,
         STAFF_ID,
         { assignedSubjectIds: ['non-tenant-subject'] },
+        ACTOR_ADMIN
+      )).rejects.toThrow(ValidationError);
+    });
+
+    it('accepts section IDs in subjectClassIds and resolves section for class teacher', async () => {
+      const SECTION_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const mockStaffWithCustom = {
+        ...mockStaff,
+        customData: {
+          assignments: {
+            assignedClassId: SECTION_ID,
+            assignedSubjectIds: [SUBJECT_ID],
+            subjectClassIds: [SECTION_ID]
+          }
+        }
+      };
+
+      prisma.subject.findMany.mockResolvedValue([{ id: SUBJECT_ID }]);
+      prisma.class.findMany.mockResolvedValue([]);
+      prisma.section.findMany.mockResolvedValue([{ id: SECTION_ID }]);
+      prisma.section.findFirst.mockResolvedValue({ id: SECTION_ID, classId: CLASS_ID });
+
+      staffRepository.findStaffById
+        .mockResolvedValueOnce(mockStaff)
+        .mockResolvedValueOnce(mockStaff)
+        .mockResolvedValueOnce(mockStaffWithCustom);
+
+      const result = await staffService.assignStaff(
+        SCHOOL_ID,
+        STAFF_ID,
+        {
+          assignedClassId: SECTION_ID,
+          assignedSubjectIds: [SUBJECT_ID],
+          subjectClassIds: [SECTION_ID]
+        },
+        ACTOR_ADMIN
+      );
+
+      expect(result.assignedClassId).toBe(SECTION_ID);
+      expect(result.assignments.subjectClassIds).toEqual([SECTION_ID]);
+      expect(staffRepository.updateClassTeacher).toHaveBeenCalledWith(
+        SCHOOL_ID,
+        CLASS_ID,
+        STAFF_ID,
+        expect.anything()
+      );
+    });
+
+    it('rejects assignment if section ID does not belong to tenant', async () => {
+      const FOREIGN_SECTION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      prisma.subject.findMany.mockResolvedValue([]);
+      prisma.class.findMany.mockResolvedValue([]);
+      prisma.section.findMany.mockResolvedValue([]);
+
+      await expect(staffService.assignStaff(
+        SCHOOL_ID,
+        STAFF_ID,
+        { subjectClassIds: [FOREIGN_SECTION_ID] },
         ACTOR_ADMIN
       )).rejects.toThrow(ValidationError);
     });

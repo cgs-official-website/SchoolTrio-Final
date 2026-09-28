@@ -48,9 +48,38 @@ function normalizeStaffMember(s) {
     isRegistered: Boolean(s.isRegistered || s.user?.isRegistered || (s.user?.passwordHash && !s.user.passwordHash.startsWith('!'))),
     assignedClassObj: s.assignedClass || (typeof s.assignedClassId === 'object' ? s.assignedClassId : null),
     assignedClass: s.assignedClass || (typeof s.assignedClassId === 'object' ? s.assignedClassId : null),
-    assignedClassId: typeof s.assignedClassId === 'object' ? s.assignedClassId?.id : (s.assignedClassId || s.assignedClass?.id || null),
-    subjectClassIds: assign.subjectClassIds || custom.subjectClassIds || s.subjectClassIds || [],
-    assignedSubjectIds: assign.assignedSubjectIds || custom.assignedSubjectIds || s.assignedSubjectIds || [],
+    assignedClassId: s.assignments?.assignedClassId || (typeof s.assignedClassId === 'object' ? s.assignedClassId?.id : (s.assignedClassId || s.assignedClass?.id || null)),
+    subjectClassIds: Array.isArray(s.assignments?.subjectClassIds)
+      ? s.assignments.subjectClassIds
+      : (Array.isArray(assign.subjectClassIds)
+        ? assign.subjectClassIds
+        : (Array.isArray(custom.subjectClassIds)
+          ? custom.subjectClassIds
+          : (Array.isArray(s.subjectClassIds) ? s.subjectClassIds : []))),
+    assignedSubjectIds: Array.isArray(s.assignments?.assignedSubjectIds)
+      ? s.assignments.assignedSubjectIds
+      : (Array.isArray(assign.assignedSubjectIds)
+        ? assign.assignedSubjectIds
+        : (Array.isArray(custom.assignedSubjectIds)
+          ? custom.assignedSubjectIds
+          : (Array.isArray(s.assignedSubjectIds) ? s.assignedSubjectIds : []))),
+    assignments: {
+      assignedClassId: s.assignments?.assignedClassId || (typeof s.assignedClassId === 'object' ? s.assignedClassId?.id : (s.assignedClassId || s.assignedClass?.id || null)),
+      subjectClassIds: Array.isArray(s.assignments?.subjectClassIds)
+        ? s.assignments.subjectClassIds
+        : (Array.isArray(assign.subjectClassIds)
+          ? assign.subjectClassIds
+          : (Array.isArray(custom.subjectClassIds)
+            ? custom.subjectClassIds
+            : (Array.isArray(s.subjectClassIds) ? s.subjectClassIds : []))),
+      assignedSubjectIds: Array.isArray(s.assignments?.assignedSubjectIds)
+        ? s.assignments.assignedSubjectIds
+        : (Array.isArray(assign.assignedSubjectIds)
+          ? assign.assignedSubjectIds
+          : (Array.isArray(custom.assignedSubjectIds)
+            ? custom.assignedSubjectIds
+            : (Array.isArray(s.assignedSubjectIds) ? s.assignedSubjectIds : [])))
+    },
     role: roleName,
     roles: roleNames.length > 0 ? roleNames : ['Staffs'],
     roleId,
@@ -346,10 +375,11 @@ export default function StaffAssignment() {
           const cleanSecName = secName ? (secName.toLowerCase().startsWith('section') ? secName : `Section ${secName}`) : '';
           const classBaseName = (c.name || '').trim();
           const displayName = cleanSecName ? (classBaseName.toLowerCase().includes(secName.toLowerCase()) ? classBaseName : `${classBaseName} - ${cleanSecName}`) : classBaseName;
+          const secId = typeof sec === 'object' && sec.id ? sec.id : null;
           list.push({
-            id: c.sections.length === 1 ? c.id : `${c.id}_${typeof sec === 'object' ? (sec.id || secName) : secName}`,
+            id: secId || (c.sections.length === 1 ? c.id : `${c.id}_${secName}`),
             classId: c.id,
-            sectionId: typeof sec === 'object' ? sec.id : null,
+            sectionId: secId,
             name: c.name,
             section: secName,
             displayName,
@@ -390,17 +420,24 @@ export default function StaffAssignment() {
 
   const openAssignModal = (staffMember) => {
     setSelectedStaff(staffMember);
-    setSelectedClassId(staffMember.assignedClassId || '');
-    setSelectedSubjectClassIds(staffMember.subjectClassIds || staffMember.customData?.assignments?.subjectClassIds || []);
+    setSelectedClassId(staffMember.assignedClassId || staffMember.assignments?.assignedClassId || '');
 
-    const assigned = staffMember.assignedSubjectIds || staffMember.customData?.assignments?.assignedSubjectIds;
-    if (Array.isArray(assigned) && assigned.length > 0) {
-      setSelectedSubjectIds(assigned);
+    // Classes Taught: Hydrate from staffMember.subjectClassIds or staffMember.assignments?.subjectClassIds
+    if (Array.isArray(staffMember.subjectClassIds)) {
+      setSelectedSubjectClassIds(staffMember.subjectClassIds);
+    } else if (Array.isArray(staffMember.assignments?.subjectClassIds)) {
+      setSelectedSubjectClassIds(staffMember.assignments.subjectClassIds);
     } else {
-      const currentlyAssignedSubjects = subjects
-        .filter(s => s.assignedTeacherIds && s.assignedTeacherIds.includes(staffMember.id))
-        .map(s => s.id);
-      setSelectedSubjectIds(currentlyAssignedSubjects);
+      setSelectedSubjectClassIds([]);
+    }
+
+    // Subjects Taught: Hydrate from staffMember.assignedSubjectIds or staffMember.assignments?.assignedSubjectIds
+    if (Array.isArray(staffMember.assignedSubjectIds)) {
+      setSelectedSubjectIds(staffMember.assignedSubjectIds);
+    } else if (Array.isArray(staffMember.assignments?.assignedSubjectIds)) {
+      setSelectedSubjectIds(staffMember.assignments.assignedSubjectIds);
+    } else {
+      setSelectedSubjectIds([]);
     }
 
     setAssignModalOpen(true);
@@ -1188,6 +1225,13 @@ export default function StaffAssignment() {
 
     const classId = typeof classInput === 'object' ? classInput.id : classInput;
 
+    if (classId && Array.isArray(flattenedClasses) && flattenedClasses.length > 0) {
+      const matchedUnit = flattenedClasses.find(fc => fc.sectionId === classId || fc.id === classId);
+      if (matchedUnit) {
+        return matchedUnit.displayName;
+      }
+    }
+
     if (classId && Array.isArray(classes)) {
       const cls = classes.find(c => c.id === classId);
       if (cls) {
@@ -1675,9 +1719,12 @@ export default function StaffAssignment() {
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                   >
                     <option value="">-- None --</option>
-                    {flattenedClasses.map(fc => (
-                      <option key={fc.id} value={fc.classId}>{fc.displayName}</option>
-                    ))}
+                    {flattenedClasses.map(fc => {
+                      const teachingUnitId = fc.sectionId || fc.classId;
+                      return (
+                        <option key={fc.id || teachingUnitId} value={teachingUnitId}>{fc.displayName}</option>
+                      );
+                    })}
                   </select>
                 </div>
 
@@ -1685,10 +1732,10 @@ export default function StaffAssignment() {
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Subject Teacher Assignments</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800">
                     {flattenedClasses.map(fc => {
-                      const storedId = fc.classId;
+                      const storedId = fc.sectionId || fc.classId;
                       const isChecked = selectedSubjectClassIds.includes(storedId);
                       return (
-                        <label key={`subj-${fc.id}`} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg cursor-pointer">
+                        <label key={`subj-${fc.id || storedId}`} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg cursor-pointer">
                           <input
                             type="checkbox"
                             checked={isChecked}
@@ -2134,9 +2181,12 @@ export default function StaffAssignment() {
                         className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 text-sm"
                       >
                         <option value="">-- Unassigned --</option>
-                        {flattenedClasses.map(fc => (
-                          <option key={fc.id} value={fc.classId}>{fc.displayName}</option>
-                        ))}
+                        {flattenedClasses.map(fc => {
+                          const teachingUnitId = fc.sectionId || fc.classId;
+                          return (
+                            <option key={fc.id || teachingUnitId} value={teachingUnitId}>{fc.displayName}</option>
+                          );
+                        })}
                       </select>
                     </div>
                     <div>

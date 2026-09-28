@@ -35,7 +35,7 @@ export function serializeStaff(staff, hasHRPrivilege = false) {
     email: staff.email,
     status: staff.status,
     isRegistered,
-    assignedClassId: staff.assignedClassId,
+    assignedClassId: staff.customData?.assignments?.assignedClassId || staff.assignedClassId,
     assignedClass: staff.assignedClass || null,
     headedClasses: staff.headedClasses || [],
     createdAt: staff.createdAt,
@@ -49,6 +49,7 @@ export function serializeStaff(staff, hasHRPrivilege = false) {
       roleAssignments: staff.user.roleAssignments || []
     } : null,
     assignments: staff.customData?.assignments || {
+      assignedClassId: staff.assignedClassId || null,
       assignedSubjectIds: [],
       subjectClassIds: []
     }
@@ -781,29 +782,43 @@ export async function assignStaff(schoolId, id, data, actor = null) {
 
   // 1. Validate Subjects in current tenant if provided
   if (data.assignedSubjectIds && data.assignedSubjectIds.length > 0) {
+    const uniqueSubjectIds = Array.from(new Set(data.assignedSubjectIds));
     const validSubjects = await prisma.subject.findMany({
       where: {
-        id: { in: data.assignedSubjectIds },
+        id: { in: uniqueSubjectIds },
         schoolId
       },
       select: { id: true }
     });
-    if (validSubjects.length !== new Set(data.assignedSubjectIds).size) {
+    if (validSubjects.length !== uniqueSubjectIds.length) {
       throw new ValidationError('One or more subject IDs do not exist in the current tenant');
     }
   }
 
-  // 2. Validate Subject Classes in current tenant if provided
+  // 2. Validate Subject Classes in current tenant if provided (accepts Class.id or Section.id)
   if (data.subjectClassIds && data.subjectClassIds.length > 0) {
-    const validClasses = await prisma.class.findMany({
-      where: {
-        id: { in: data.subjectClassIds },
-        schoolId
-      },
-      select: { id: true }
-    });
-    if (validClasses.length !== new Set(data.subjectClassIds).size) {
-      throw new ValidationError('One or more subject class IDs do not exist in the current tenant');
+    const uniqueSubjectClassIds = Array.from(new Set(data.subjectClassIds));
+
+    const [matchingClasses, matchingSections] = await Promise.all([
+      prisma.class.findMany({
+        where: { id: { in: uniqueSubjectClassIds }, schoolId },
+        select: { id: true }
+      }),
+      prisma.section?.findMany
+        ? prisma.section.findMany({
+            where: { id: { in: uniqueSubjectClassIds }, schoolId },
+            select: { id: true }
+          })
+        : []
+    ]);
+
+    const validIdSet = new Set([
+      ...matchingClasses.map(c => c.id),
+      ...(Array.isArray(matchingSections) ? matchingSections.map(s => s.id) : [])
+    ]);
+
+    if (uniqueSubjectClassIds.some(cid => !validIdSet.has(cid))) {
+      throw new ValidationError('One or more subject class or section IDs do not exist in the current tenant');
     }
   }
 
@@ -818,12 +833,44 @@ export async function assignStaff(schoolId, id, data, actor = null) {
     ? data.assignedSubjectIds.filter(id => UUID_REGEX.test(id))
     : undefined;
 
+  let assignedClassTeachingUnit = undefined;
   if (data.assignedClassId !== undefined) {
-    updatePayload.assignedClassId = data.assignedClassId;
+    if (data.assignedClassId) {
+      // Check if it's a section
+      let sectionRecord = null;
+      if (prisma.section?.findFirst) {
+        sectionRecord = await prisma.section.findFirst({
+          where: { id: data.assignedClassId, schoolId },
+          select: { id: true, classId: true }
+        });
+      }
+
+      if (sectionRecord) {
+        updatePayload.assignedClassId = sectionRecord.classId;
+        assignedClassTeachingUnit = sectionRecord.id;
+      } else {
+        const classRecord = await prisma.class.findFirst({
+          where: { id: data.assignedClassId, schoolId },
+          select: { id: true }
+        });
+        if (classRecord) {
+          updatePayload.assignedClassId = classRecord.id;
+          assignedClassTeachingUnit = classRecord.id;
+        } else {
+          throw new ValidationError('Assigned class or section does not exist in the current tenant');
+        }
+      }
+    } else {
+      updatePayload.assignedClassId = null;
+      assignedClassTeachingUnit = null;
+    }
   }
 
   const existingAssignments = existingStaff.customData?.assignments || {};
   const newAssignments = {
+    assignedClassId: assignedClassTeachingUnit !== undefined
+      ? assignedClassTeachingUnit
+      : (existingAssignments.assignedClassId || existingStaff.assignedClassId || null),
     assignedSubjectIds: sanitizedSubjectIds !== undefined
       ? Array.from(new Set(sanitizedSubjectIds))
       : (existingAssignments.assignedSubjectIds || []),

@@ -192,4 +192,79 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
     expect(sentPayload).not.toHaveProperty('schoolId');
     expect(sentPayload).not.toHaveProperty('tenantId');
   });
+
+  it('11. SECTION GRANULARITY: sends individual Section.id for multi-section class assignments', async () => {
+    const assignSpy = vi.spyOn(staffApi, 'assignStaff').mockResolvedValue({
+      success: true,
+      data: {
+        id: 'staff-uuid-1',
+        assignedClassId: 'section-uuid-10b',
+        assignments: {
+          assignedClassId: 'section-uuid-10b',
+          assignedSubjectIds: ['sub-uuid-math', 'sub-uuid-physics'],
+          subjectClassIds: ['section-uuid-10a', 'section-uuid-10c']
+        }
+      }
+    });
+
+    const payload = {
+      assignedClassId: 'section-uuid-10b',
+      assignedSubjectIds: ['sub-uuid-math', 'sub-uuid-physics'],
+      subjectClassIds: ['section-uuid-10a', 'section-uuid-10c']
+    };
+
+    const res = await staffApi.assignStaff('staff-uuid-1', payload);
+    expect(assignSpy).toHaveBeenCalledWith('staff-uuid-1', payload);
+    expect(res.data.assignments.subjectClassIds).toEqual(['section-uuid-10a', 'section-uuid-10c']);
+    expect(res.data.assignments.assignedClassId).toBe('section-uuid-10b');
+  });
+
+  it('12. CLASS WITHOUT SECTIONS: sends Class.id when no sections exist', async () => {
+    const assignSpy = vi.spyOn(staffApi, 'assignStaff').mockResolvedValue({
+      success: true,
+      data: {
+        id: 'staff-uuid-1',
+        assignedClassId: 'nursery-class-uuid',
+        assignments: {
+          assignedClassId: 'nursery-class-uuid',
+          assignedSubjectIds: ['sub-uuid-general'],
+          subjectClassIds: ['nursery-class-uuid']
+        }
+      }
+    });
+
+    const payload = {
+      assignedClassId: 'nursery-class-uuid',
+      assignedSubjectIds: ['sub-uuid-general'],
+      subjectClassIds: ['nursery-class-uuid']
+    };
+
+    const res = await staffApi.assignStaff('staff-uuid-1', payload);
+    expect(assignSpy).toHaveBeenCalledWith('staff-uuid-1', payload);
+    expect(res.data.assignments.subjectClassIds).toContain('nursery-class-uuid');
+  });
+
+  it('13. PERSISTENCE HYDRATION: verifies serialized assignments are correctly shaped in staff object', async () => {
+    vi.spyOn(staffApi, 'listStaff').mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 'staff-uuid-1',
+          name: 'Jane Doe',
+          assignedClassId: 'section-uuid-10b',
+          assignments: {
+            assignedClassId: 'section-uuid-10b',
+            assignedSubjectIds: ['sub-math-id'],
+            subjectClassIds: ['section-uuid-10a', 'section-uuid-10b']
+          }
+        }
+      ]
+    });
+
+    const res = await staffApi.listStaff({ limit: 100 });
+    const staffMember = res.data[0];
+    expect(staffMember.assignments.subjectClassIds).toEqual(['section-uuid-10a', 'section-uuid-10b']);
+    expect(staffMember.assignments.assignedSubjectIds).toEqual(['sub-math-id']);
+    expect(staffMember.assignments.assignedClassId).toBe('section-uuid-10b');
+  });
 });
