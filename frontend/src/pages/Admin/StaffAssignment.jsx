@@ -336,6 +336,45 @@ export default function StaffAssignment() {
 
   useLiveDataRefresh(fetchStaffData, [fetchStaffData], ['staff', 'classes', 'subjects']);
 
+  // Flatten hierarchical Class -> Section models for individual section selection in modals
+  const flattenedClasses = useMemo(() => {
+    const list = [];
+    (classes || []).forEach(c => {
+      if (Array.isArray(c.sections) && c.sections.length > 0) {
+        c.sections.forEach(sec => {
+          const secName = typeof sec === 'object' ? (sec.name || '').trim() : String(sec).trim();
+          const cleanSecName = secName ? (secName.toLowerCase().startsWith('section') ? secName : `Section ${secName}`) : '';
+          const classBaseName = (c.name || '').trim();
+          const displayName = cleanSecName ? (classBaseName.toLowerCase().includes(secName.toLowerCase()) ? classBaseName : `${classBaseName} - ${cleanSecName}`) : classBaseName;
+          list.push({
+            id: c.sections.length === 1 ? c.id : `${c.id}_${typeof sec === 'object' ? (sec.id || secName) : secName}`,
+            classId: c.id,
+            sectionId: typeof sec === 'object' ? sec.id : null,
+            name: c.name,
+            section: secName,
+            displayName,
+            rawClass: c
+          });
+        });
+      } else {
+        const secName = (c.section || '').trim();
+        const cleanSecName = secName ? (secName.toLowerCase().startsWith('section') ? secName : `Section ${secName}`) : '';
+        const classBaseName = (c.name || '').trim();
+        const displayName = cleanSecName ? (classBaseName.toLowerCase().includes(secName.toLowerCase()) ? classBaseName : `${classBaseName} - ${cleanSecName}`) : classBaseName;
+        list.push({
+          id: c.id,
+          classId: c.id,
+          sectionId: null,
+          name: c.name,
+          section: secName,
+          displayName,
+          rawClass: c
+        });
+      }
+    });
+    return list;
+  }, [classes]);
+
   // Click outside to close filter dropdown
   useEffect(() => {
     function handleClickOutside(event) {
@@ -1636,8 +1675,8 @@ export default function StaffAssignment() {
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                   >
                     <option value="">-- None --</option>
-                    {classes.map(c => (
-                      <option key={c.id} value={c.id}>{getClassName(c)}</option>
+                    {flattenedClasses.map(fc => (
+                      <option key={fc.id} value={fc.classId}>{fc.displayName}</option>
                     ))}
                   </select>
                 </div>
@@ -1645,24 +1684,30 @@ export default function StaffAssignment() {
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Subject Teacher Assignments</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800">
-                    {classes.map(c => (
-                      <label key={`subj-${c.id}`} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={selectedSubjectClassIds.includes(c.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedSubjectClassIds([...selectedSubjectClassIds, c.id]);
-                            } else {
-                              setSelectedSubjectClassIds(selectedSubjectClassIds.filter(id => id !== c.id));
-                            }
-                          }}
-                          className="w-4 h-4 text-primary-600 rounded border-slate-300 dark:border-slate-600 focus:ring-primary-500"
-                        />
-                        <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{getClassName(c)}</span>
-                      </label>
-                    ))}
-                    {classes.length === 0 && <span className="text-sm text-slate-500 dark:text-slate-400 italic p-2">No classes available.</span>}
+                    {flattenedClasses.map(fc => {
+                      const isChecked = selectedSubjectClassIds.includes(fc.classId) || selectedSubjectClassIds.includes(fc.id);
+                      return (
+                        <label key={`subj-${fc.id}`} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked}
+                            onChange={(e) => {
+                              const targetId = fc.classId || fc.id;
+                              if (e.target.checked) {
+                                if (!selectedSubjectClassIds.includes(targetId)) {
+                                  setSelectedSubjectClassIds([...selectedSubjectClassIds, targetId]);
+                                }
+                              } else {
+                                setSelectedSubjectClassIds(selectedSubjectClassIds.filter(id => id !== targetId && id !== fc.id));
+                              }
+                            }}
+                            className="w-4 h-4 text-primary-600 rounded border-slate-300 dark:border-slate-600 focus:ring-primary-500"
+                          />
+                          <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{fc.displayName}</span>
+                        </label>
+                      );
+                    })}
+                    {flattenedClasses.length === 0 && <span className="text-sm text-slate-500 dark:text-slate-400 italic p-2">No classes available.</span>}
                   </div>
                 </div>
 
@@ -2089,8 +2134,8 @@ export default function StaffAssignment() {
                         className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 text-sm"
                       >
                         <option value="">-- Unassigned --</option>
-                        {classes.map(c => (
-                          <option key={c.id} value={c.id}>{getClassName(c)}</option>
+                        {flattenedClasses.map(fc => (
+                          <option key={fc.id} value={fc.classId}>{fc.displayName}</option>
                         ))}
                       </select>
                     </div>
