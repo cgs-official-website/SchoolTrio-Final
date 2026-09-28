@@ -627,83 +627,89 @@ export async function bulkImportClasses(schoolId, rows = [], actor = null) {
   let failedCount = 0;
   const errors = [];
 
-  await prisma.$transaction(async (tx) => {
-    // 1. Fetch existing categories
-    const existingCategories = await findCategoriesRepo(schoolId, tx);
-    const categoryMap = new Map(existingCategories.map(c => [c.name.trim().toLowerCase(), c.id]));
+  await prisma.$transaction(
+    async (tx) => {
+      // 1. Fetch existing categories
+      const existingCategories = await findCategoriesRepo(schoolId, tx);
+      const categoryMap = new Map(existingCategories.map(c => [c.name.trim().toLowerCase(), c.id]));
 
-    // 2. Fetch existing classes with sections for tenant
-    const existingClasses = await classRepository.findClasses(schoolId, { take: 1000 }, tx);
-    const classMap = new Map();
-    for (const cls of existingClasses) {
-      classMap.set(cls.name.trim().toLowerCase(), {
-        id: cls.id,
-        name: cls.name,
-        categoryId: cls.categoryId,
-        sections: cls.sections ? cls.sections.map(s => s.name.trim().toUpperCase()) : []
-      });
-    }
-
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const className = String(row.className || '').trim();
-      const sectionName = String(row.section || '').trim().toUpperCase();
-      const categoryName = String(row.category || '').trim();
-
-      if (!className || !sectionName) {
-        skippedCount++;
-        continue;
+      // 2. Fetch existing classes with sections for tenant
+      const existingClasses = await classRepository.findClasses(schoolId, { take: 1000 }, tx);
+      const classMap = new Map();
+      for (const cls of existingClasses) {
+        classMap.set(cls.name.trim().toLowerCase(), {
+          id: cls.id,
+          name: cls.name,
+          categoryId: cls.categoryId,
+          sections: cls.sections ? cls.sections.map(s => s.name.trim().toUpperCase()) : []
+        });
       }
 
-      let categoryId = null;
-      if (categoryName) {
-        const catKey = categoryName.toLowerCase();
-        if (categoryMap.has(catKey)) {
-          categoryId = categoryMap.get(catKey);
-        } else {
-          const newCat = await createCategoryRepo({ schoolId, name: categoryName }, tx);
-          categoryId = newCat.id;
-          categoryMap.set(catKey, categoryId);
-          categoryCreationCount++;
-        }
-      }
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const className = String(row.className || '').trim();
+        const sectionName = String(row.section || '').trim().toUpperCase();
+        const categoryName = String(row.category || '').trim();
 
-      const classKey = className.toLowerCase();
-      if (classMap.has(classKey)) {
-        const existingClass = classMap.get(classKey);
-        const secExists = existingClass.sections.includes(sectionName);
-        if (secExists) {
+        if (!className || !sectionName) {
           skippedCount++;
+          continue;
+        }
+
+        let categoryId = null;
+        if (categoryName) {
+          const catKey = categoryName.toLowerCase();
+          if (categoryMap.has(catKey)) {
+            categoryId = categoryMap.get(catKey);
+          } else {
+            const newCat = await createCategoryRepo({ schoolId, name: categoryName }, tx);
+            categoryId = newCat.id;
+            categoryMap.set(catKey, categoryId);
+            categoryCreationCount++;
+          }
+        }
+
+        const classKey = className.toLowerCase();
+        if (classMap.has(classKey)) {
+          const existingClass = classMap.get(classKey);
+          const secExists = existingClass.sections.includes(sectionName);
+          if (secExists) {
+            skippedCount++;
+          } else {
+            await classRepository.createSection({
+              schoolId,
+              classId: existingClass.id,
+              name: sectionName
+            }, tx);
+            existingClass.sections.push(sectionName);
+            addedCount++;
+          }
         } else {
+          const newClass = await classRepository.createClass({
+            schoolId,
+            name: className,
+            categoryId
+          }, tx);
           await classRepository.createSection({
             schoolId,
-            classId: existingClass.id,
+            classId: newClass.id,
             name: sectionName
           }, tx);
-          existingClass.sections.push(sectionName);
+          classMap.set(classKey, {
+            id: newClass.id,
+            name: className,
+            categoryId,
+            sections: [sectionName]
+          });
           addedCount++;
         }
-      } else {
-        const newClass = await classRepository.createClass({
-          schoolId,
-          name: className,
-          categoryId
-        }, tx);
-        await classRepository.createSection({
-          schoolId,
-          classId: newClass.id,
-          name: sectionName
-        }, tx);
-        classMap.set(classKey, {
-          id: newClass.id,
-          name: className,
-          categoryId,
-          sections: [sectionName]
-        });
-        addedCount++;
       }
+    },
+    {
+      maxWait: 10000,
+      timeout: 60000
     }
-  });
+  );
 
   await createAuditLog({
     schoolId,

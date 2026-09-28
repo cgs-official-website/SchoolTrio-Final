@@ -100,6 +100,7 @@ describe('userAdapter (normalizeAuthUser)', () => {
 
     const normalized = normalizeAuthUser(backendUser);
     expect(normalized.role).toBe('superadmin');
+    expect(normalized.loginPanel).toBe('superadmin');
   });
 
   it('preserves loginPanel from assigned schoolRole when explicitly configured in RBAC', () => {

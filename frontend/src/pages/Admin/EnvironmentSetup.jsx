@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import useSchoolBranding from '../../hooks/useSchoolBranding';
 import { getSchoolSettings, updateSchoolSettings } from '../../api/settings';
 import { getFormSchema } from '../../api/customModules';
 import { getAttendanceSettings, updateAttendanceSettings } from '../../api/attendance';
@@ -367,29 +368,61 @@ export default function EnvironmentSetup() {
     }
   };
 
+  useSchoolBranding({
+    name: formData.name,
+    branding: {
+      ...formData.branding,
+      faviconUrl: formData.branding?.faviconUrl || formData.branding?.logoUrl
+    }
+  });
+
+  const updateFaviconInDom = (iconUrl) => {
+    if (!iconUrl) return;
+    let link = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.getElementsByTagName('head')[0].appendChild(link);
+    }
+    link.href = iconUrl;
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setSuccessMsg('');
     try {
+      let formattedWebsite = (formData.website || '').trim();
+      if (formattedWebsite && !formattedWebsite.startsWith('http://') && !formattedWebsite.startsWith('https://')) {
+        formattedWebsite = `https://${formattedWebsite}`;
+      }
+
+      const branding = {
+        ...formData.branding,
+        logoUrl: formData.branding?.logoUrl || '',
+        faviconUrl: formData.branding?.faviconUrl || formData.branding?.logoUrl || ''
+      };
+
       await updateSchoolSettings({
-        name: formData.name,
-        contactPhone: formData.contactPhone,
-        location: formData.location,
-        website: formData.website,
-        branding: formData.branding,
-        academicConfig: formData.academicConfig,
-        customData
+        name: formData.name?.trim() || '',
+        contactPhone: formData.contactPhone?.trim() || '',
+        location: formData.location?.trim() || '',
+        website: formattedWebsite,
+        branding,
+        academicConfig: formData.academicConfig || {},
+        customData: customData || {}
       });
       setSuccessMsg('Environment settings saved successfully!');
+
+      updateFaviconInDom(branding.faviconUrl || branding.logoUrl);
       
       // Update local profile context if branding changed
-      if (formData.branding.logoUrl !== userProfile?.school?.branding?.logoUrl || 
+      if (branding.logoUrl !== userProfile?.school?.branding?.logoUrl || 
           formData.name !== userProfile?.schoolName) {
         updateProfileData({
           schoolName: formData.name,
           school: {
-            ...userProfile.school,
-            branding: formData.branding
+            ...userProfile?.school,
+            branding
           }
         });
       }
@@ -397,27 +430,71 @@ export default function EnvironmentSetup() {
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (error) {
       console.error("Error saving setup:", error);
-      toast.error("Failed to save settings");
+      toast.error(error?.message || "Failed to save settings");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleLogoUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        toast.error("Logo file size must be less than 2MB");
-        return;
-      }
+  const compressLogoImage = (file, maxWidth = 512, maxHeight = 512) => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData({
-          ...formData,
-          branding: { ...formData.branding, logoUrl: reader.result }
-        });
+      reader.onerror = (err) => reject(err);
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onerror = (err) => reject(err);
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxWidth || height > maxHeight) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const mimeType = file.type === 'image/png' || file.type === 'image/svg+xml' ? 'image/png' : 'image/jpeg';
+          resolve(canvas.toDataURL(mimeType, 0.9));
+        };
+        img.src = e.target.result;
       };
       reader.readAsDataURL(file);
+    });
+  };
+
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error("Logo file size must be less than 10MB");
+        return;
+      }
+      try {
+        const compressedDataUrl = await compressLogoImage(file, 512, 512);
+        const updatedBranding = {
+          ...formData.branding,
+          logoUrl: compressedDataUrl,
+          faviconUrl: compressedDataUrl
+        };
+        setFormData({
+          ...formData,
+          branding: updatedBranding
+        });
+        updateFaviconInDom(compressedDataUrl);
+      } catch (err) {
+        console.error("Error reading logo file:", err);
+        toast.error("Failed to process logo image");
+      }
     }
   };
 

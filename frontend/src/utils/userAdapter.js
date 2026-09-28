@@ -61,7 +61,9 @@ export const normalizeAuthUser = (backendUser) => {
 
   // If no explicit loginPanel from assigned schoolRole, default based on role & systemRole
   if (!loginPanel) {
-    if (role === 'admin' || role === 'superadmin' || isAdminSystemRole) {
+    if (role === 'superadmin' || rawRole === 'SUPER_ADMIN') {
+      loginPanel = 'superadmin';
+    } else if (role === 'admin' || isAdminSystemRole) {
       loginPanel = 'admin';
     } else if (role === 'teacher' || role === 'staff') {
       loginPanel = 'teacher';

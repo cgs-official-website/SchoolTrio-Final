@@ -1,21 +1,21 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
-import { 
-  LuHouse, 
-  LuArrowLeft, 
-  LuCompass, 
-  LuCopy, 
-  LuCheck, 
-  LuLayoutDashboard, 
-  LuGraduationCap, 
-  LuUsers, 
-  LuBookOpen, 
-  LuCalendar, 
-  LuCreditCard, 
-  LuBriefcase, 
-  LuLifeBuoy, 
-  LuShieldAlert, 
+import {
+  LuHouse,
+  LuArrowLeft,
+  LuCompass,
+  LuCopy,
+  LuCheck,
+  LuLayoutDashboard,
+  LuGraduationCap,
+  LuUsers,
+  LuBookOpen,
+  LuCalendar,
+  LuCreditCard,
+  LuBriefcase,
+  LuLifeBuoy,
+  LuShieldAlert,
   LuLogIn,
   LuSparkles,
   LuFileText,
@@ -39,7 +39,7 @@ export default function NotFound() {
   const location = useLocation();
   const { currentUser, userProfile } = useAuth();
   const reducedMotion = useReducedMotion();
-  
+
   const [copied, setCopied] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -97,7 +97,7 @@ export default function NotFound() {
     { label: 'Portal Login', path: '/login', category: 'General Public', icon: LuLogIn, keywords: 'login signin authentication access credentials' },
     { label: 'Register New School', path: '/register', category: 'General Public', icon: LuBuilding2, keywords: 'register signup onboarding tenant create' },
     { label: 'Forgot Password', path: '/forgot-password', category: 'General Public', icon: LuLifeBuoy, keywords: 'forgot password reset recovery account' },
-    
+
     // School Admin Modules
     { label: 'Admin Dashboard', path: '/admin', category: 'Admin & Staff', icon: LuLayoutDashboard, keywords: 'admin overview statistics kpi metrics' },
     { label: 'Student Directory', path: '/admin/students', category: 'Admin & Staff', icon: LuUsers, keywords: 'student directory admission enroll roll' },
@@ -137,9 +137,9 @@ export default function NotFound() {
   const filteredDestinations = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const query = searchQuery.toLowerCase().trim();
-    return allDestinations.filter(item => 
-      item.label.toLowerCase().includes(query) || 
-      item.category.toLowerCase().includes(query) || 
+    return allDestinations.filter(item =>
+      item.label.toLowerCase().includes(query) ||
+      item.category.toLowerCase().includes(query) ||
       item.keywords.toLowerCase().includes(query) ||
       item.path.toLowerCase().includes(query)
     ).slice(0, 8);
@@ -203,7 +203,7 @@ export default function NotFound() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#12101a] text-slate-900 dark:text-[#f5f5f7] font-sans selection:bg-primary-500 selection:text-white flex flex-col justify-between relative overflow-hidden transition-colors duration-200">
-      
+
       {/* Background Decorative Mesh & Glow Orbs */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
         <div className="absolute -top-[15%] -left-[10%] w-[65vw] h-[65vw] max-w-[750px] max-h-[750px] bg-gradient-to-br from-primary-400/20 via-indigo-500/15 to-transparent blur-[120px] rounded-full mix-blend-multiply dark:mix-blend-screen animate-pulse" />
@@ -213,19 +213,19 @@ export default function NotFound() {
 
       {/* Header Bar - Fully Functional for General Pages & Dashboards */}
       <header className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-8 py-5 flex items-center justify-between">
-        <Link 
-          to={destination.path} 
+        <Link
+          to={destination.path}
           className="flex items-center gap-3 group focus:outline-none focus:ring-2 focus:ring-primary-400/50 rounded-2xl p-1 transition-all"
         >
           <div className="w-10 h-10 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-primary-900/40 shadow-sm flex items-center justify-center p-1.5 group-hover:scale-105 transition-transform">
-            <img 
-              src="/logo.png" 
-              alt="Logo" 
+            <img
+              src="/logo.png"
+              alt="Logo"
               className="w-full h-full object-contain"
-              onError={(e) => { 
-                e.target.style.display = 'none'; 
-                if (e.target.nextElementSibling) e.target.nextElementSibling.style.display = 'block'; 
-              }} 
+              onError={(e) => {
+                e.target.style.display = 'none';
+                if (e.target.nextElementSibling) e.target.nextElementSibling.style.display = 'block';
+              }}
             />
             <div style={{ display: 'none' }} className="font-black text-primary-600 text-lg">Z</div>
           </div>
@@ -244,20 +244,20 @@ export default function NotFound() {
           {/* General Navigation Links (for Public/Guest view) */}
           {!currentUser && (
             <div className="hidden md:flex items-center gap-1.5 mr-2">
-              <Link 
-                to="/" 
+              <Link
+                to="/"
                 className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-white/80 dark:hover:bg-slate-800 transition-colors"
               >
                 Home
               </Link>
-              <Link 
-                to="/register" 
+              <Link
+                to="/register"
                 className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-white/80 dark:hover:bg-slate-800 transition-colors"
               >
                 Register School
               </Link>
-              <Link 
-                to="/login" 
+              <Link
+                to="/login"
                 className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-950/60 hover:bg-primary-100 dark:hover:bg-primary-900/60 border border-primary-200/60 dark:border-primary-800/40 transition-colors"
               >
                 Sign In
@@ -287,7 +287,7 @@ export default function NotFound() {
 
       {/* Main Content Hero */}
       <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 sm:px-8 py-8 max-w-4xl mx-auto w-full text-center">
-        
+
         {/* Animated 404 Hero Visual */}
         <motion.div
           initial={{ opacity: 0, y: reducedMotion ? 0 : 25 }}

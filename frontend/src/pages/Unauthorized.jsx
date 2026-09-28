@@ -24,6 +24,9 @@ export default function Unauthorized() {
     if (!currentUser || !userProfile) {
       return { path: '/login', label: 'Login to Authorized Account' };
     }
+    if (userProfile.loginPanel === 'superadmin' || role === 'superadmin') {
+      return { path: '/superadmin', label: 'Back to SuperAdmin Hub' };
+    }
     if (userProfile.loginPanel === 'teacher') {
       return { path: '/teacher', label: 'Back to Teacher Portal' };
     }

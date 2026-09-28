@@ -24,6 +24,11 @@ export default function LoginPage() {
   }, [currentUser, userProfile, navigate]);
 
   const redirectBasedOnRole = (role, loginPanel) => {
+    // 0. SuperAdmin priority redirect
+    if (loginPanel === 'superadmin' || role?.toLowerCase() === 'superadmin') {
+      navigate('/superadmin');
+      return;
+    }
     // 1. Honor explicit loginPanel configured on user's assigned RBAC role
     if (loginPanel === 'admin') {
       navigate('/admin');

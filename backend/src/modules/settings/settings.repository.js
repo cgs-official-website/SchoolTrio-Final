@@ -56,7 +56,13 @@ export async function upsertSetting(schoolId, category, data, tx = prisma) {
 }
 
 export async function executeTransaction(callback) {
-  return prisma.$transaction(async (tx) => {
-    return callback(tx);
-  });
+  return prisma.$transaction(
+    async (tx) => {
+      return callback(tx);
+    },
+    {
+      maxWait: 10000,
+      timeout: 30000
+    }
+  );
 }

@@ -15,16 +15,16 @@ export const updateSchoolSettingsSchema = {
     website: z.string().trim().url('Invalid website URL').max(255).or(z.literal('')).optional().nullable(),
     timezone: z.string().trim().max(50).optional(),
     branding: z.object({
-      logoUrl: z.string().trim().max(2000).or(z.literal('')).optional().nullable(),
-      faviconUrl: z.string().trim().max(2000).or(z.literal('')).optional().nullable(),
+      logoUrl: z.string().trim().max(5000000).or(z.literal('')).optional().nullable(),
+      faviconUrl: z.string().trim().max(5000000).or(z.literal('')).optional().nullable(),
       primaryColor: z.string().trim().max(50).optional().nullable(),
       secondaryColor: z.string().trim().max(50).optional().nullable()
-    }).optional(),
+    }).passthrough().optional().nullable(),
     academicConfig: z.object({
       currentYear: z.string().trim().max(50).optional(),
       termType: z.string().trim().max(100).optional()
-    }).passthrough().optional(),
-    customData: z.record(z.any()).optional()
+    }).passthrough().optional().nullable(),
+    customData: z.record(z.any()).optional().nullable()
   }).strict()
 };
 

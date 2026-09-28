@@ -81,6 +81,15 @@ export async function updateSchoolSettings(schoolId, payload, actor = {}) {
     throw new NotFoundError(`School not found with ID: ${schoolId}`);
   }
 
+  // Pre-fetch existing settings before transaction to eliminate inside-transaction read queries
+  const existingSettingsList = await settingsRepo.findSettingsByCategories(schoolId, [
+    'general', 'branding', 'academicConfig', 'customData'
+  ]);
+  const existingMap = {};
+  for (const s of existingSettingsList) {
+    existingMap[s.category] = s.data || {};
+  }
+
   const result = await settingsRepo.executeTransaction(async (tx) => {
     // 1. Prepare School model updates
     const schoolUpdates = {};
@@ -109,33 +118,34 @@ export async function updateSchoolSettings(schoolId, payload, actor = {}) {
 
     // 2. Handle 'general' category (website)
     if (payload.website !== undefined) {
-      const existingGeneral = await settingsRepo.findSetting(schoolId, 'general', tx);
-      const mergedGeneral = { ...(existingGeneral?.data || {}), website: payload.website };
+      const existingGeneral = existingMap.general || {};
+      const mergedGeneral = { ...existingGeneral, website: payload.website };
       await settingsRepo.upsertSetting(schoolId, 'general', mergedGeneral, tx);
     }
 
     // 3. Handle 'branding' category
     if (payload.branding !== undefined) {
-      const existingBranding = await settingsRepo.findSetting(schoolId, 'branding', tx);
+      const existingBranding = existingMap.branding || {};
       const mergedBranding = {
-        ...(existingBranding?.data || {}),
+        ...existingBranding,
         ...payload.branding,
-        logoUrl: payload.branding.logoUrl !== undefined ? payload.branding.logoUrl : (existingBranding?.data?.logoUrl || existingSchool.logoUrl || '')
+        logoUrl: payload.branding.logoUrl !== undefined ? payload.branding.logoUrl : (existingBranding.logoUrl || existingSchool.logoUrl || ''),
+        faviconUrl: payload.branding.faviconUrl !== undefined ? payload.branding.faviconUrl : (payload.branding.logoUrl || existingBranding.faviconUrl || existingBranding.logoUrl || '')
       };
       await settingsRepo.upsertSetting(schoolId, 'branding', mergedBranding, tx);
     }
 
     // 4. Handle 'academicConfig' category
     if (payload.academicConfig !== undefined) {
-      const existingAcademic = await settingsRepo.findSetting(schoolId, 'academicConfig', tx);
-      const mergedAcademic = { ...(existingAcademic?.data || {}), ...payload.academicConfig };
+      const existingAcademic = existingMap.academicConfig || {};
+      const mergedAcademic = { ...existingAcademic, ...payload.academicConfig };
       await settingsRepo.upsertSetting(schoolId, 'academicConfig', mergedAcademic, tx);
     }
 
     // 5. Handle 'customData' category
     if (payload.customData !== undefined) {
-      const existingCustom = await settingsRepo.findSetting(schoolId, 'customData', tx);
-      const mergedCustom = { ...(existingCustom?.data || {}), ...payload.customData };
+      const existingCustom = existingMap.customData || {};
+      const mergedCustom = { ...existingCustom, ...payload.customData };
       await settingsRepo.upsertSetting(schoolId, 'customData', mergedCustom, tx);
     }
 
