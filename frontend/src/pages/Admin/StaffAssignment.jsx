@@ -1054,20 +1054,97 @@ export default function StaffAssignment() {
   };
 
   const getClassName = (classInput, memberObj = null) => {
-    if (!classInput) return 'Unassigned';
+    if (!classInput && !memberObj?.assignedClass) return 'Unassigned';
 
-    const classId = typeof classInput === 'object' ? classInput.id : classInput;
+    const parseAndFormatClassNameString = (str) => {
+      if (!str || typeof str !== 'string') return 'Unassigned';
+      const trimmed = str.trim();
+      if (!trimmed || trimmed.toLowerCase() === 'unassigned') return 'Unassigned';
+
+      // 1. Matches multi-section string: "NNLP A,B", "NNLP A, B", "NNLP - A, B", "Grade 1 A, B, C"
+      const multiSecRegex = /^(.+?)\s*(?:-|\s)\s*([A-Za-z0-9]+\s*(?:,\s*[A-Za-z0-9]+)+)$/;
+      const match = trimmed.match(multiSecRegex);
+      if (match) {
+        const baseName = match[1].trim();
+        const secPart = match[2].trim();
+        const secs = secPart.split(',').map(s => s.trim()).filter(Boolean);
+        if (secs.length > 1) {
+          return secs.map(s => {
+            if (baseName.toLowerCase().endsWith(`- ${s.toLowerCase()}`) || baseName.toLowerCase().endsWith(` ${s.toLowerCase()}`)) {
+              return baseName;
+            }
+            return `${baseName} - ${s}`;
+          }).join(', ');
+        }
+      }
+
+      // 2. Matches single section without hyphen: "NNLP A" -> "NNLP - A"
+      const singleSecRegex = /^([A-Za-z0-9\s]+)\s+([A-Za-z]{1,2})$/;
+      const singleMatch = trimmed.match(singleSecRegex);
+      if (singleMatch && !trimmed.includes('-')) {
+        const baseName = singleMatch[1].trim();
+        const sec = singleMatch[2].trim();
+        if (isNaN(sec)) {
+          return `${baseName} - ${sec}`;
+        }
+      }
+
+      return trimmed;
+    };
 
     const formatClassWithSection = (c) => {
       if (!c) return 'Unassigned';
-      const secName = Array.isArray(c.sections) && c.sections.length > 0
-        ? c.sections.map(s => s.name).join(', ')
-        : (c.section || '');
-      if (secName && !c.name.toLowerCase().includes(secName.toLowerCase())) {
-        return `${c.name} - ${secName}`;
+
+      if (typeof c === 'string') {
+        return parseAndFormatClassNameString(c);
       }
-      return c.name || 'Unassigned';
+
+      if (typeof c === 'object') {
+        const classBaseName = (c.name || '').trim();
+
+        if (Array.isArray(c.sections) && c.sections.length > 0) {
+          const formattedSecs = c.sections.map(s => {
+            const secName = typeof s === 'object' ? (s.name || '').trim() : String(s).trim();
+            if (!secName) return classBaseName;
+            const cleanBase = classBaseName.toLowerCase();
+            const cleanSec = secName.toLowerCase();
+            if (cleanBase.endsWith(`- ${cleanSec}`) || cleanBase.endsWith(` ${cleanSec}`)) {
+              return classBaseName;
+            }
+            if (cleanBase.includes(cleanSec)) {
+              return classBaseName;
+            }
+            return `${classBaseName} - ${secName}`;
+          });
+          return formattedSecs.join(', ');
+        }
+
+        const secName = typeof c.section === 'string' ? c.section.trim() : '';
+        if (secName) {
+          const secs = secName.split(',').map(s => s.trim()).filter(Boolean);
+          if (secs.length > 1) {
+            return secs.map(s => {
+              const cleanBase = classBaseName.toLowerCase();
+              const cleanSec = s.toLowerCase();
+              if (cleanBase.includes(cleanSec)) return classBaseName;
+              return `${classBaseName} - ${s}`;
+            }).join(', ');
+          }
+
+          if (!classBaseName.toLowerCase().includes(secName.toLowerCase())) {
+            return `${classBaseName} - ${secName}`;
+          }
+        }
+
+        if (classBaseName) {
+          return parseAndFormatClassNameString(classBaseName);
+        }
+      }
+
+      return 'Unassigned';
     };
+
+    const classId = typeof classInput === 'object' ? classInput.id : classInput;
 
     if (classId && Array.isArray(classes)) {
       const cls = classes.find(c => c.id === classId);
@@ -1078,14 +1155,15 @@ export default function StaffAssignment() {
 
     if (memberObj?.assignedClass) {
       const ac = memberObj.assignedClass;
-      if (typeof ac === 'object' && ac.name) {
-        return formatClassWithSection(ac);
-      }
-      if (typeof ac === 'string') return ac;
+      return formatClassWithSection(ac);
     }
 
-    if (typeof classInput === 'object' && classInput.name) {
+    if (typeof classInput === 'object') {
       return formatClassWithSection(classInput);
+    }
+
+    if (typeof classInput === 'string' && classInput) {
+      return parseAndFormatClassNameString(classInput);
     }
 
     return 'Unassigned';
