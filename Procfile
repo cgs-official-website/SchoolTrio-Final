@@ -1,1 +1,1 @@
-web: cd backend && node src/server.js
+web: sh -c 'if [ -d backend ]; then cd backend; fi && node src/server.js'

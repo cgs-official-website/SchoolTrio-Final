@@ -5,6 +5,6 @@
     "watchPatterns": ["backend/**"]
   },
   "deploy": {
-    "startCommand": "cd backend && node src/server.js"
+    "startCommand": "sh -c 'if [ -d backend ]; then cd backend; fi && node src/server.js'"
   }
 }
