@@ -1,12 +1,65 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { listCanteenRequests, createCanteenRequest } from '../../api/canteen';
+import { getMyChildren } from '../../api/parents';
 import toast from 'react-hot-toast';
-import { LuCoffee as Coffee, LuUtensils as Utensils, LuCircleCheck as CheckCircle2 } from 'react-icons/lu';
+import { 
+  LuCoffee as Coffee, 
+  LuUtensils as Utensils, 
+  LuCircleCheck as CheckCircle2, 
+  LuUser as UserIcon,
+  LuTriangleAlert as AlertTriangle
+} from 'react-icons/lu';
 
 export default function Canteen() {
   const { userProfile } = useAuth();
-  const studentId = userProfile?.linkedStudentId;
+  const outletContext = useOutletContext();
+  const activeStudentId = outletContext?.activeStudentId;
+  const activeChild = outletContext?.activeChild;
+
+  const [fallbackChild, setFallbackChild] = useState(null);
+  const [childrenChecked, setChildrenChecked] = useState(false);
+
+  // Authoritative student resolution:
+  // 1. activeStudentId from ParentDashboard Outlet context
+  // 2. localStorage 'sms_active_student_id'
+  // 3. fallbackChild from getMyChildren() REST call
+  // 4. userProfile.linkedStudentId (legacy/fallback)
+  const storedStudentId = typeof localStorage !== 'undefined' ? localStorage.getItem('sms_active_student_id') : null;
+  const studentId = activeStudentId || storedStudentId || fallbackChild?.id || userProfile?.linkedStudentId || null;
+
+  // Fallback loader for standalone or unhydrated context
+  useEffect(() => {
+    let isMounted = true;
+    if (!activeStudentId && !storedStudentId && !childrenChecked) {
+      getMyChildren()
+        .then((res) => {
+          if (!isMounted) return;
+          const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+          if (list.length > 0) {
+            const first = list[0].student || list[0];
+            const name = `${first.firstName || ''} ${first.lastName || ''}`.trim() || first.name;
+            setFallbackChild({ ...first, name });
+          }
+          setChildrenChecked(true);
+        })
+        .catch((err) => {
+          console.error('[Canteen] Error loading linked children:', err);
+          if (isMounted) setChildrenChecked(true);
+        });
+    } else {
+      setChildrenChecked(true);
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [activeStudentId, storedStudentId, childrenChecked]);
+
+  const resolvedStudent = activeChild || fallbackChild || null;
+  const resolvedStudentName = resolvedStudent?.name || 
+    (resolvedStudent?.firstName ? `${resolvedStudent.firstName} ${resolvedStudent.lastName || ''}`.trim() : null) || 
+    'Linked Student';
 
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -32,7 +85,7 @@ export default function Canteen() {
 
   const handleRequestMeal = async (mealType) => {
     if (!studentId) {
-      toast.error("No linked student found.");
+      toast.error("No linked student found. Please link a student to your account first.");
       return;
     }
     setSubmitting(true);
@@ -54,7 +107,7 @@ export default function Canteen() {
     }
   };
 
-  if (loading) {
+  if (loading && !childrenChecked) {
     return (
       <div className="flex justify-center items-center h-[60vh]">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent"></div>
@@ -71,6 +124,17 @@ export default function Canteen() {
       <div className="mb-8 min-w-0 w-full">
         <h1 className="text-3xl font-bold text-slate-900 dark:text-white truncate">Emergency Canteen Requests</h1>
         <p className="text-slate-500 dark:text-slate-400 mt-1">If your child forgot their meal, you can request a meal from the school canteen for today.</p>
+        {studentId ? (
+          <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-primary-50 dark:bg-primary-950/40 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800">
+            <UserIcon size={14} className="text-primary-600 dark:text-primary-400" />
+            <span>Active Student: <strong className="font-bold">{resolvedStudentName}</strong></span>
+          </div>
+        ) : (
+          <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800">
+            <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400" />
+            <span>No linked student found. Please link a student in the Parent Portal to request meals.</span>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">

@@ -645,4 +645,128 @@ describe('Unit: Staff Service Layer — Phase 4C.4', () => {
       await expect(staffService.deleteStaff(SCHOOL_ID, STAFF_ID, ACTOR_ADMIN)).rejects.toThrow(ConflictError);
     });
   });
+
+  describe('serializeStaff and Staff Registration State Lifecycle', () => {
+    it('marks isRegistered as true when user has a valid bcrypt password hash', () => {
+      const staff = {
+        id: STAFF_ID,
+        schoolId: SCHOOL_ID,
+        userId: USER_ID,
+        name: 'Registered Teacher',
+        user: {
+          id: USER_ID,
+          email: 'teacher@school.edu',
+          passwordHash: '$2b$10$abcdefghijklmnopqrstuvwxyz1234567890ABCDEF',
+          systemRole: 'TEACHER',
+          isActive: true,
+          roleAssignments: []
+        }
+      };
+
+      const serialized = staffService.serializeStaff(staff);
+      expect(serialized.isRegistered).toBe(true);
+      expect(serialized.user.isRegistered).toBe(true);
+      expect(serialized.user.passwordHash).toBeUndefined();
+      expect(serialized.passwordHash).toBeUndefined();
+    });
+
+    it('marks isRegistered as false when user has a locked/unregistered password marker', () => {
+      const staff = {
+        id: STAFF_ID,
+        schoolId: SCHOOL_ID,
+        userId: USER_ID,
+        name: 'Unregistered Teacher',
+        user: {
+          id: USER_ID,
+          email: 'newteacher@school.edu',
+          passwordHash: '!LOCKED_NO_PASSWORD_SET',
+          systemRole: 'TEACHER',
+          isActive: true,
+          roleAssignments: []
+        }
+      };
+
+      const serialized = staffService.serializeStaff(staff);
+      expect(serialized.isRegistered).toBe(false);
+      expect(serialized.user.isRegistered).toBe(false);
+      expect(serialized.user.passwordHash).toBeUndefined();
+    });
+
+    it('marks isRegistered as false when user has no passwordHash or user is missing', () => {
+      const staffWithoutHash = {
+        id: STAFF_ID,
+        schoolId: SCHOOL_ID,
+        userId: USER_ID,
+        name: 'Teacher Without Hash',
+        user: {
+          id: USER_ID,
+          email: 'nohash@school.edu',
+          systemRole: 'TEACHER',
+          isActive: true
+        }
+      };
+      expect(staffService.serializeStaff(staffWithoutHash).isRegistered).toBe(false);
+
+      const staffWithoutUser = {
+        id: STAFF_ID,
+        schoolId: SCHOOL_ID,
+        userId: null,
+        name: 'Teacher Without User',
+        user: null
+      };
+      expect(staffService.serializeStaff(staffWithoutUser).isRegistered).toBe(false);
+      expect(staffService.serializeStaff(null)).toBeNull();
+    });
+
+    it('listStaff returns isRegistered true for registered staff and false for unregistered staff without leaking passwordHash', async () => {
+      const registeredStaff = {
+        id: 'staff-registered-1',
+        schoolId: SCHOOL_ID,
+        userId: 'user-reg-1',
+        name: 'Arul Jothi',
+        email: 'arul@school.com',
+        user: {
+          id: 'user-reg-1',
+          email: 'arul@school.com',
+          passwordHash: '$2b$10$validBcryptHashForArulJothi1234567890',
+          systemRole: 'TEACHER',
+          isActive: true,
+          tokenVersion: 1
+        }
+      };
+
+      const unregisteredStaff = {
+        id: 'staff-unregistered-2',
+        schoolId: SCHOOL_ID,
+        userId: 'user-unreg-2',
+        name: 'Priyanka S',
+        email: 'priyanka@school.com',
+        user: {
+          id: 'user-unreg-2',
+          email: 'priyanka@school.com',
+          passwordHash: '!LOCKED_NO_PASSWORD_SET',
+          systemRole: 'TEACHER',
+          isActive: true,
+          tokenVersion: 0
+        }
+      };
+
+      staffRepository.findStaff.mockResolvedValue([registeredStaff, unregisteredStaff]);
+      staffRepository.countStaff.mockResolvedValue(2);
+
+      const result = await staffService.listStaff(SCHOOL_ID, {}, ACTOR_ADMIN);
+
+      expect(result.staff).toHaveLength(2);
+      expect(result.staff[0].name).toBe('Arul Jothi');
+      expect(result.staff[0].isRegistered).toBe(true);
+      expect(result.staff[0].user.isRegistered).toBe(true);
+      expect(result.staff[0].user).not.toHaveProperty('passwordHash');
+
+      expect(result.staff[1].name).toBe('Priyanka S');
+      expect(result.staff[1].isRegistered).toBe(false);
+      expect(result.staff[1].user.isRegistered).toBe(false);
+      expect(result.staff[1].user).not.toHaveProperty('passwordHash');
+    });
+  });
 });
+

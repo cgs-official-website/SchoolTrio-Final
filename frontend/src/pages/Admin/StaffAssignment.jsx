@@ -16,7 +16,7 @@ import { normalizeGender, isMale, isFemale } from '../../utils/genderUtils';
 import { notifyDataChanged } from '../../utils/liveData';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
-function normalizeStaffMember(s) {
+export function normalizeStaffMember(s) {
   const custom = s.customData || {};
   const qual = custom.qualifications || {};
   const exp = custom.experience || {};

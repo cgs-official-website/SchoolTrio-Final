@@ -285,12 +285,29 @@ export async function updateCanteenRequestStatus(schoolId, id, status, itemDetai
  * @returns {Promise<Array<string>>} List of student UUIDs
  */
 export async function findAuthorizedStudentIdsForParent(schoolId, parentUserId, tx = prisma) {
+  const profile = await tx.parentProfile.findFirst({
+    where: {
+      userId: parentUserId,
+      schoolId
+    },
+    select: {
+      id: true,
+      user: {
+        select: {
+          isActive: true
+        }
+      }
+    }
+  });
+
+  if (!profile || profile.user?.isActive === false) {
+    return [];
+  }
+
   const links = await tx.parentStudentLink.findMany({
     where: {
-      schoolId,
-      parent: {
-        userId: parentUserId
-      }
+      parentProfileId: profile.id,
+      schoolId
     },
     select: { studentId: true }
   });
@@ -337,7 +354,11 @@ export async function findStaffProfileByUserId(schoolId, userId, tx = prisma) {
  * @returns {Promise<*>}
  */
 export async function runTransaction(callback) {
-  return prisma.$transaction(callback, { isolationLevel: 'ReadCommitted' });
+  return prisma.$transaction(callback, {
+    isolationLevel: 'ReadCommitted',
+    maxWait: 10000,
+    timeout: 20000
+  });
 }
 
 export const canteenRepository = {

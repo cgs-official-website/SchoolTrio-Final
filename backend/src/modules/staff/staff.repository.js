@@ -32,6 +32,7 @@ export const STAFF_SELECT_CONFIG = {
       systemRole: true,
       isActive: true,
       tokenVersion: true,
+      passwordHash: true,
       roleAssignments: {
         select: {
           id: true,
@@ -87,7 +88,8 @@ export const LEAN_STAFF_SELECT_CONFIG = {
       email: true,
       systemRole: true,
       isActive: true,
-      tokenVersion: true
+      tokenVersion: true,
+      passwordHash: true
     }
   },
   assignedClass: {

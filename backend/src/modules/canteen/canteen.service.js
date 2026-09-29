@@ -149,17 +149,30 @@ export async function createCanteenRequest(schoolId, data, actor = {}) {
   const { studentId, mealType } = data;
   const date = data.date || new Date().toISOString().split('T')[0];
 
+  let effectiveStudentId = studentId;
+
   // 1. Parent Custody Authorization Check
   if (isParent(actor)) {
     const parentUserId = actor.id || actor.userId;
     const authorizedStudentIds = await canteenRepository.findAuthorizedStudentIdsForParent(schoolId, parentUserId);
 
-    if (!authorizedStudentIds.includes(studentId)) {
+    if (!effectiveStudentId) {
+      if (authorizedStudentIds.length === 1) {
+        effectiveStudentId = authorizedStudentIds[0];
+      } else if (authorizedStudentIds.length === 0) {
+        throw new NotFoundError('No linked student found for parent account');
+      } else {
+        throw new ValidationError('Multiple linked students found; please specify studentId');
+      }
+    } else if (!authorizedStudentIds.includes(effectiveStudentId)) {
       throw new ForbiddenError('You are not authorized to create canteen requests for this student');
     }
   } else {
+    if (!effectiveStudentId) {
+      throw new ValidationError('studentId is required to create a canteen request');
+    }
     // 2. Staff / Admin Verification: Ensure student exists in tenant
-    const student = await canteenRepository.findStudentInTenant(schoolId, studentId);
+    const student = await canteenRepository.findStudentInTenant(schoolId, effectiveStudentId);
     if (!student) {
       throw new NotFoundError('Student not found in active school');
     }
@@ -169,16 +182,16 @@ export async function createCanteenRequest(schoolId, data, actor = {}) {
   const createdRecord = await canteenRepository.runTransaction(async (tx) => {
     // Acquire PostgreSQL advisory lock on student + date + mealType
     try {
-      await canteenRepository.acquireAdvisoryLock(schoolId, studentId, date, mealType, tx);
+      await canteenRepository.acquireAdvisoryLock(schoolId, effectiveStudentId, date, mealType, tx);
     } catch {}
 
     // Acquire exclusive row lock on the student
     try {
-      await canteenRepository.lockStudentForUpdate(schoolId, studentId, tx);
+      await canteenRepository.lockStudentForUpdate(schoolId, effectiveStudentId, tx);
     } catch {}
 
     // Check for existing active request
-    const existing = await canteenRepository.findActiveCanteenRequest(schoolId, studentId, date, mealType, tx);
+    const existing = await canteenRepository.findActiveCanteenRequest(schoolId, effectiveStudentId, date, mealType, tx);
     if (existing) {
       throw new ConflictError(
         `A canteen request of type '${mealType}' for this student on ${date} already exists (status: ${existing.status})`
@@ -188,7 +201,7 @@ export async function createCanteenRequest(schoolId, data, actor = {}) {
     return canteenRepository.createCanteenRequest(
       schoolId,
       {
-        studentId,
+        studentId: effectiveStudentId,
         mealType,
         date
       },
@@ -205,7 +218,7 @@ export async function createCanteenRequest(schoolId, data, actor = {}) {
     userName: actor?.name || actor?.email || 'User',
     userRole: actor?.role || actor?.systemRole || null,
     modifiedFields: {
-      studentId,
+      studentId: effectiveStudentId,
       mealType,
       date,
       status: 'Pending'

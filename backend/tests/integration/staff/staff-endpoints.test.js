@@ -66,6 +66,48 @@ describe('Integration: Staff Endpoints — Phase 4C.4', () => {
       expect(res.body.pagination).toBeDefined();
     });
 
+    it('returns staff list with authoritative isRegistered field and never exposes passwordHash', async () => {
+      const mockStaffList = [
+        {
+          id: 'staff-1',
+          name: 'Registered Staff',
+          email: 'reg@school.edu',
+          schoolId: SCHOOL_ID,
+          isRegistered: true,
+          user: { id: 'u-1', email: 'reg@school.edu', isRegistered: true }
+        },
+        {
+          id: 'staff-2',
+          name: 'Unregistered Staff',
+          email: 'unreg@school.edu',
+          schoolId: SCHOOL_ID,
+          isRegistered: false,
+          user: { id: 'u-2', email: 'unreg@school.edu', isRegistered: false }
+        }
+      ];
+      const mockPagination = { total: 2, page: 1, limit: 20, totalPages: 1 };
+
+      vi.spyOn(authRepository, 'findUserById').mockResolvedValue(mockAdminUser);
+      vi.spyOn(staffService, 'listStaff').mockResolvedValue({ staff: mockStaffList, pagination: mockPagination });
+
+      const token = getAuthToken();
+      const res = await request(app)
+        .get('/api/v1/staff')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data[0].isRegistered).toBe(true);
+      expect(res.body.data[0].user.isRegistered).toBe(true);
+      expect(res.body.data[0]).not.toHaveProperty('passwordHash');
+      expect(res.body.data[0].user).not.toHaveProperty('passwordHash');
+
+      expect(res.body.data[1].isRegistered).toBe(false);
+      expect(res.body.data[1].user.isRegistered).toBe(false);
+      expect(res.body.data[1]).not.toHaveProperty('passwordHash');
+      expect(res.body.data[1].user).not.toHaveProperty('passwordHash');
+    });
+
     it('rejects unauthenticated request with 401', async () => {
       const res = await request(app).get('/api/v1/staff');
       expect(res.status).toBe(401);

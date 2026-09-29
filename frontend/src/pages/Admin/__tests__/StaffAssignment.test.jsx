@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import StaffAssignment from '../StaffAssignment.jsx';
+import StaffAssignment, { normalizeStaffMember } from '../StaffAssignment.jsx';
 import * as staffApi from '../../../api/staff.js';
 import * as classesApi from '../../../api/classes.js';
 import * as subjectsApi from '../../../api/subjects.js';
@@ -337,5 +337,118 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
     const res = await staffApi.createStaff(payload);
     expect(createSpy).toHaveBeenCalledWith(payload);
     expect(res.data.assignedClassId).toBe('class-uuid-prek');
+  });
+
+  describe('Staff Registration Link Copy Visibility Logic', () => {
+    it('17. COPY LINK VISIBILITY: marks incomplete account as isRegistered=false (Copy Link VISIBLE)', () => {
+      const rawIncompleteStaff = {
+        id: 'staff-incomplete-1',
+        name: 'New Teacher',
+        email: 'new@school.com',
+        isRegistered: false,
+        user: {
+          id: 'user-incomplete-1',
+          email: 'new@school.com',
+          isRegistered: false
+        }
+      };
+
+      const normalized = normalizeStaffMember(rawIncompleteStaff);
+      expect(normalized.isRegistered).toBe(false);
+      // In StaffAssignment JSX: {!member.isRegistered && <button title="Copy Teacher Registration Link" ... />}
+      const isCopyLinkVisible = !normalized.isRegistered;
+      expect(isCopyLinkVisible).toBe(true);
+    });
+
+    it('18. COPY LINK VISIBILITY: marks completed account as isRegistered=true (Copy Link HIDDEN)', () => {
+      const rawCompletedStaff = {
+        id: 'staff-completed-1',
+        name: 'Registered Teacher',
+        email: 'registered@school.com',
+        isRegistered: true,
+        user: {
+          id: 'user-completed-1',
+          email: 'registered@school.com',
+          isRegistered: true
+        }
+      };
+
+      const normalized = normalizeStaffMember(rawCompletedStaff);
+      expect(normalized.isRegistered).toBe(true);
+      // In StaffAssignment JSX: {!member.isRegistered && <button title="Copy Teacher Registration Link" ... />}
+      const isCopyLinkVisible = !normalized.isRegistered;
+      expect(isCopyLinkVisible).toBe(false);
+    });
+
+    it('19. ROW INDEPENDENCE: each staff member independently evaluates isRegistered', () => {
+      const staffList = [
+        {
+          id: 'staff-1',
+          name: 'Registered Staff',
+          isRegistered: true,
+          user: { id: 'user-1', isRegistered: true }
+        },
+        {
+          id: 'staff-2',
+          name: 'Unregistered Staff',
+          isRegistered: false,
+          user: { id: 'user-2', isRegistered: false }
+        }
+      ];
+
+      const normalizedList = staffList.map(normalizeStaffMember);
+
+      expect(normalizedList[0].isRegistered).toBe(true);
+      expect(!normalizedList[0].isRegistered).toBe(false); // Copy Link hidden
+
+      expect(normalizedList[1].isRegistered).toBe(false);
+      expect(!normalizedList[1].isRegistered).toBe(true);  // Copy Link visible
+    });
+
+    it('20. PASSWORD HASH DETECTION: correctly handles locked vs valid password hashes', () => {
+      const lockedStaff = {
+        id: 'staff-locked',
+        name: 'Locked Staff',
+        user: {
+          id: 'user-locked',
+          passwordHash: '!LOCKED_NO_PASSWORD_SET'
+        }
+      };
+      expect(normalizeStaffMember(lockedStaff).isRegistered).toBe(false);
+
+      const activeStaff = {
+        id: 'staff-active',
+        name: 'Active Staff',
+        user: {
+          id: 'user-active',
+          passwordHash: '$2b$10$validPasswordHash1234567890abcdef'
+        }
+      };
+      expect(normalizeStaffMember(activeStaff).isRegistered).toBe(true);
+    });
+
+    it('21. DATA FRESHNESS: updates registration state on re-fetch without full page reload', async () => {
+      const listSpy = vi.spyOn(staffApi, 'listStaff')
+        .mockResolvedValueOnce({
+          success: true,
+          data: [{ id: 'staff-1', name: 'Teacher', isRegistered: false }]
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          data: [{ id: 'staff-1', name: 'Teacher', isRegistered: true }]
+        });
+
+      // Initial fetch before registration
+      const firstRes = await staffApi.listStaff({ limit: 100 });
+      const firstNormalized = firstRes.data.map(normalizeStaffMember);
+      expect(firstNormalized[0].isRegistered).toBe(false);
+
+      // Re-fetch after registration completion
+      const secondRes = await staffApi.listStaff({ limit: 100 });
+      const secondNormalized = secondRes.data.map(normalizeStaffMember);
+      expect(secondNormalized[0].isRegistered).toBe(true);
+
+      expect(listSpy).toHaveBeenCalledTimes(2);
+    });
   });
 });

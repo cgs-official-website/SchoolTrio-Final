@@ -250,6 +250,51 @@ describe('Canteen Service Unit Tests (Phase CA.2)', () => {
         )
       ).rejects.toThrow(NotFoundError);
     });
+
+    it('auto-resolves single linked child for Parent when studentId is omitted', async () => {
+      vi.spyOn(canteenRepository, 'findAuthorizedStudentIdsForParent').mockResolvedValue([STUDENT_ID]);
+      vi.spyOn(canteenRepository, 'acquireAdvisoryLock').mockResolvedValue(undefined);
+      vi.spyOn(canteenRepository, 'lockStudentForUpdate').mockResolvedValue({ id: STUDENT_ID });
+      vi.spyOn(canteenRepository, 'findActiveCanteenRequest').mockResolvedValue(null);
+      const createSpy = vi.spyOn(canteenRepository, 'createCanteenRequest').mockResolvedValue(MOCK_RAW_REQUEST);
+
+      const result = await canteenService.createCanteenRequest(
+        SCHOOL_ID,
+        { mealType: 'Breakfast', date: '2026-09-16' },
+        { role: 'PARENT', userId: PARENT_USER_ID }
+      );
+
+      expect(createSpy).toHaveBeenCalledWith(
+        SCHOOL_ID,
+        { studentId: STUDENT_ID, mealType: 'Breakfast', date: '2026-09-16' },
+        expect.anything()
+      );
+      expect(result.id).toBe(REQUEST_ID);
+    });
+
+    it('rejects Parent request with NotFoundError when studentId omitted and no linked students exist', async () => {
+      vi.spyOn(canteenRepository, 'findAuthorizedStudentIdsForParent').mockResolvedValue([]);
+
+      await expect(
+        canteenService.createCanteenRequest(
+          SCHOOL_ID,
+          { mealType: 'Breakfast' },
+          { role: 'PARENT', userId: PARENT_USER_ID }
+        )
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it('rejects Parent request with ValidationError when studentId omitted and multiple linked students exist', async () => {
+      vi.spyOn(canteenRepository, 'findAuthorizedStudentIdsForParent').mockResolvedValue([STUDENT_ID, 'other-student-id']);
+
+      await expect(
+        canteenService.createCanteenRequest(
+          SCHOOL_ID,
+          { mealType: 'Breakfast' },
+          { role: 'PARENT', userId: PARENT_USER_ID }
+        )
+      ).rejects.toThrow(ValidationError);
+    });
   });
 
   describe('4. updateCanteenRequestStatus', () => {
