@@ -127,6 +127,49 @@ describe('Security: Staff Domain Tenant Isolation & PII Protection — Phase 4C.
       expect(res.status).toBe(404);
       expect(res.body.success).toBe(false);
     });
+
+    it('returns 401 when creating staff without authentication token', async () => {
+      const res = await request(app)
+        .post('/api/v1/staff')
+        .send({ firstName: 'Anon', email: 'anon@school.edu' });
+
+      expect(res.status).toBe(401);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('returns 403 when creating staff with insufficient RBAC permissions', async () => {
+      vi.spyOn(authRepository, 'findUserById').mockResolvedValue(s015TenantUser);
+
+      const token = getAuthToken(s015TenantUser);
+      const res = await request(app)
+        .post('/api/v1/staff')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ firstName: 'Unauthorized', email: 'unauth@school.edu' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('rejects cross-tenant class or section assignment when Tenant A passes Tenant B class/section ID', async () => {
+      vi.spyOn(authRepository, 'findUserById').mockResolvedValue(adminTenantA);
+      const CROSS_TENANT_ID = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
+
+      const tokenA = getAuthToken(adminTenantA);
+      const res = await request(app)
+        .post('/api/v1/staff')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          firstName: 'Cross',
+          lastName: 'Tester',
+          email: 'cross.tester@tenant-a.edu',
+          assignedClassId: CROSS_TENANT_ID
+        });
+
+      // Returns 400 Bad Request with controlled validation error
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.message).toMatch(/Assigned class or section does not exist/);
+    });
   });
 
   describe('2. Parameter Poisoning Prevention', () => {

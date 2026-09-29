@@ -57,34 +57,10 @@ export const studentParamsSchema = {
 const emptyToNull = (val) => (typeof val === 'string' && val.trim() === '' ? null : val);
 
 export const normalizeDobInput = (val) => {
-  if (val === undefined || val === null) return null;
+  if (val === undefined) return undefined;
+  if (val === null) return null;
   const str = String(val).trim();
   if (!str) return null;
-
-  const ymdMatch = str.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
-  if (ymdMatch) {
-    const [, year, month, day] = ymdMatch;
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${year}-${pad(month)}-${pad(day)}`;
-  }
-
-  const dmyMatch = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
-  if (dmyMatch) {
-    const [, day, month, year] = dmyMatch;
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${year}-${pad(month)}-${pad(day)}`;
-  }
-
-  const parsed = new Date(str);
-  if (!isNaN(parsed.getTime())) {
-    const year = parsed.getFullYear();
-    const month = String(parsed.getMonth() + 1).padStart(2, '0');
-    const day = String(parsed.getDate()).padStart(2, '0');
-    if (year > 1900 && year <= new Date().getFullYear()) {
-      return `${year}-${month}-${day}`;
-    }
-  }
-
   return str;
 };
 
@@ -114,7 +90,7 @@ export const createStudentSchema = {
       z
         .string()
         .trim()
-        .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date of birth must be in YYYY-MM-DD, DD-MM-YYYY, DD.MM.YYYY, or YYYY.MM.DD format')
+        .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date of birth must be in YYYY-MM-DD format')
         .refine(val => !val || val <= todayDateString(), {
           message: 'Date of birth cannot be in the future'
         })
@@ -246,7 +222,7 @@ export const updateStudentSchema = {
         z
           .string()
           .trim()
-          .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date of birth must be in YYYY-MM-DD, DD-MM-YYYY, DD.MM.YYYY, or YYYY.MM.DD format')
+          .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date of birth must be in YYYY-MM-DD format')
           .refine(val => !val || val <= todayDateString(), {
             message: 'Date of birth cannot be in the future'
           })

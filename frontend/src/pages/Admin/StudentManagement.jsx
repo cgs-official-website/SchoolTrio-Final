@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { listStudents, createStudent, updateStudent, deleteStudent, bulkImportStudents, getStudentHealth, updateStudentHealth } from '../../api/students';
+import { listStudents, getStudent, createStudent, updateStudent, deleteStudent, bulkImportStudents, getStudentHealth, updateStudentHealth } from '../../api/students';
 import { listClasses } from '../../api/classes';
 
 import { getStudentAttendance } from '../../api/attendance';
@@ -27,6 +27,25 @@ import { validateName, validateDateOfBirth, validateBloodGroup, validateAadhaarN
 import { notifyDataChanged } from '../../utils/liveData';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { formatDate } from '../../utils/dateUtils';
+export const getInitialStudentFormData = () => ({
+  firstName: '', lastName: '', middleName: '', admissionNumber: '', classId: '', sectionId: '', status: 'Active',
+  dob: '', age: '', gender: 'Male', bloodGroup: '', nationality: 'Indian', religion: '', motherTongue: '', studentTongue: '', aadharNumber: '',
+  studentEmail: '', studentPhone: '', admissionDate: getTodayDateString ? getTodayDateString() : new Date().toISOString().split('T')[0],
+  parentName: '', fatherName: '', parentPhone: '', parentEmail: '', parentOccupation: '', fatherOccupation: '',
+  motherName: '', motherPhone: '', motherEmail: '', motherOccupation: '',
+  guardianName: '', guardianPhone: '', guardianRelationship: '',
+  homeAddress: '', addressLine1: '', addressLine2: '', city: '', district: '', state: '', country: 'India', pincode: '',
+  emergencyContact: '', annualIncome: '', siblingName: '',
+  previousSchool: '', previousRecords: '', subjectsChosen: '', identificationMarks: '', transportDetails: '', busRoute: '', hostelDetails: '', medicalInfo: '',
+  tuitionFee: '', hostelFee: '', bookFee: '', otherFee: '', totalFee: ''
+});
+
+export const formatFeeDisplay = (val, cdVal) => {
+  const v = (val !== undefined && val !== null && String(val).trim() !== '')
+    ? String(val).trim()
+    : (cdVal !== undefined && cdVal !== null && String(cdVal).trim() !== '' ? String(cdVal).trim() : '');
+  return v ? `₹${v}` : '—';
+};
 
 export default function StudentManagement() {
   const { userProfile } = useAuth();
@@ -73,13 +92,7 @@ export default function StudentManagement() {
   // Form State
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState({
-    firstName: '', lastName: '', admissionNumber: '', classId: '', parentEmail: '', dob: '', gender: 'Male', status: 'Active',
-    age: '', bloodGroup: '', nationality: '', religion: '', motherTongue: '', aadharNumber: '',
-    homeAddress: '', parentName: '', parentPhone: '', parentOccupation: '', emergencyContact: '', annualIncome: '', siblingName: '',
-    previousSchool: '', previousRecords: '', subjectsChosen: '', busRoute: '',
-    tuitionFee: '', hostelFee: '', bookFee: '', otherFee: '', totalFee: ''
-  });
+  const [formData, setFormData] = useState(getInitialStudentFormData());
   const [addErrors, setAddErrors] = useState({});
   const [customData, setCustomData] = useState({});
   const [formSchema, setFormSchema] = useState([]);
@@ -265,31 +278,86 @@ export default function StudentManagement() {
 
       const rawStudents = Array.isArray(studentsRes?.data) ? studentsRes.data : [];
       const normalizedStudents = rawStudents.map(s => {
-        const cd = s.customData || {};
+        const cd = (s && typeof s.customData === 'object' && s.customData !== null) ? s.customData : {};
+
+        let age = (s.age !== undefined && s.age !== null && String(s.age).trim() !== '') 
+          ? String(s.age).trim() 
+          : (cd.age !== undefined && cd.age !== null && String(cd.age).trim() !== '' ? String(cd.age).trim() : '');
+        if (!age && s.dob) {
+          const birthDate = new Date(s.dob);
+          const today = new Date();
+          let calculatedAge = today.getFullYear() - birthDate.getFullYear();
+          const monthDiff = today.getMonth() - birthDate.getMonth();
+          if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+            calculatedAge--;
+          }
+          if (!isNaN(calculatedAge) && calculatedAge >= 0) {
+            age = String(calculatedAge);
+          }
+        }
+
+        const homeAddress = s.homeAddress || cd.homeAddress || cd.addressLine1 || '';
+        const addressLine1 = s.addressLine1 || cd.addressLine1 || homeAddress || '';
+        const parentName = s.parentName || cd.parentName || cd.fatherName || '';
+        const fatherName = cd.fatherName || s.fatherName || parentName;
+        const parentOccupation = s.parentOccupation || cd.parentOccupation || cd.fatherOccupation || '';
+        const fatherOccupation = cd.fatherOccupation || s.fatherOccupation || parentOccupation;
+        const guardianName = s.guardianName || cd.guardianName || '';
+        const guardianPhone = s.guardianPhone || cd.guardianPhone || '';
+        const guardianRelationship = s.guardianRelationship || cd.guardianRelationship || cd.relationship || s.relationship || '';
+        const studentEmail = s.studentEmail || cd.studentEmail || cd.studentMail || s.studentMail || '';
+
         return {
           ...cd,
           ...s,
           customData: cd,
-          parentName: s.parentName || cd.parentName || '',
+          age,
+          nationality: s.nationality || cd.nationality || '',
+          religion: s.religion || cd.religion || '',
+          motherTongue: s.motherTongue || cd.motherTongue || '',
+          studentTongue: s.studentTongue || cd.studentTongue || cd.motherTongue || s.motherTongue || '',
+          studentEmail,
+          studentMail: studentEmail,
+          studentPhone: s.studentPhone || cd.studentPhone || '',
+          admissionDate: s.admissionDate || cd.admissionDate || (s.createdAt ? String(s.createdAt).split('T')[0] : ''),
+          parentName,
+          fatherName,
           parentPhone: s.parentPhone || cd.parentPhone || '',
           parentEmail: s.parentEmail || cd.parentEmail || '',
-          parentOccupation: s.parentOccupation || cd.parentOccupation || '',
-          homeAddress: s.homeAddress || cd.homeAddress || '',
+          parentOccupation,
+          fatherOccupation,
+          motherName: s.motherName || cd.motherName || '',
+          motherPhone: s.motherPhone || cd.motherPhone || '',
+          motherEmail: s.motherEmail || cd.motherEmail || '',
+          motherOccupation: s.motherOccupation || cd.motherOccupation || '',
+          guardianName,
+          guardianPhone,
+          guardianRelationship,
+          relationship: guardianRelationship,
+          homeAddress,
+          addressLine1,
+          addressLine2: s.addressLine2 || cd.addressLine2 || '',
+          city: s.city || cd.city || '',
+          district: s.district || cd.district || '',
+          state: s.state || cd.state || '',
+          country: s.country || cd.country || '',
+          pincode: s.pincode || cd.pincode || '',
           emergencyContact: s.emergencyContact || cd.emergencyContact || '',
           annualIncome: s.annualIncome || cd.annualIncome || '',
           siblingName: s.siblingName || cd.siblingName || '',
           previousSchool: s.previousSchool || cd.previousSchool || '',
           previousRecords: s.previousRecords || cd.previousRecords || '',
           subjectsChosen: s.subjectsChosen || cd.subjectsChosen || '',
-          busRoute: s.busRoute || cd.busRoute || '',
-          tuitionFee: s.tuitionFee || cd.tuitionFee || '',
-          hostelFee: s.hostelFee || cd.hostelFee || '',
-          bookFee: s.bookFee || cd.bookFee || '',
-          otherFee: s.otherFee || cd.otherFee || '',
-          totalFee: s.totalFee || cd.totalFee || '',
-          nationality: s.nationality || cd.nationality || '',
-          religion: s.religion || cd.religion || '',
-          motherTongue: s.motherTongue || cd.motherTongue || '',
+          identificationMarks: s.identificationMarks || cd.identificationMarks || '',
+          transportDetails: s.transportDetails || cd.transportDetails || s.busRoute || cd.busRoute || '',
+          busRoute: s.busRoute || cd.busRoute || cd.transportDetails || '',
+          hostelDetails: s.hostelDetails || cd.hostelDetails || '',
+          medicalInfo: s.medicalInfo || cd.medicalInfo || '',
+          tuitionFee: s.tuitionFee !== undefined && s.tuitionFee !== null && String(s.tuitionFee).trim() !== '' ? String(s.tuitionFee).trim() : (cd.tuitionFee !== undefined && cd.tuitionFee !== null && String(cd.tuitionFee).trim() !== '' ? String(cd.tuitionFee).trim() : ''),
+          hostelFee: s.hostelFee !== undefined && s.hostelFee !== null && String(s.hostelFee).trim() !== '' ? String(s.hostelFee).trim() : (cd.hostelFee !== undefined && cd.hostelFee !== null && String(cd.hostelFee).trim() !== '' ? String(cd.hostelFee).trim() : ''),
+          bookFee: s.bookFee !== undefined && s.bookFee !== null && String(s.bookFee).trim() !== '' ? String(s.bookFee).trim() : (cd.bookFee !== undefined && cd.bookFee !== null && String(cd.bookFee).trim() !== '' ? String(cd.bookFee).trim() : ''),
+          otherFee: s.otherFee !== undefined && s.otherFee !== null && String(s.otherFee).trim() !== '' ? String(s.otherFee).trim() : (cd.otherFee !== undefined && cd.otherFee !== null && String(cd.otherFee).trim() !== '' ? String(cd.otherFee).trim() : ''),
+          totalFee: s.totalFee !== undefined && s.totalFee !== null && String(s.totalFee).trim() !== '' ? String(s.totalFee).trim() : (cd.totalFee !== undefined && cd.totalFee !== null && String(cd.totalFee).trim() !== '' ? String(cd.totalFee).trim() : ''),
           aadharNumber: s.aadhaarNumber || cd.aadharNumber || cd.aadhaarNumber || '',
           attachmentUrl: cd.attachmentUrl || '',
           attachmentName: cd.attachmentName || ''
@@ -478,19 +546,53 @@ export default function StudentManagement() {
 
       const uploadedCustomData = await uploadCustomDataFiles(customData, schoolId, 'students');
 
+      const calculatedAge = formData.age ? String(formData.age).trim() : (formData.dob ? (() => {
+        const birthDate = new Date(formData.dob);
+        const today = new Date();
+        let a = today.getFullYear() - birthDate.getFullYear();
+        const m = today.getMonth() - birthDate.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) a--;
+        return String(a);
+      })() : '');
+
       const customDataPayload = {
-        parentName: (formData.parentName || '').trim(),
+        age: calculatedAge,
+        parentName: (formData.parentName || formData.fatherName || '').trim(),
+        fatherName: (formData.fatherName || formData.parentName || '').trim(),
         parentPhone: (formData.parentPhone || '').trim(),
         parentEmail: (formData.parentEmail || '').trim(),
-        parentOccupation: (formData.parentOccupation || '').trim(),
+        parentOccupation: (formData.parentOccupation || formData.fatherOccupation || '').trim(),
+        fatherOccupation: (formData.fatherOccupation || formData.parentOccupation || '').trim(),
+        guardianName: (formData.guardianName || '').trim(),
+        guardianPhone: (formData.guardianPhone || '').trim(),
+        guardianRelationship: (formData.guardianRelationship || formData.relationship || '').trim(),
+        relationship: (formData.relationship || formData.guardianRelationship || '').trim(),
+        studentEmail: (formData.studentEmail || formData.studentMail || '').trim(),
+        studentMail: (formData.studentMail || formData.studentEmail || '').trim(),
+        studentPhone: (formData.studentPhone || '').trim(),
+        studentTongue: (formData.studentTongue || '').trim(),
+        admissionDate: formData.admissionDate ? String(formData.admissionDate).trim() : '',
         emergencyContact: (formData.emergencyContact || '').trim(),
         annualIncome: (formData.annualIncome || '').trim(),
         siblingName: (formData.siblingName || '').trim(),
-        homeAddress: (formData.homeAddress || '').trim(),
+        homeAddress: (formData.homeAddress || formData.addressLine1 || '').trim(),
+        addressLine1: (formData.addressLine1 || formData.homeAddress || '').trim(),
+        addressLine2: (formData.addressLine2 || '').trim(),
+        city: (formData.city || '').trim(),
+        district: (formData.district || '').trim(),
+        state: (formData.state || '').trim(),
+        country: (formData.country || '').trim(),
+        pincode: (formData.pincode || '').trim(),
         previousSchool: (formData.previousSchool || '').trim(),
         previousRecords: (formData.previousRecords || '').trim(),
         subjectsChosen: (formData.subjectsChosen || '').trim(),
-        busRoute: (formData.busRoute || '').trim(),
+        busRoute: (formData.busRoute || formData.transportDetails || '').trim(),
+        transportDetails: (formData.transportDetails || formData.busRoute || '').trim(),
+        hostelDetails: (formData.hostelDetails || '').trim(),
+        medicalInfo: (formData.medicalInfo || '').trim(),
+        identificationMarks: (formData.identificationMarks || '').trim(),
+        otherDetails: (formData.otherDetails || '').trim(),
+        feeConfiguration: (formData.feeConfiguration || '').trim(),
         tuitionFee: (formData.tuitionFee || '').trim(),
         hostelFee: (formData.hostelFee || '').trim(),
         bookFee: (formData.bookFee || '').trim(),
@@ -522,13 +624,7 @@ export default function StudentManagement() {
       await createStudent(payload);
       notifyDataChanged('students');
 
-      setFormData({
-        firstName: '', lastName: '', admissionNumber: '', classId: '', parentEmail: '', dob: '', gender: 'Male', status: 'Active',
-        age: '', bloodGroup: '', nationality: '', religion: '', motherTongue: '', aadharNumber: '',
-        homeAddress: '', parentName: '', parentPhone: '', parentOccupation: '', emergencyContact: '', annualIncome: '', siblingName: '',
-        previousSchool: '', previousRecords: '', subjectsChosen: '', busRoute: '',
-        tuitionFee: '', hostelFee: '', bookFee: '', otherFee: '', totalFee: ''
-      });
+      setFormData(getInitialStudentFormData());
       setAddErrors({});
       setCustomData({});
       setPhotoFile(null);
@@ -1208,14 +1304,14 @@ export default function StudentManagement() {
       const cleanedData = {};
       const fieldsToSave = [
         'firstName', 'lastName', 'middleName', 'admissionNumber', 'dob', 'gender',
-        'bloodGroup', 'nationality', 'religion', 'motherTongue', 'aadharNumber',
-        'studentPhone', 'studentEmail', 'classId', 'rollNumber', 'admissionDate', 'status',
-        'parentName', 'parentPhone', 'parentOccupation', 'parentEmail',
+        'age', 'bloodGroup', 'nationality', 'religion', 'motherTongue', 'studentTongue', 'aadharNumber',
+        'studentPhone', 'studentEmail', 'studentMail', 'classId', 'rollNumber', 'admissionDate', 'status',
+        'parentName', 'fatherName', 'parentPhone', 'parentOccupation', 'fatherOccupation', 'parentEmail',
         'motherName', 'motherPhone', 'motherOccupation', 'motherEmail',
-        'guardianName', 'guardianPhone', 'guardianRelationship',
-        'addressLine1', 'addressLine2', 'city', 'district', 'state', 'country', 'pincode',
-        'previousSchool', 'identificationMarks', 'medicalInfo', 'transportDetails', 'hostelDetails',
-        'tuitionFee', 'hostelFee', 'bookFee', 'otherFee', 'totalFee'
+        'guardianName', 'guardianPhone', 'guardianRelationship', 'relationship',
+        'homeAddress', 'addressLine1', 'addressLine2', 'city', 'district', 'state', 'country', 'pincode',
+        'previousSchool', 'identificationMarks', 'medicalInfo', 'transportDetails', 'busRoute', 'hostelDetails',
+        'feeConfiguration', 'otherDetails', 'tuitionFee', 'hostelFee', 'bookFee', 'otherFee', 'totalFee'
       ];
       for (const f of fieldsToSave) {
         cleanedData[f] = (editStudentData[f] || '').toString().trim();
@@ -1250,21 +1346,30 @@ export default function StudentManagement() {
       const existingCustom = selectedStudentToView.customData || {};
       const customDataPayload = {
         ...existingCustom,
-        parentName: cleanedData.parentName || '',
+        age: cleanedData.age || '',
+        parentName: cleanedData.parentName || cleanedData.fatherName || '',
+        fatherName: cleanedData.fatherName || cleanedData.parentName || '',
         parentPhone: cleanedData.parentPhone || '',
         parentEmail: cleanedData.parentEmail || '',
-        parentOccupation: cleanedData.parentOccupation || '',
+        parentOccupation: cleanedData.parentOccupation || cleanedData.fatherOccupation || '',
+        fatherOccupation: cleanedData.fatherOccupation || cleanedData.parentOccupation || '',
         motherName: cleanedData.motherName || '',
         motherPhone: cleanedData.motherPhone || '',
         motherEmail: cleanedData.motherEmail || '',
         motherOccupation: cleanedData.motherOccupation || '',
         guardianName: cleanedData.guardianName || '',
         guardianPhone: cleanedData.guardianPhone || '',
-        guardianRelationship: cleanedData.guardianRelationship || '',
+        guardianRelationship: cleanedData.guardianRelationship || cleanedData.relationship || '',
+        relationship: cleanedData.relationship || cleanedData.guardianRelationship || '',
+        studentEmail: cleanedData.studentEmail || cleanedData.studentMail || '',
+        studentMail: cleanedData.studentMail || cleanedData.studentEmail || '',
+        studentPhone: cleanedData.studentPhone || '',
+        studentTongue: cleanedData.studentTongue || '',
+        admissionDate: cleanedData.admissionDate || '',
         emergencyContact: cleanedData.emergencyContact || '',
         annualIncome: cleanedData.annualIncome || '',
-        homeAddress: cleanedData.homeAddress || '',
-        addressLine1: cleanedData.addressLine1 || '',
+        homeAddress: cleanedData.homeAddress || cleanedData.addressLine1 || '',
+        addressLine1: cleanedData.addressLine1 || cleanedData.homeAddress || '',
         addressLine2: cleanedData.addressLine2 || '',
         city: cleanedData.city || '',
         district: cleanedData.district || '',
@@ -1274,8 +1379,11 @@ export default function StudentManagement() {
         previousSchool: cleanedData.previousSchool || '',
         identificationMarks: cleanedData.identificationMarks || '',
         medicalInfo: cleanedData.medicalInfo || '',
-        transportDetails: cleanedData.transportDetails || '',
+        transportDetails: cleanedData.transportDetails || cleanedData.busRoute || '',
+        busRoute: cleanedData.busRoute || cleanedData.transportDetails || '',
         hostelDetails: cleanedData.hostelDetails || '',
+        otherDetails: cleanedData.otherDetails || '',
+        feeConfiguration: cleanedData.feeConfiguration || '',
         tuitionFee: cleanedData.tuitionFee || '',
         hostelFee: cleanedData.hostelFee || '',
         bookFee: cleanedData.bookFee || '',
@@ -1834,7 +1942,15 @@ export default function StudentManagement() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Mother Tongue</label>
-                  <input type="text" value={formData.motherTongue} onChange={(e) => setFormData({...formData, motherTongue: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <input type="text" value={formData.motherTongue} onChange={(e) => setFormData({...formData, motherTongue: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. English, Hindi, Tamil" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Student Tongue</label>
+                  <input type="text" value={formData.studentTongue} onChange={(e) => setFormData({...formData, studentTongue: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. English" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Student Mail / Email</label>
+                  <input type="email" value={formData.studentEmail} onChange={(e) => setFormData({...formData, studentEmail: e.target.value, studentMail: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="student@example.com" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Aadhar Number</label>
@@ -1865,44 +1981,15 @@ export default function StudentManagement() {
             </div>
 
             <div className="bg-slate-50/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
-              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-3 mb-4">Contact Information</h3>
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-3 mb-4">Contact & Family Information</h3>
               <div className="grid md:grid-cols-3 gap-6">
-                <div className="md:col-span-3">
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Home Address</label>
-                  <textarea value={formData.homeAddress} onChange={(e) => setFormData({...formData, homeAddress: e.target.value})} rows="2" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"></textarea>
-                </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Parent/Guardian Name</label>
-                  <input type="text" value={formData.parentName} onChange={(e) => setFormData({...formData, parentName: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Parent Email *</label>
-                  <input
-                    type="email"
-                    id="add-student-parentEmail"
-                    required
-                    value={formData.parentEmail}
-                    onChange={(e) => {
-                      setFormData({...formData, parentEmail: e.target.value});
-                      if (addErrors.parentEmail) {
-                        setAddErrors(prev => {
-                          const updated = { ...prev };
-                          delete updated.parentEmail;
-                          return updated;
-                        });
-                      }
-                    }}
-                    className={`w-full px-4 py-2.5 rounded-xl border bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 ${addErrors.parentEmail ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 dark:border-slate-700'}`}
-                  />
-                  {addErrors.parentEmail && (
-                    <span className="text-xs text-red-500 font-semibold mt-1 block" data-testid="error-parentEmail">
-                      {addErrors.parentEmail}
-                    </span>
-                  )}
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Father's / Parent Name</label>
+                  <input type="text" value={formData.parentName} onChange={(e) => setFormData({...formData, parentName: e.target.value, fatherName: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Father or Primary Parent Name" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">
-                    Parent Phone Number <span className="text-red-500">*</span>
+                    Father's / Parent Phone <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -1929,8 +2016,45 @@ export default function StudentManagement() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Parent Occupation</label>
-                  <input type="text" value={formData.parentOccupation} onChange={(e) => setFormData({...formData, parentOccupation: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Father's / Parent Email *</label>
+                  <input
+                    type="email"
+                    id="add-student-parentEmail"
+                    required
+                    value={formData.parentEmail}
+                    onChange={(e) => {
+                      setFormData({...formData, parentEmail: e.target.value});
+                      if (addErrors.parentEmail) {
+                        setAddErrors(prev => {
+                          const updated = { ...prev };
+                          delete updated.parentEmail;
+                          return updated;
+                        });
+                      }
+                    }}
+                    className={`w-full px-4 py-2.5 rounded-xl border bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 ${addErrors.parentEmail ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 dark:border-slate-700'}`}
+                  />
+                  {addErrors.parentEmail && (
+                    <span className="text-xs text-red-500 font-semibold mt-1 block" data-testid="error-parentEmail">
+                      {addErrors.parentEmail}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Father's / Parent Occupation</label>
+                  <input type="text" value={formData.parentOccupation} onChange={(e) => setFormData({...formData, parentOccupation: e.target.value, fatherOccupation: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Engineer, Business" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Guardian Name</label>
+                  <input type="text" value={formData.guardianName} onChange={(e) => setFormData({...formData, guardianName: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Guardian Name (if applicable)" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Guardian Phone</label>
+                  <input type="text" value={formData.guardianPhone} onChange={(e) => setFormData({...formData, guardianPhone: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="10-digit mobile number" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Guardian Relationship</label>
+                  <input type="text" value={formData.guardianRelationship} onChange={(e) => setFormData({...formData, guardianRelationship: e.target.value, relationship: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Uncle, Aunt, Grandparent" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Emergency Contact Number</label>
@@ -1943,6 +2067,36 @@ export default function StudentManagement() {
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Sibling Name (Same School)</label>
                   <input type="text" value={formData.siblingName} onChange={(e) => setFormData({...formData, siblingName: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                </div>
+
+                <div className="md:col-span-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                  <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3">Address Information</h4>
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div className="md:col-span-3">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">Address / Street Line 1</label>
+                      <input type="text" value={formData.homeAddress} onChange={(e) => setFormData({...formData, homeAddress: e.target.value, addressLine1: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="House/Flat No, Street, Locality" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">City</label>
+                      <input type="text" value={formData.city} onChange={(e) => setFormData({...formData, city: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">District</label>
+                      <input type="text" value={formData.district} onChange={(e) => setFormData({...formData, district: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">State</label>
+                      <input type="text" value={formData.state} onChange={(e) => setFormData({...formData, state: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">Country</label>
+                      <input type="text" value={formData.country} onChange={(e) => setFormData({...formData, country: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">Pincode</label>
+                      <input type="text" value={formData.pincode} onChange={(e) => setFormData({...formData, pincode: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1997,6 +2151,10 @@ export default function StudentManagement() {
                   )}
                 </div>
                 <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Admission Date</label>
+                  <input type="date" value={formData.admissionDate} onChange={(e) => setFormData({...formData, admissionDate: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                </div>
+                <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Previous School Name</label>
                   <input type="text" value={formData.previousSchool} onChange={(e) => setFormData({...formData, previousSchool: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
@@ -2012,11 +2170,27 @@ export default function StudentManagement() {
             </div>
 
             <div className="bg-slate-50/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
-              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-3 mb-4">Transportation Details</h3>
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-3 mb-4">Transportation & Other Details</h3>
               <div className="grid md:grid-cols-3 gap-6">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">School Bus Route/Stop</label>
-                  <input type="text" value={formData.busRoute} onChange={(e) => setFormData({...formData, busRoute: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Route 4 - Main Street" />
+                  <input type="text" value={formData.busRoute} onChange={(e) => setFormData({...formData, busRoute: e.target.value, transportDetails: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Route 4 - Main Street" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Hostel Details</label>
+                  <input type="text" value={formData.hostelDetails} onChange={(e) => setFormData({...formData, hostelDetails: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Hostel room / block" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Identification Marks</label>
+                  <input type="text" value={formData.identificationMarks} onChange={(e) => setFormData({...formData, identificationMarks: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Mole on right forearm" />
+                </div>
+                <div className="md:col-span-3">
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Medical Information</label>
+                  <textarea value={formData.medicalInfo} onChange={(e) => setFormData({...formData, medicalInfo: e.target.value})} rows="2" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Allergies, chronic conditions, medication, notes"></textarea>
+                </div>
+                <div className="md:col-span-3">
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Other Details</label>
+                  <textarea value={formData.otherDetails} onChange={(e) => setFormData({...formData, otherDetails: e.target.value})} rows="2" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Special requirements, achievements, or additional remarks"></textarea>
                 </div>
               </div>
             </div>
@@ -2039,6 +2213,10 @@ export default function StudentManagement() {
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Other Fee</label>
                   <input type="number" value={formData.otherFee} onChange={(e) => setFormData({...formData, otherFee: e.target.value, totalFee: (Number(formData.tuitionFee || 0) + Number(formData.hostelFee || 0) + Number(formData.bookFee || 0) + Number(e.target.value || 0)).toString()})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                </div>
+                <div className="md:col-span-4">
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Fee Structure / Notes</label>
+                  <input type="text" value={formData.feeConfiguration} onChange={(e) => setFormData({...formData, feeConfiguration: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Standard Annual Fee Schedule, Termly installment" />
                 </div>
                 <div className="md:col-span-4 bg-primary-50 p-4 rounded-xl flex items-center justify-between border border-primary-100">
                   <span className="font-bold text-primary-800">Total Calculated Fee:</span>
@@ -2247,6 +2425,64 @@ export default function StudentManagement() {
                                     bloodGroup: hData.bloodGroup || prev.bloodGroup,
                                     medicalInfo: hData.doctorNotes || prev.medicalInfo
                                   } : prev));
+                                }
+                              }).catch(() => {});
+                              getStudent(student.id).then((freshRes) => {
+                                const fresh = freshRes?.data || freshRes;
+                                if (fresh) {
+                                  const cd = fresh.customData || {};
+                                  setSelectedStudentToView((prev) => {
+                                    if (prev?.id !== student.id) return prev;
+                                    const rawDob = fresh.dob || prev.dob;
+                                    let ageVal = fresh.age || cd.age || prev.age;
+                                    if (!ageVal && rawDob) {
+                                      const birthDate = new Date(rawDob);
+                                      const today = new Date();
+                                      let a = today.getFullYear() - birthDate.getFullYear();
+                                      const m = today.getMonth() - birthDate.getMonth();
+                                      if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) a--;
+                                      ageVal = String(a);
+                                    }
+                                    return {
+                                      ...cd,
+                                      ...fresh,
+                                      ...prev,
+                                      customData: cd,
+                                      age: ageVal || '—',
+                                      parentName: fresh.parentName || cd.parentName || cd.fatherName || prev.parentName,
+                                      fatherName: fresh.fatherName || cd.fatherName || cd.parentName || prev.fatherName,
+                                      parentPhone: fresh.parentPhone || cd.parentPhone || prev.parentPhone,
+                                      parentEmail: fresh.parentEmail || cd.parentEmail || prev.parentEmail,
+                                      parentOccupation: fresh.parentOccupation || cd.parentOccupation || cd.fatherOccupation || prev.parentOccupation,
+                                      fatherOccupation: fresh.fatherOccupation || cd.fatherOccupation || cd.parentOccupation || prev.fatherOccupation,
+                                      guardianName: fresh.guardianName || cd.guardianName || prev.guardianName,
+                                      guardianPhone: fresh.guardianPhone || cd.guardianPhone || prev.guardianPhone,
+                                      guardianRelationship: fresh.guardianRelationship || cd.guardianRelationship || cd.relationship || prev.guardianRelationship,
+                                      relationship: fresh.relationship || cd.relationship || cd.guardianRelationship || prev.relationship,
+                                      nationality: fresh.nationality || cd.nationality || prev.nationality,
+                                      religion: fresh.religion || cd.religion || prev.religion,
+                                      motherTongue: fresh.motherTongue || cd.motherTongue || prev.motherTongue,
+                                      studentTongue: fresh.studentTongue || cd.studentTongue || prev.studentTongue,
+                                      studentEmail: fresh.studentEmail || fresh.studentMail || cd.studentEmail || cd.studentMail || prev.studentEmail,
+                                      studentMail: fresh.studentMail || fresh.studentEmail || cd.studentMail || cd.studentEmail || prev.studentMail,
+                                      admissionDate: fresh.admissionDate || cd.admissionDate || prev.admissionDate,
+                                      homeAddress: fresh.homeAddress || cd.homeAddress || cd.addressLine1 || prev.homeAddress,
+                                      addressLine1: fresh.addressLine1 || cd.addressLine1 || cd.homeAddress || prev.addressLine1,
+                                      addressLine2: fresh.addressLine2 || cd.addressLine2 || prev.addressLine2,
+                                      city: fresh.city || cd.city || prev.city,
+                                      district: fresh.district || cd.district || prev.district,
+                                      state: fresh.state || cd.state || prev.state,
+                                      country: fresh.country || cd.country || prev.country,
+                                      pincode: fresh.pincode || cd.pincode || prev.pincode,
+                                      otherDetails: fresh.otherDetails || cd.otherDetails || prev.otherDetails,
+                                      feeConfiguration: fresh.feeConfiguration || cd.feeConfiguration || prev.feeConfiguration,
+                                      tuitionFee: fresh.tuitionFee ?? cd.tuitionFee ?? prev.tuitionFee,
+                                      hostelFee: fresh.hostelFee ?? cd.hostelFee ?? prev.hostelFee,
+                                      bookFee: fresh.bookFee ?? cd.bookFee ?? prev.bookFee,
+                                      otherFee: fresh.otherFee ?? cd.otherFee ?? prev.otherFee,
+                                      totalFee: fresh.totalFee ?? cd.totalFee ?? prev.totalFee
+                                    };
+                                  });
                                 }
                               }).catch(() => {});
                             }}
@@ -2712,7 +2948,7 @@ export default function StudentManagement() {
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Age</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.age || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.age || selectedStudentToView.customData?.age || '—'}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Gender</label>
@@ -2724,15 +2960,19 @@ export default function StudentManagement() {
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Nationality</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.nationality || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.nationality || selectedStudentToView.customData?.nationality || '—'}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Religion</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.religion || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.religion || selectedStudentToView.customData?.religion || '—'}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Mother Tongue</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.motherTongue || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.motherTongue || selectedStudentToView.customData?.motherTongue || '—'}</p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Student Tongue</label>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.studentTongue || selectedStudentToView.customData?.studentTongue || '—'}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Aadhaar Number</label>
@@ -2740,11 +2980,11 @@ export default function StudentManagement() {
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Student Phone</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.studentPhone || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.studentPhone || selectedStudentToView.customData?.studentPhone || '—'}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Student Email</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.studentEmail || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.studentEmail || selectedStudentToView.studentMail || selectedStudentToView.customData?.studentEmail || selectedStudentToView.customData?.studentMail || '—'}</p>
                       </div>
                     </div>
                   </div>
@@ -2763,7 +3003,13 @@ export default function StudentManagement() {
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Admission Date</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.admissionDate ? new Date(selectedStudentToView.admissionDate).toLocaleDateString('en-GB') : '—'}</p>
+                        <p className="text-slate-950 font-semibold">
+                          {selectedStudentToView.admissionDate 
+                            ? (isNaN(new Date(selectedStudentToView.admissionDate).getTime()) 
+                                ? selectedStudentToView.admissionDate 
+                                : new Date(selectedStudentToView.admissionDate).toLocaleDateString('en-GB')) 
+                            : (selectedStudentToView.customData?.admissionDate || '—')}
+                        </p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Status</label>
@@ -2786,53 +3032,53 @@ export default function StudentManagement() {
                       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 pb-3 border-b border-slate-200/50">
                         <div>
                           <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Father's Name</label>
-                          <p className="text-slate-950 font-semibold">{selectedStudentToView.parentName || '—'}</p>
+                          <p className="text-slate-950 font-semibold">{selectedStudentToView.fatherName || selectedStudentToView.parentName || selectedStudentToView.customData?.fatherName || selectedStudentToView.customData?.parentName || '—'}</p>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Father's Phone</label>
-                          <p className="text-slate-950 font-semibold">{selectedStudentToView.parentPhone || '—'}</p>
+                          <p className="text-slate-950 font-semibold">{selectedStudentToView.parentPhone || selectedStudentToView.customData?.parentPhone || '—'}</p>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Father's Email</label>
-                          <p className="text-slate-950 font-semibold truncate">{selectedStudentToView.parentEmail || '—'}</p>
+                          <p className="text-slate-950 font-semibold truncate">{selectedStudentToView.parentEmail || selectedStudentToView.customData?.parentEmail || '—'}</p>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Occupation</label>
-                          <p className="text-slate-950 font-semibold">{selectedStudentToView.parentOccupation || '—'}</p>
+                          <p className="text-slate-950 font-semibold">{selectedStudentToView.fatherOccupation || selectedStudentToView.parentOccupation || selectedStudentToView.customData?.fatherOccupation || selectedStudentToView.customData?.parentOccupation || '—'}</p>
                         </div>
                       </div>
                       {/* Mother info */}
                       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 pb-3 border-b border-slate-200/50">
                         <div>
                           <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Mother's Name</label>
-                          <p className="text-slate-950 font-semibold">{selectedStudentToView.motherName || '—'}</p>
+                          <p className="text-slate-950 font-semibold">{selectedStudentToView.motherName || selectedStudentToView.customData?.motherName || '—'}</p>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Mother's Phone</label>
-                          <p className="text-slate-950 font-semibold">{selectedStudentToView.motherPhone || '—'}</p>
+                          <p className="text-slate-950 font-semibold">{selectedStudentToView.motherPhone || selectedStudentToView.customData?.motherPhone || '—'}</p>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Mother's Email</label>
-                          <p className="text-slate-950 font-semibold truncate">{selectedStudentToView.motherEmail || '—'}</p>
+                          <p className="text-slate-950 font-semibold truncate">{selectedStudentToView.motherEmail || selectedStudentToView.customData?.motherEmail || '—'}</p>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Occupation</label>
-                          <p className="text-slate-950 font-semibold">{selectedStudentToView.motherOccupation || '—'}</p>
+                          <p className="text-slate-950 font-semibold">{selectedStudentToView.motherOccupation || selectedStudentToView.customData?.motherOccupation || '—'}</p>
                         </div>
                       </div>
                       {/* Guardian info */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
                           <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Guardian Name</label>
-                          <p className="text-slate-950 font-semibold">{selectedStudentToView.guardianName || '—'}</p>
+                          <p className="text-slate-950 font-semibold">{selectedStudentToView.guardianName || selectedStudentToView.customData?.guardianName || '—'}</p>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Guardian Phone</label>
-                          <p className="text-slate-950 font-semibold">{selectedStudentToView.guardianPhone || '—'}</p>
+                          <p className="text-slate-950 font-semibold">{selectedStudentToView.guardianPhone || selectedStudentToView.customData?.guardianPhone || '—'}</p>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Relationship</label>
-                          <p className="text-slate-950 font-semibold">{selectedStudentToView.guardianRelationship || '—'}</p>
+                          <p className="text-slate-950 font-semibold">{selectedStudentToView.relationship || selectedStudentToView.guardianRelationship || selectedStudentToView.customData?.relationship || selectedStudentToView.customData?.guardianRelationship || '—'}</p>
                         </div>
                       </div>
                     </div>
@@ -2844,31 +3090,31 @@ export default function StudentManagement() {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div className="col-span-1 sm:col-span-3">
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Address Line 1</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.addressLine1 || selectedStudentToView.homeAddress || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.addressLine1 || selectedStudentToView.homeAddress || selectedStudentToView.customData?.addressLine1 || selectedStudentToView.customData?.homeAddress || '—'}</p>
                       </div>
                       <div className="col-span-1 sm:col-span-3">
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Address Line 2</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.addressLine2 || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.addressLine2 || selectedStudentToView.customData?.addressLine2 || '—'}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">City</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.city || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.city || selectedStudentToView.customData?.city || '—'}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">District</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.district || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.district || selectedStudentToView.customData?.district || '—'}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">State</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.state || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.state || selectedStudentToView.customData?.state || '—'}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Country</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.country || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.country || selectedStudentToView.customData?.country || '—'}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Pincode</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.pincode || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.pincode || selectedStudentToView.customData?.pincode || '—'}</p>
                       </div>
                     </div>
                   </div>
@@ -2879,23 +3125,27 @@ export default function StudentManagement() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Previous School</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.previousSchool || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.previousSchool || selectedStudentToView.customData?.previousSchool || '—'}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Identification Marks</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.identificationMarks || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.identificationMarks || selectedStudentToView.customData?.identificationMarks || '—'}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Transport Details</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.transportDetails || selectedStudentToView.busRoute || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.transportDetails || selectedStudentToView.busRoute || selectedStudentToView.customData?.transportDetails || selectedStudentToView.customData?.busRoute || '—'}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Hostel Details</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.hostelDetails || '—'}</p>
+                        <p className="text-slate-950 font-semibold">{selectedStudentToView.hostelDetails || selectedStudentToView.customData?.hostelDetails || '—'}</p>
+                      </div>
+                      <div className="col-span-1 sm:col-span-2">
+                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Other Details / Notes</label>
+                        <p className="text-slate-950 font-semibold whitespace-pre-line">{selectedStudentToView.otherDetails || selectedStudentToView.customData?.otherDetails || '—'}</p>
                       </div>
                       <div className="col-span-1 sm:col-span-2">
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Medical Information</label>
-                        <p className="text-slate-950 font-semibold whitespace-pre-line">{selectedStudentToView.medicalInfo || '—'}</p>
+                        <p className="text-slate-950 font-semibold whitespace-pre-line">{selectedStudentToView.medicalInfo || selectedStudentToView.customData?.medicalInfo || '—'}</p>
                       </div>
                     </div>
                   </div>
@@ -2904,25 +3154,31 @@ export default function StudentManagement() {
                   <div className="bg-slate-50 dark:bg-slate-800 p-6 rounded-2xl border border-slate-200/60">
                     <h4 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider mb-4 pb-2 border-b border-slate-200/80">Fee Configuration</h4>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      {Boolean(selectedStudentToView.feeConfiguration || selectedStudentToView.customData?.feeConfiguration) && (
+                        <div className="col-span-2 sm:col-span-4 pb-2 mb-2 border-b border-slate-200/60">
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Fee Structure / Notes</label>
+                          <p className="text-slate-950 font-semibold">{selectedStudentToView.feeConfiguration || selectedStudentToView.customData?.feeConfiguration}</p>
+                        </div>
+                      )}
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Tuition Fee</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.tuitionFee ? `₹${selectedStudentToView.tuitionFee}` : '—'}</p>
+                        <p className="text-slate-950 font-semibold">{formatFeeDisplay(selectedStudentToView.tuitionFee, selectedStudentToView.customData?.tuitionFee)}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Hostel Fee</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.hostelFee ? `₹${selectedStudentToView.hostelFee}` : '—'}</p>
+                        <p className="text-slate-950 font-semibold">{formatFeeDisplay(selectedStudentToView.hostelFee, selectedStudentToView.customData?.hostelFee)}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Book Fee</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.bookFee ? `₹${selectedStudentToView.bookFee}` : '—'}</p>
+                        <p className="text-slate-950 font-semibold">{formatFeeDisplay(selectedStudentToView.bookFee, selectedStudentToView.customData?.bookFee)}</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Other Fee</label>
-                        <p className="text-slate-950 font-semibold">{selectedStudentToView.otherFee ? `₹${selectedStudentToView.otherFee}` : '—'}</p>
+                        <p className="text-slate-950 font-semibold">{formatFeeDisplay(selectedStudentToView.otherFee, selectedStudentToView.customData?.otherFee)}</p>
                       </div>
                       <div className="col-span-2 sm:col-span-4 pt-2 border-t border-slate-200/60 flex justify-between items-center">
                         <span className="text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider">Total Fee</span>
-                        <span className="text-primary-700 font-black text-lg">{selectedStudentToView.totalFee ? `₹${selectedStudentToView.totalFee}` : '—'}</span>
+                        <span className="text-primary-700 font-black text-lg">{formatFeeDisplay(selectedStudentToView.totalFee, selectedStudentToView.customData?.totalFee)}</span>
                       </div>
                     </div>
                   </div>

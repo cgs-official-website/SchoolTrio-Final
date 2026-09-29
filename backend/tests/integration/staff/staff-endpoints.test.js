@@ -155,6 +155,58 @@ describe('Integration: Staff Endpoints — Phase 4C.4', () => {
       expect(res.status).toBe(409);
       expect(res.body.success).toBe(false);
     });
+
+    it('creates new staff member assigned to a section UUID with 201', async () => {
+      const SECTION_UUID = 'aaaaaaaa-10aa-4aaa-8aaa-aaaaaaaaaaaa';
+      const payload = {
+        firstName: 'Section',
+        lastName: 'Teacher',
+        email: 'section.teacher@school.edu',
+        staffType: 'teaching',
+        assignedClassId: SECTION_UUID
+      };
+      const createdObj = {
+        id: 'new-staff-sec',
+        name: 'Section Teacher',
+        assignedClassId: SECTION_UUID,
+        assignments: { assignedClassId: SECTION_UUID, assignedSubjectIds: [], subjectClassIds: [] }
+      };
+
+      vi.spyOn(authRepository, 'findUserById').mockResolvedValue(mockAdminUser);
+      vi.spyOn(staffService, 'createStaff').mockResolvedValue(createdObj);
+
+      const token = getAuthToken();
+      const res = await request(app)
+        .post('/api/v1/staff')
+        .set('Authorization', `Bearer ${token}`)
+        .send(payload);
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.assignedClassId).toBe(SECTION_UUID);
+      expect(staffService.createStaff).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ assignedClassId: SECTION_UUID }),
+        expect.anything()
+      );
+    });
+
+    it('returns 400 when assignedClassId is not a valid UUID', async () => {
+      vi.spyOn(authRepository, 'findUserById').mockResolvedValue(mockAdminUser);
+
+      const token = getAuthToken();
+      const res = await request(app)
+        .post('/api/v1/staff')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          firstName: 'Bad',
+          email: 'bad.class@school.edu',
+          assignedClassId: 'not-a-valid-uuid'
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
   });
 
   describe('4. PATCH /api/v1/staff/:id', () => {

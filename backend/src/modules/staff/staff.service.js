@@ -229,6 +229,54 @@ export async function getStaffMe(schoolId, userId) {
 }
 
 /**
+ * Resolves an assigned class or section teaching unit ID for a tenant school.
+ * - If falsy: returns { resolvedClassId: null, teachingUnitId: null }
+ * - If Section UUID: verifies tenant, returns { resolvedClassId: section.classId, teachingUnitId: section.id }
+ * - If Class UUID: verifies tenant, returns { resolvedClassId: class.id, teachingUnitId: class.id }
+ * - If not found in current school: throws ValidationError('Assigned class or section does not exist in the current school')
+ *
+ * @param {string} schoolId - Tenant school UUID
+ * @param {string|null} assignedId - Submitted Class or Section UUID
+ * @returns {Promise<{ resolvedClassId: string|null, teachingUnitId: string|null }>}
+ */
+export async function resolveAssignedClassOrSection(schoolId, assignedId) {
+  if (!assignedId) {
+    return { resolvedClassId: null, teachingUnitId: null };
+  }
+
+  // 1. Check if assignedId corresponds to a Section in current school
+  let sectionRecord = null;
+  if (prisma.section?.findFirst) {
+    sectionRecord = await prisma.section.findFirst({
+      where: { id: assignedId, schoolId },
+      select: { id: true, classId: true }
+    });
+  }
+
+  if (sectionRecord) {
+    return {
+      resolvedClassId: sectionRecord.classId,
+      teachingUnitId: sectionRecord.id
+    };
+  }
+
+  // 2. Check if assignedId corresponds to a Class in current school
+  const classRecord = await prisma.class.findFirst({
+    where: { id: assignedId, schoolId },
+    select: { id: true }
+  });
+
+  if (classRecord) {
+    return {
+      resolvedClassId: classRecord.id,
+      teachingUnitId: classRecord.id
+    };
+  }
+
+  throw new ValidationError('Assigned class or section does not exist in the current school');
+}
+
+/**
  * Creates a new staff member atomically (User + StaffProfile + UserRoleAssignment + ClassTeacher linkage).
  */
 export async function createStaff(schoolId, data, actor = null) {
@@ -296,14 +344,13 @@ export async function createStaff(schoolId, data, actor = null) {
     }
   }
 
-  // 5. Validate Assigned Class ID if provided
+  // 5. Resolve & Validate Assigned Class/Section ID if provided
+  let resolvedClassId = null;
+  let assignedTeachingUnitId = null;
   if (data.assignedClassId) {
-    const cls = await prisma.class.findFirst({
-      where: { id: data.assignedClassId, schoolId }
-    });
-    if (!cls) {
-      throw new NotFoundError('Class');
-    }
+    const resolved = await resolveAssignedClassOrSection(schoolId, data.assignedClassId);
+    resolvedClassId = resolved.resolvedClassId;
+    assignedTeachingUnitId = resolved.teachingUnitId;
   }
 
   // 6. Build structured customData
@@ -324,20 +371,26 @@ export async function createStaff(schoolId, data, actor = null) {
     experience: data.experience || null,
     financial: data.financial || null,
     documents: data.documents || null,
-    assignments: data.assignments || {
+    assignments: {
+      assignedClassId: assignedTeachingUnitId || null,
       assignedSubjectIds: data.assignedSubjectIds || [],
-      subjectClassIds: data.subjectClassIds || []
+      subjectClassIds: data.subjectClassIds || [],
+      ...(data.assignments || {})
     }
   };
+
+  if (assignedTeachingUnitId) {
+    customData.assignments.assignedClassId = assignedTeachingUnitId;
+  }
 
   let createdStaffProfile;
 
   try {
     // 7. Atomic Transaction Execution
     createdStaffProfile = await prisma.$transaction(async (tx) => {
-      // Step A: Lock Class row if assignedClassId provided
-      if (data.assignedClassId) {
-        await staffRepository.lockClassForUpdate(schoolId, data.assignedClassId, tx);
+      // Step A: Lock Class row if resolvedClassId provided
+      if (resolvedClassId) {
+        await staffRepository.lockClassForUpdate(schoolId, resolvedClassId, tx);
       }
 
       // Step B: Create User entity
@@ -360,7 +413,7 @@ export async function createStaff(schoolId, data, actor = null) {
         employeeId,
         staffType,
         designation: data.designation ? data.designation.trim() : null,
-        assignedClassId: data.assignedClassId || null,
+        assignedClassId: resolvedClassId || null,
         baseSalary: data.baseSalary !== undefined && data.baseSalary !== null ? data.baseSalary : 0,
         status,
         customData
@@ -372,10 +425,10 @@ export async function createStaff(schoolId, data, actor = null) {
       }
 
       // Step E: Update Class.classTeacherId if assigned
-      if (data.assignedClassId) {
+      if (resolvedClassId) {
         // Clear previous teacher on that class if any
         const existingClass = await tx.class.findUnique({
-          where: { id: data.assignedClassId },
+          where: { id: resolvedClassId },
           select: { classTeacherId: true }
         });
         if (existingClass?.classTeacherId && existingClass.classTeacherId !== profile.id) {
@@ -384,7 +437,7 @@ export async function createStaff(schoolId, data, actor = null) {
             data: { assignedClassId: null }
           });
         }
-        await staffRepository.updateClassTeacher(schoolId, data.assignedClassId, profile.id, tx);
+        await staffRepository.updateClassTeacher(schoolId, resolvedClassId, profile.id, tx);
       }
 
       return profile;
@@ -417,11 +470,11 @@ export async function createStaff(schoolId, data, actor = null) {
     }
   });
 
-  if (data.assignedClassId) {
+  if (resolvedClassId) {
     await createAuditLog({
       schoolId,
       entityType: 'Class',
-      entityId: data.assignedClassId,
+      entityId: resolvedClassId,
       actionPerformed: `ASSIGN_CLASS_TEACHER: ${createdStaffProfile.name}`,
       userName: actor?.email || actor?.userId || 'Administrator',
       userRole: actor?.systemRole || null,
@@ -612,10 +665,16 @@ export async function updateStaff(schoolId, id, data, actor = null) {
     }
   }
 
-  // 10. Class Teacher Assignment
+  // 10. CustomData initialization
+  const existingCustom = existingStaff.customData || {};
+  const newCustom = { ...existingCustom };
+  let customDataChanged = false;
+
+  // Class Teacher Assignment
   if (data.assignedClassId !== undefined && !classAssignmentUpdate) {
-    const newClassId = data.assignedClassId || null;
-    if (newClassId) {
+    if (data.assignedClassId) {
+      const { resolvedClassId, teachingUnitId } = await resolveAssignedClassOrSection(schoolId, data.assignedClassId);
+      const newClassId = resolvedClassId;
       const cls = await prisma.class.findFirst({
         where: { id: newClassId, schoolId }
       });
@@ -626,16 +685,22 @@ export async function updateStaff(schoolId, id, data, actor = null) {
         classAssignmentUpdate = { assignClassId: newClassId };
         modifiedFields.assignedClassId = { old: existingStaff.assignedClassId, new: newClassId };
       }
+      if (teachingUnitId) {
+        if (!newCustom.assignments) newCustom.assignments = {};
+        newCustom.assignments.assignedClassId = teachingUnitId;
+        customDataChanged = true;
+      }
     } else if (existingStaff.assignedClassId) {
       classAssignmentUpdate = { unassign: true };
       modifiedFields.assignedClassId = { old: existingStaff.assignedClassId, new: null };
+      if (newCustom.assignments?.assignedClassId) {
+        newCustom.assignments.assignedClassId = null;
+        customDataChanged = true;
+      }
     }
   }
 
   // 11. CustomData deep merge
-  const existingCustom = existingStaff.customData || {};
-  const newCustom = { ...existingCustom };
-  let customDataChanged = false;
 
   const directCustomKeys = [
     'dob', 'gender', 'bloodGroup', 'maritalStatus', 'nationality',
@@ -836,30 +901,9 @@ export async function assignStaff(schoolId, id, data, actor = null) {
   let assignedClassTeachingUnit = undefined;
   if (data.assignedClassId !== undefined) {
     if (data.assignedClassId) {
-      // Check if it's a section
-      let sectionRecord = null;
-      if (prisma.section?.findFirst) {
-        sectionRecord = await prisma.section.findFirst({
-          where: { id: data.assignedClassId, schoolId },
-          select: { id: true, classId: true }
-        });
-      }
-
-      if (sectionRecord) {
-        updatePayload.assignedClassId = sectionRecord.classId;
-        assignedClassTeachingUnit = sectionRecord.id;
-      } else {
-        const classRecord = await prisma.class.findFirst({
-          where: { id: data.assignedClassId, schoolId },
-          select: { id: true }
-        });
-        if (classRecord) {
-          updatePayload.assignedClassId = classRecord.id;
-          assignedClassTeachingUnit = classRecord.id;
-        } else {
-          throw new ValidationError('Assigned class or section does not exist in the current tenant');
-        }
-      }
+      const { resolvedClassId, teachingUnitId } = await resolveAssignedClassOrSection(schoolId, data.assignedClassId);
+      updatePayload.assignedClassId = resolvedClassId;
+      assignedClassTeachingUnit = teachingUnitId;
     } else {
       updatePayload.assignedClassId = null;
       assignedClassTeachingUnit = null;

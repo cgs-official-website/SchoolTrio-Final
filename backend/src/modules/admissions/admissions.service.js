@@ -754,10 +754,21 @@ export async function enrollApplication(schoolId, id, enrollmentData, actor = nu
         sectionId: enrollmentData.sectionId || null,
         status: 'Active',
         customData: {
-          parentName: app.parentName,
-          parentPhone: app.parentPhone,
-          parentEmail: app.parentEmail,
-          homeAddress: app.address,
+          ...(typeof app.customData === 'object' && app.customData !== null ? app.customData : {}),
+          nationality: app.nationality || app.customData?.nationality || null,
+          religion: app.religion || app.customData?.religion || null,
+          motherTongue: app.motherTongue || app.customData?.motherTongue || null,
+          studentEmail: app.studentEmail || app.customData?.studentEmail || null,
+          studentPhone: app.studentPhone || app.customData?.studentPhone || null,
+          parentName: app.parentName || app.customData?.parentName || null,
+          parentPhone: app.parentPhone || app.customData?.parentPhone || null,
+          parentEmail: app.parentEmail || app.customData?.parentEmail || null,
+          parentOccupation: app.parentOccupation || app.customData?.parentOccupation || null,
+          homeAddress: app.address || app.customData?.homeAddress || null,
+          city: app.city || app.customData?.city || null,
+          state: app.state || app.customData?.state || null,
+          pincode: app.pincode || app.customData?.pincode || null,
+          previousSchool: app.previousSchool || app.customData?.previousSchool || null,
           admittedFromApplicationId: app.id
         }
       }

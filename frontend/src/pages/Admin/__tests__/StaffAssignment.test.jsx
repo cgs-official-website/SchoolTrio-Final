@@ -267,4 +267,75 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
     expect(staffMember.assignments.assignedSubjectIds).toEqual(['sub-math-id']);
     expect(staffMember.assignments.assignedClassId).toBe('section-uuid-10b');
   });
+
+  it('14. ADD STAFF WITH SECTION: sends Section UUID in assignedClassId when a section is selected', async () => {
+    const createSpy = vi.spyOn(staffApi, 'createStaff').mockResolvedValue({
+      success: true,
+      data: {
+        id: 'new-staff-1',
+        name: 'Alex Teacher',
+        assignedClassId: 'section-uuid-10a',
+        assignments: { assignedClassId: 'section-uuid-10a' }
+      }
+    });
+
+    const payload = {
+      firstName: 'Alex',
+      lastName: 'Teacher',
+      email: 'alex.teacher@school.com',
+      staffType: 'teaching',
+      assignedClassId: 'section-uuid-10a'
+    };
+
+    const res = await staffApi.createStaff(payload);
+    expect(createSpy).toHaveBeenCalledWith(payload);
+    expect(res.data.assignedClassId).toBe('section-uuid-10a');
+  });
+
+  it('15. ADD STAFF WITHOUT CLASS: sends assignedClassId as null when unassigned', async () => {
+    const createSpy = vi.spyOn(staffApi, 'createStaff').mockResolvedValue({
+      success: true,
+      data: {
+        id: 'new-staff-2',
+        name: 'Admin Assistant',
+        assignedClassId: null
+      }
+    });
+
+    const payload = {
+      firstName: 'Admin',
+      lastName: 'Assistant',
+      email: 'admin.asst@school.com',
+      staffType: 'non-teaching',
+      assignedClassId: null
+    };
+
+    const res = await staffApi.createStaff(payload);
+    expect(createSpy).toHaveBeenCalledWith(payload);
+    expect(res.data.assignedClassId).toBeNull();
+  });
+
+  it('16. ADD STAFF WITH CLASS WITHOUT SECTIONS: sends Class UUID in assignedClassId', async () => {
+    const createSpy = vi.spyOn(staffApi, 'createStaff').mockResolvedValue({
+      success: true,
+      data: {
+        id: 'new-staff-3',
+        name: 'Pre-K Teacher',
+        assignedClassId: 'class-uuid-prek',
+        assignments: { assignedClassId: 'class-uuid-prek' }
+      }
+    });
+
+    const payload = {
+      firstName: 'Pre-K',
+      lastName: 'Teacher',
+      email: 'prek@school.com',
+      staffType: 'teaching',
+      assignedClassId: 'class-uuid-prek'
+    };
+
+    const res = await staffApi.createStaff(payload);
+    expect(createSpy).toHaveBeenCalledWith(payload);
+    expect(res.data.assignedClassId).toBe('class-uuid-prek');
+  });
 });

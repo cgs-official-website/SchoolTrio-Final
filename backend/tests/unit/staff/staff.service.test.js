@@ -247,6 +247,157 @@ describe('Unit: Staff Service Layer — Phase 4C.4', () => {
         employeeId: 'EMP-001'
       }, ACTOR_ADMIN)).rejects.toThrow(ConflictError);
     });
+
+    it('creates staff without class assignment when assignedClassId is null', async () => {
+      staffRepository.createUser.mockResolvedValue({ id: USER_ID, email: 'noclass@school.edu' });
+      staffRepository.createStaffProfile.mockImplementation(async (data) => ({
+        ...mockStaff,
+        id: 'new-staff-noclass',
+        name: 'No Class Teacher',
+        assignedClassId: data.assignedClassId,
+        customData: data.customData
+      }));
+
+      const payload = {
+        firstName: 'No',
+        lastName: 'Class',
+        email: 'noclass@school.edu',
+        assignedClassId: null
+      };
+
+      const result = await staffService.createStaff(SCHOOL_ID, payload, ACTOR_ADMIN);
+      expect(result.assignedClassId).toBeNull();
+      expect(staffRepository.lockClassForUpdate).not.toHaveBeenCalled();
+      expect(staffRepository.updateClassTeacher).not.toHaveBeenCalled();
+    });
+
+    it('creates staff assigned to class without sections using Class.id', async () => {
+      const NURSERY_CLASS_ID = '99999999-9999-4999-8999-999999999999';
+      prisma.section.findFirst.mockResolvedValue(null);
+      prisma.class.findFirst.mockResolvedValue({ id: NURSERY_CLASS_ID, name: 'Nursery' });
+      prisma.class.findUnique.mockResolvedValue({ id: NURSERY_CLASS_ID, classTeacherId: null });
+
+      staffRepository.createUser.mockResolvedValue({ id: USER_ID, email: 'nursery@school.edu' });
+      staffRepository.createStaffProfile.mockImplementation(async (data) => ({
+        ...mockStaff,
+        id: 'staff-nursery',
+        name: 'Nursery Teacher',
+        assignedClassId: data.assignedClassId,
+        customData: data.customData
+      }));
+
+      const payload = {
+        firstName: 'Nursery',
+        lastName: 'Teacher',
+        email: 'nursery@school.edu',
+        assignedClassId: NURSERY_CLASS_ID
+      };
+
+      const result = await staffService.createStaff(SCHOOL_ID, payload, ACTOR_ADMIN);
+      expect(result.assignedClassId).toBe(NURSERY_CLASS_ID);
+      expect(staffRepository.lockClassForUpdate).toHaveBeenCalledWith(SCHOOL_ID, NURSERY_CLASS_ID, expect.anything());
+      expect(staffRepository.updateClassTeacher).toHaveBeenCalledWith(SCHOOL_ID, NURSERY_CLASS_ID, 'staff-nursery', expect.anything());
+      expect(staffRepository.createStaffProfile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          assignedClassId: NURSERY_CLASS_ID,
+          customData: expect.objectContaining({
+            assignments: expect.objectContaining({
+              assignedClassId: NURSERY_CLASS_ID
+            })
+          })
+        }),
+        expect.anything()
+      );
+    });
+
+    it('creates staff assigned to Section 10-A, resolving Section -> parent Class.id while preserving Section.id in customData', async () => {
+      const SECTION_10A = 'aaaaaaaa-10aa-4aaa-8aaa-aaaaaaaaaaaa';
+      prisma.section.findFirst.mockResolvedValue({ id: SECTION_10A, classId: CLASS_ID });
+      prisma.class.findUnique.mockResolvedValue({ id: CLASS_ID, classTeacherId: null });
+
+      staffRepository.createUser.mockResolvedValue({ id: USER_ID, email: 'section10a@school.edu' });
+      staffRepository.createStaffProfile.mockImplementation(async (data) => ({
+        ...mockStaff,
+        id: 'staff-10a',
+        name: 'Teacher 10A',
+        assignedClassId: data.assignedClassId,
+        customData: data.customData
+      }));
+
+      const payload = {
+        firstName: 'Teacher',
+        lastName: '10A',
+        email: 'section10a@school.edu',
+        assignedClassId: SECTION_10A
+      };
+
+      const result = await staffService.createStaff(SCHOOL_ID, payload, ACTOR_ADMIN);
+      expect(result.assignedClassId).toBe(SECTION_10A);
+      expect(result.assignments.assignedClassId).toBe(SECTION_10A);
+      expect(staffRepository.createStaffProfile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          assignedClassId: CLASS_ID,
+          customData: expect.objectContaining({
+            assignments: expect.objectContaining({
+              assignedClassId: SECTION_10A
+            })
+          })
+        }),
+        expect.anything()
+      );
+      expect(staffRepository.lockClassForUpdate).toHaveBeenCalledWith(SCHOOL_ID, CLASS_ID, expect.anything());
+      expect(staffRepository.updateClassTeacher).toHaveBeenCalledWith(SCHOOL_ID, CLASS_ID, 'staff-10a', expect.anything());
+    });
+
+    it('creates staff assigned to Section 10-B independently from Section 10-A', async () => {
+      const SECTION_10B = 'bbbbbbbb-10bb-4bbb-8bbb-bbbbbbbbbbbb';
+      prisma.section.findFirst.mockResolvedValue({ id: SECTION_10B, classId: CLASS_ID });
+      prisma.class.findUnique.mockResolvedValue({ id: CLASS_ID, classTeacherId: null });
+
+      staffRepository.createUser.mockResolvedValue({ id: USER_ID, email: 'section10b@school.edu' });
+      staffRepository.createStaffProfile.mockImplementation(async (data) => ({
+        ...mockStaff,
+        id: 'staff-10b',
+        name: 'Teacher 10B',
+        assignedClassId: data.assignedClassId,
+        customData: data.customData
+      }));
+
+      const payload = {
+        firstName: 'Teacher',
+        lastName: '10B',
+        email: 'section10b@school.edu',
+        assignedClassId: SECTION_10B
+      };
+
+      const result = await staffService.createStaff(SCHOOL_ID, payload, ACTOR_ADMIN);
+      expect(result.assignedClassId).toBe(SECTION_10B);
+      expect(result.assignments.assignedClassId).toBe(SECTION_10B);
+    });
+
+    it('rejects creation when assignedClassId does not exist in school with ValidationError', async () => {
+      const NON_EXISTENT_ID = '00000000-0000-4000-8000-000000000000';
+      prisma.section.findFirst.mockResolvedValue(null);
+      prisma.class.findFirst.mockResolvedValue(null);
+
+      await expect(staffService.createStaff(SCHOOL_ID, {
+        firstName: 'Ghost',
+        email: 'ghost@school.edu',
+        assignedClassId: NON_EXISTENT_ID
+      }, ACTOR_ADMIN)).rejects.toThrow(ValidationError);
+    });
+
+    it('rejects creation when assignedClassId belongs to a different school (cross-tenant)', async () => {
+      const CROSS_TENANT_CLASS_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+      prisma.section.findFirst.mockResolvedValue(null);
+      prisma.class.findFirst.mockResolvedValue(null);
+
+      await expect(staffService.createStaff(SCHOOL_ID, {
+        firstName: 'Intruder',
+        email: 'intruder@school.edu',
+        assignedClassId: CROSS_TENANT_CLASS_ID
+      }, ACTOR_ADMIN)).rejects.toThrow('Assigned class or section does not exist in the current school');
+    });
   });
 
   describe('5. updateStaff', () => {
