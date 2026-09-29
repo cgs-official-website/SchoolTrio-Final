@@ -70,6 +70,7 @@ export function serializeStaff(staff, hasHRPrivilege = false) {
     serialized.qualifications = staff.customData.qualifications || null;
     serialized.experience = staff.customData.experience || null;
     serialized.documents = staff.customData.documents || null;
+    serialized.customData = staff.customData || {};
   }
 
   // Privileged HR and Financial Fields

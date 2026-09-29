@@ -17,19 +17,106 @@ import { notifyDataChanged } from '../../utils/liveData';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export function normalizeStaffMember(s) {
+  if (!s) return null;
   const custom = s.customData || {};
-  const qual = custom.qualifications || {};
-  const exp = custom.experience || {};
-  const fin = custom.financial || {};
-  const docs = custom.documents || {};
-  const assign = custom.assignments || {};
+  const qual = (typeof s.qualifications === 'object' && s.qualifications !== null)
+    ? s.qualifications
+    : ((typeof custom.qualifications === 'object' && custom.qualifications !== null)
+      ? custom.qualifications
+      : ((typeof custom.qualification === 'object' && custom.qualification !== null) ? custom.qualification : {}));
 
-  const firstName = s.firstName || s.name?.split(' ')[0] || '';
-  const lastName = s.lastName || (s.name?.split(' ').length > 1 ? s.name.split(' ').slice(1).join(' ') : '');
+  const exp = (typeof s.experience === 'object' && s.experience !== null)
+    ? s.experience
+    : ((typeof custom.experience === 'object' && custom.experience !== null)
+      ? custom.experience
+      : ((typeof custom.previousExperience === 'object' && custom.previousExperience !== null) ? custom.previousExperience : {}));
+
+  const fin = (typeof s.financial === 'object' && s.financial !== null)
+    ? s.financial
+    : ((typeof custom.financial === 'object' && custom.financial !== null) ? custom.financial : {});
+
+  const docs = (typeof s.documents === 'object' && s.documents !== null)
+    ? s.documents
+    : ((typeof custom.documents === 'object' && custom.documents !== null) ? custom.documents : {});
+
+  const assign = (typeof s.assignments === 'object' && s.assignments !== null)
+    ? s.assignments
+    : ((typeof custom.assignments === 'object' && custom.assignments !== null) ? custom.assignments : {});
+
+  const firstName = s.firstName || custom.firstName || s.name?.split(' ')[0] || '';
+  const lastName = s.lastName || custom.lastName || (s.name?.split(' ').length > 1 ? s.name.split(' ').slice(1).join(' ') : '');
   const fullName = s.name || `${firstName} ${lastName}`.trim();
   const roleName = s.user?.roleAssignments?.[0]?.schoolRole?.name || s.designation || custom.role || 'Staffs';
   const roleNames = s.user?.roleAssignments?.map(ra => ra.schoolRole?.name).filter(Boolean) || (custom.roles || [roleName]);
   const roleId = s.user?.roleAssignments?.[0]?.schoolRoleId || custom.roleId || null;
+
+  // Educational
+  const highestQualification =
+    (typeof qual === 'string' ? qual : qual.highestQualification) ||
+    (typeof s.qualifications === 'string' ? s.qualifications : s.highestQualification) ||
+    custom.highestQualification ||
+    (typeof custom.qualification === 'string' ? custom.qualification : '') ||
+    '';
+
+  const degreeSpecialization =
+    qual.degreeSpecialization ||
+    s.degreeSpecialization ||
+    custom.degreeSpecialization ||
+    '';
+
+  const universityName =
+    qual.universityName ||
+    s.universityName ||
+    custom.universityName ||
+    '';
+
+  const yearOfPassing =
+    qual.yearOfPassing ||
+    s.yearOfPassing ||
+    custom.yearOfPassing ||
+    '';
+
+  const professionalCertifications =
+    qual.certifications ||
+    qual.professionalCertifications ||
+    s.professionalCertifications ||
+    custom.professionalCertifications ||
+    custom.certifications ||
+    '';
+
+  // Professional Experience
+  const rawExperience =
+    (typeof exp === 'number' || typeof exp === 'string' ? exp : exp.previousExperience) ??
+    exp.experienceYears ??
+    exp.years ??
+    s.previousExperience ??
+    s.experienceYears ??
+    (typeof s.experience === 'number' || typeof s.experience === 'string' ? s.experience : undefined) ??
+    custom.previousExperience ??
+    custom.experienceYears ??
+    (typeof custom.experience === 'number' || typeof custom.experience === 'string' ? custom.experience : undefined);
+
+  const previousExperience = (rawExperience !== undefined && rawExperience !== null && String(rawExperience).trim() !== '')
+    ? String(rawExperience).trim()
+    : '0';
+
+  const previousOrganization =
+    exp.previousOrganization ||
+    s.previousOrganization ||
+    custom.previousOrganization ||
+    '';
+
+  const subjectSpecialization =
+    exp.subjectSpecialization ||
+    s.subjectSpecialization ||
+    custom.subjectSpecialization ||
+    '';
+
+  const gradesClassesHandled =
+    exp.gradesClassesHandled ||
+    s.gradesClassesHandled ||
+    custom.gradesClassesHandled ||
+    '';
 
   return {
     ...s,
@@ -96,16 +183,16 @@ export function normalizeStaffMember(s) {
     fatherGuardianName: s.fatherGuardianName || custom.fatherName || custom.fatherGuardianName || '',
     languagesKnown: s.languagesKnown || custom.languagesKnown || '',
     // Educational
-    highestQualification: qual.highestQualification || custom.highestQualification || '',
-    degreeSpecialization: qual.degreeSpecialization || custom.degreeSpecialization || '',
-    universityName: qual.universityName || custom.universityName || '',
-    yearOfPassing: qual.yearOfPassing || custom.yearOfPassing || '',
-    professionalCertifications: qual.certifications || custom.professionalCertifications || '',
+    highestQualification,
+    degreeSpecialization,
+    universityName,
+    yearOfPassing,
+    professionalCertifications,
     // Professional
-    previousExperience: exp.previousExperience || custom.previousExperience || '0',
-    previousOrganization: exp.previousOrganization || custom.previousOrganization || '',
-    subjectSpecialization: exp.subjectSpecialization || custom.subjectSpecialization || '',
-    gradesClassesHandled: exp.gradesClassesHandled || custom.gradesClassesHandled || '',
+    previousExperience,
+    previousOrganization,
+    subjectSpecialization,
+    gradesClassesHandled,
     // Financial
     panNumber: fin.panNumber || custom.panNumber || '',
     pfNumber: fin.pfNumber || custom.pfNumber || '',
@@ -117,9 +204,9 @@ export function normalizeStaffMember(s) {
     branchName: fin.branchName || custom.branchName || '',
     ifscCode: fin.ifscCode || custom.ifscCode || '',
     // Govt
-    aadharNumber: custom.aadharNumber || custom.aadhaarNumber || '',
-    govtIdType: custom.govtIdType || '',
-    govtIdNumber: custom.govtIdNumber || '',
+    aadharNumber: fin.aadharNumber || custom.aadharNumber || custom.aadhaarNumber || '',
+    govtIdType: fin.govtIdType || custom.govtIdType || '',
+    govtIdNumber: fin.govtIdNumber || custom.govtIdNumber || '',
     // Documents
     photoUrl: s.photoUrl || docs.photoUrl || custom.photoUrl || null,
     academicCertificates: docs.academicCertificates || custom.academicCertificates || [],
@@ -130,7 +217,7 @@ export function normalizeStaffMember(s) {
     referenceLetters: docs.referenceLetters || custom.referenceLetters || [],
     govtIdDocument: docs.govtIdDocument || custom.govtIdDocument || [],
     salarySlips: docs.salarySlips || custom.salarySlips || [],
-    customData: custom
+    customData: s.customData || custom
   };
 }
 

@@ -511,5 +511,98 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
       expect(sentPayload).not.toHaveProperty('mobileNumber');
     });
   });
+
+  describe('23. STAFF ACADEMIC & PROFESSIONAL DETAILS NORMALIZATION', () => {
+    it('normalizes top-level qualifications & experience returned by REST serializer', () => {
+      const rawStaff = {
+        id: 'staff-academic-1',
+        name: 'Alan Turing',
+        qualifications: {
+          highestQualification: 'B.E Computer Science',
+          degreeSpecialization: 'Computer Engineering',
+          universityName: 'Cambridge University',
+          yearOfPassing: '2015',
+          certifications: 'AI Specialist'
+        },
+        experience: {
+          previousExperience: '5',
+          previousOrganization: 'Bletchley Academy',
+          subjectSpecialization: 'Mathematics & Computing',
+          gradesClassesHandled: 'Grades 11-12'
+        }
+      };
+
+      const normalized = normalizeStaffMember(rawStaff);
+      expect(normalized.highestQualification).toBe('B.E Computer Science');
+      expect(normalized.degreeSpecialization).toBe('Computer Engineering');
+      expect(normalized.universityName).toBe('Cambridge University');
+      expect(normalized.yearOfPassing).toBe('2015');
+      expect(normalized.professionalCertifications).toBe('AI Specialist');
+      expect(normalized.previousExperience).toBe('5');
+      expect(normalized.previousOrganization).toBe('Bletchley Academy');
+      expect(normalized.subjectSpecialization).toBe('Mathematics & Computing');
+      expect(normalized.gradesClassesHandled).toBe('Grades 11-12');
+    });
+
+    it('normalizes nested customData.qualifications & experience', () => {
+      const rawStaff = {
+        id: 'staff-academic-2',
+        name: 'Ada Lovelace',
+        customData: {
+          qualifications: {
+            highestQualification: 'M.Tech Software Engineering',
+            degreeSpecialization: 'Algorithms',
+            universityName: 'Oxford University',
+            yearOfPassing: '2018',
+            certifications: 'Full Stack Certified'
+          },
+          experience: {
+            previousExperience: '3',
+            previousOrganization: 'London Tech School',
+            subjectSpecialization: 'Software Development',
+            gradesClassesHandled: 'Grades 9-10'
+          }
+        }
+      };
+
+      const normalized = normalizeStaffMember(rawStaff);
+      expect(normalized.highestQualification).toBe('M.Tech Software Engineering');
+      expect(normalized.degreeSpecialization).toBe('Algorithms');
+      expect(normalized.universityName).toBe('Oxford University');
+      expect(normalized.yearOfPassing).toBe('2018');
+      expect(normalized.professionalCertifications).toBe('Full Stack Certified');
+      expect(normalized.previousExperience).toBe('3');
+      expect(normalized.previousOrganization).toBe('London Tech School');
+      expect(normalized.subjectSpecialization).toBe('Software Development');
+      expect(normalized.gradesClassesHandled).toBe('Grades 9-10');
+    });
+
+    it('correctly preserves 0 years of experience and does not replace with empty/N/A', () => {
+      const freshGraduate = {
+        id: 'staff-fresher',
+        name: 'Grace Hopper',
+        experience: {
+          previousExperience: 0
+        }
+      };
+
+      const normalized = normalizeStaffMember(freshGraduate);
+      expect(normalized.previousExperience).toBe('0');
+    });
+
+    it('normalizes string qualifications gracefully', () => {
+      const stringQualStaff = {
+        id: 'staff-string-qual',
+        name: 'Katherine Johnson',
+        qualifications: 'Ph.D. Applied Mathematics',
+        experience: 8
+      };
+
+      const normalized = normalizeStaffMember(stringQualStaff);
+      expect(normalized.highestQualification).toBe('Ph.D. Applied Mathematics');
+      expect(normalized.previousExperience).toBe('8');
+    });
+  });
 });
+
 
