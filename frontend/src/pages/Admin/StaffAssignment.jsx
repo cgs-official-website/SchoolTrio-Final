@@ -885,24 +885,21 @@ export default function StaffAssignment() {
         'academicCertificates', 'markSheets', 'experienceCertificates',
         'relievingLetter', 'resume', 'referenceLetters', 'govtIdDocument', 'salarySlips'
       ];
-      const docUpdates = {};
+      const mergedDocs = {};
       const safeSchoolName = (schoolName || 'School').replace(/[^a-z0-9]/gi, '_').trim();
       const staffName = ((selectedStaffToView.firstName || selectedStaffToView.name || 'Staff') + '_' + (selectedStaffToView.lastName || '')).replace(/[^a-z0-9]/gi, '_').trim();
 
       for (const cat of docCategories) {
+        const existingDocs = editStaffData[cat] || selectedStaffToView[cat] || selectedStaffToView.documents?.[cat] || selectedStaffToView.customData?.documents?.[cat] || [];
         const newFiles = editStaffDocFiles[cat] || [];
-        const existingDocs = editStaffData[cat] || [];
-
-        if (newFiles.length > 0 || (editStaffData[cat] !== undefined && editStaffData[cat].length !== (selectedStaffToView[cat] || []).length)) {
-          const uploadedDocs = [];
-          for (const file of newFiles) {
-            const safeFileName = file.name.replace(/[^a-z0-9.]/gi, '_');
-            const storagePath = `${safeSchoolName}/Teachers/${staffName}/${cat}/${safeFileName}`;
-            const url = await uploadFileToCloudinaryOrFirebase(file, schoolId, storagePath);
-            uploadedDocs.push({ name: file.name, url });
-          }
-          docUpdates[cat] = [...existingDocs, ...uploadedDocs];
+        const uploadedDocs = [];
+        for (const file of newFiles) {
+          const safeFileName = file.name.replace(/[^a-z0-9.]/gi, '_');
+          const storagePath = `${safeSchoolName}/Teachers/${staffName}/${cat}/${safeFileName}`;
+          const url = await uploadFileToCloudinaryOrFirebase(file, schoolId, storagePath);
+          uploadedDocs.push({ name: file.name, url });
         }
+        mergedDocs[cat] = [...existingDocs, ...uploadedDocs];
       }
       const uploadedCustomData = await uploadCustomDataFiles(editStaffData.customData, schoolId, 'staff');
 
@@ -915,7 +912,7 @@ export default function StaffAssignment() {
         roleId: matchedRole ? matchedRole.id : (editStaffData.roleId || selectedStaffToView.roleId || null),
         status: editStaffData.status || selectedStaffToView.status || 'Active',
         qualifications: {
-          ...(selectedStaffToView.customData?.qualifications || {}),
+          ...(selectedStaffToView.qualifications || selectedStaffToView.customData?.qualifications || {}),
           highestQualification: (editStaffData.highestQualification || '').trim() || null,
           degreeSpecialization: (editStaffData.degreeSpecialization || '').trim() || null,
           universityName: (editStaffData.universityName || '').trim() || null,
@@ -923,14 +920,14 @@ export default function StaffAssignment() {
           certifications: (editStaffData.professionalCertifications || '').trim() || null
         },
         experience: {
-          ...(selectedStaffToView.customData?.experience || {}),
+          ...(selectedStaffToView.experience || selectedStaffToView.customData?.experience || {}),
           previousExperience: (editStaffData.previousExperience || '').trim() || null,
           previousOrganization: (editStaffData.previousOrganization || '').trim() || null,
           subjectSpecialization: (editStaffData.subjectSpecialization || '').trim() || null,
           gradesClassesHandled: (editStaffData.gradesClassesHandled || '').trim() || null
         },
         financial: {
-          ...(selectedStaffToView.customData?.financial || {}),
+          ...(selectedStaffToView.financial || selectedStaffToView.customData?.financial || {}),
           panNumber: (editStaffData.panNumber || '').trim() || null,
           pfNumber: (editStaffData.pfNumber || '').trim() || null,
           esicNumber: (editStaffData.esicNumber || '').trim() || null,
@@ -939,14 +936,13 @@ export default function StaffAssignment() {
           bankName: (editStaffData.bankName || '').trim() || null,
           bankAccountNumber: (editStaffData.bankAccountNumber || '').trim() || null,
           branchName: (editStaffData.branchName || '').trim() || null,
-          ifscCode: (editStaffData.ifscCode || '').trim() || null
+          ifscCode: (editStaffData.ifscCode || '').trim() || null,
+          aadharNumber: (editStaffData.aadharNumber || '').trim() || null,
+          govtIdNumber: (editStaffData.govtIdNumber || '').trim() || null,
+          govtIdType: (editStaffData.govtIdType || '').trim() || null
         },
-        documents: {
-          ...(selectedStaffToView.customData?.documents || {}),
-          ...docUpdates
-        },
+        documents: mergedDocs,
         customData: {
-          ...(selectedStaffToView.customData || {}),
           ...(uploadedCustomData || {}),
           aadharNumber: (editStaffData.aadharNumber || '').trim() || null,
           govtIdNumber: (editStaffData.govtIdNumber || '').trim() || null,

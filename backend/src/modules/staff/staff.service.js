@@ -76,19 +76,23 @@ export function serializeStaff(staff, hasHRPrivilege = false) {
   // Privileged HR and Financial Fields
   if (hasHRPrivilege) {
     serialized.baseSalary = staff.baseSalary;
-    serialized.financial = staff.customData?.financial || {
-      panNumber: staff.customData?.panNumber || null,
-      aadharNumber: staff.customData?.aadharNumber || null,
-      bankName: staff.customData?.bankName || null,
-      bankAccountNumber: staff.customData?.bankAccountNumber || null,
-      branchName: staff.customData?.branchName || null,
-      ifscCode: staff.customData?.ifscCode || null,
-      pfNumber: staff.customData?.pfNumber || null,
-      esicNumber: staff.customData?.esicNumber || null,
-      uanNumber: staff.customData?.uanNumber || null,
-      govtIdType: staff.customData?.govtIdType || null,
-      govtIdNumber: staff.customData?.govtIdNumber || null,
-      taxIdDetails: staff.customData?.taxIdDetails || null
+    const fin = (typeof staff.customData?.financial === 'object' && staff.customData?.financial !== null)
+      ? staff.customData.financial
+      : {};
+    serialized.financial = {
+      panNumber: fin.panNumber || staff.customData?.panNumber || null,
+      aadharNumber: fin.aadharNumber || staff.customData?.aadharNumber || null,
+      bankName: fin.bankName || staff.customData?.bankName || null,
+      bankAccountNumber: fin.bankAccountNumber || staff.customData?.bankAccountNumber || null,
+      branchName: fin.branchName || staff.customData?.branchName || null,
+      ifscCode: fin.ifscCode || staff.customData?.ifscCode || null,
+      pfNumber: fin.pfNumber || staff.customData?.pfNumber || null,
+      esicNumber: fin.esicNumber || staff.customData?.esicNumber || null,
+      uanNumber: fin.uanNumber || staff.customData?.uanNumber || null,
+      govtIdType: fin.govtIdType || staff.customData?.govtIdType || null,
+      govtIdNumber: fin.govtIdNumber || staff.customData?.govtIdNumber || null,
+      taxIdDetails: fin.taxIdDetails || staff.customData?.taxIdDetails || null,
+      ...fin
     };
   }
 
@@ -702,6 +706,18 @@ export async function updateStaff(schoolId, id, data, actor = null) {
   }
 
   // 11. CustomData deep merge
+  if (data.customData && typeof data.customData === 'object') {
+    const {
+      qualifications: _q,
+      experience: _e,
+      financial: _f,
+      documents: _d,
+      assignments: _a,
+      ...otherCustom
+    } = data.customData;
+    Object.assign(newCustom, otherCustom);
+    customDataChanged = true;
+  }
 
   const directCustomKeys = [
     'dob', 'gender', 'bloodGroup', 'maritalStatus', 'nationality',
@@ -711,15 +727,17 @@ export async function updateStaff(schoolId, id, data, actor = null) {
 
   directCustomKeys.forEach(k => {
     if (data[k] !== undefined) {
-      newCustom[k] = data[k];
+      if (typeof data[k] === 'object' && data[k] !== null && !Array.isArray(data[k]) && typeof newCustom[k] === 'object' && newCustom[k] !== null && !Array.isArray(newCustom[k])) {
+        newCustom[k] = {
+          ...newCustom[k],
+          ...data[k]
+        };
+      } else {
+        newCustom[k] = data[k];
+      }
       customDataChanged = true;
     }
   });
-
-  if (data.customData) {
-    Object.assign(newCustom, data.customData);
-    customDataChanged = true;
-  }
 
   if (customDataChanged) {
     profileUpdateData.customData = newCustom;

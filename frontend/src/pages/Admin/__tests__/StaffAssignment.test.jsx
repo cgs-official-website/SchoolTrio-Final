@@ -603,6 +603,121 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
       expect(normalized.previousExperience).toBe('8');
     });
   });
+
+  describe('24. IDENTITY/BANKING & DOCUMENTS DATA PERSISTENCE & NORMALIZATION', () => {
+    it('normalizes financial and identity details from financial sub-object', () => {
+      const rawStaff = {
+        id: 'staff-fin-1',
+        name: 'Marie Curie',
+        financial: {
+          panNumber: 'ABCDE1234F',
+          pfNumber: 'PF12345678',
+          esicNumber: 'ESIC123456',
+          uanNumber: 'UAN123456789',
+          taxIdDetails: 'TAX-001-2026',
+          bankName: 'National Bank',
+          bankAccountNumber: '9876543210',
+          branchName: 'Main Branch',
+          ifscCode: 'SBIN0001234',
+          aadharNumber: '123456789012',
+          govtIdType: 'Passport',
+          govtIdNumber: 'P1234567'
+        }
+      };
+
+      const normalized = normalizeStaffMember(rawStaff);
+      expect(normalized.panNumber).toBe('ABCDE1234F');
+      expect(normalized.pfNumber).toBe('PF12345678');
+      expect(normalized.esicNumber).toBe('ESIC123456');
+      expect(normalized.uanNumber).toBe('UAN123456789');
+      expect(normalized.taxIdDetails).toBe('TAX-001-2026');
+      expect(normalized.bankName).toBe('National Bank');
+      expect(normalized.bankAccountNumber).toBe('9876543210');
+      expect(normalized.branchName).toBe('Main Branch');
+      expect(normalized.ifscCode).toBe('SBIN0001234');
+      expect(normalized.aadharNumber).toBe('123456789012');
+      expect(normalized.govtIdType).toBe('Passport');
+      expect(normalized.govtIdNumber).toBe('P1234567');
+    });
+
+    it('normalizes all 8 document categories correctly', () => {
+      const rawStaff = {
+        id: 'staff-docs-1',
+        name: 'Isaac Newton',
+        documents: {
+          academicCertificates: [{ name: 'degree.pdf', url: 'https://example.com/degree.pdf' }],
+          markSheets: [{ name: 'marks.pdf', url: 'https://example.com/marks.pdf' }],
+          experienceCertificates: [{ name: 'exp.pdf', url: 'https://example.com/exp.pdf' }],
+          relievingLetter: [{ name: 'relieve.pdf', url: 'https://example.com/relieve.pdf' }],
+          resume: [{ name: 'resume.pdf', url: 'https://example.com/resume.pdf' }],
+          referenceLetters: [{ name: 'ref.pdf', url: 'https://example.com/ref.pdf' }],
+          govtIdDocument: [{ name: 'id.pdf', url: 'https://example.com/id.pdf' }],
+          salarySlips: [{ name: 'slip.pdf', url: 'https://example.com/slip.pdf' }]
+        }
+      };
+
+      const normalized = normalizeStaffMember(rawStaff);
+      expect(normalized.academicCertificates).toHaveLength(1);
+      expect(normalized.markSheets).toHaveLength(1);
+      expect(normalized.experienceCertificates).toHaveLength(1);
+      expect(normalized.relievingLetter).toHaveLength(1);
+      expect(normalized.resume).toHaveLength(1);
+      expect(normalized.referenceLetters).toHaveLength(1);
+      expect(normalized.govtIdDocument).toHaveLength(1);
+      expect(normalized.salarySlips).toHaveLength(1);
+      expect(normalized.academicCertificates[0].name).toBe('degree.pdf');
+    });
+
+    it('submits update payload with education, financial, and documents merged', async () => {
+      const updateSpy = vi.spyOn(staffApi, 'updateStaff').mockResolvedValue({
+        success: true,
+        data: {
+          id: 'staff-uuid-all',
+          designation: 'Department Head'
+        }
+      });
+
+      const fullEditPayload = {
+        staffType: 'teaching',
+        designation: 'Department Head',
+        roleId: 'role-uuid-1',
+        status: 'Active',
+        qualifications: {
+          highestQualification: 'M.Sc Physics',
+          degreeSpecialization: 'Quantum Mechanics',
+          universityName: 'Stanford University',
+          yearOfPassing: '2016',
+          certifications: 'Quantum Computing'
+        },
+        experience: {
+          previousExperience: '6',
+          previousOrganization: 'Research Labs',
+          subjectSpecialization: 'Physics',
+          gradesClassesHandled: 'Grades 11-12'
+        },
+        financial: {
+          panNumber: 'ABCDE1234F',
+          bankAccountNumber: '9876543210',
+          ifscCode: 'SBIN0001234',
+          aadharNumber: '123456789012'
+        },
+        documents: {
+          academicCertificates: [{ name: 'degree.pdf', url: 'https://example.com/degree.pdf' }]
+        },
+        customData: {
+          aadharNumber: '123456789012'
+        }
+      };
+
+      const res = await staffApi.updateStaff('staff-uuid-all', fullEditPayload);
+      expect(updateSpy).toHaveBeenCalledWith('staff-uuid-all', fullEditPayload);
+      expect(res.data.id).toBe('staff-uuid-all');
+      expect(updateSpy.mock.calls[0][1].qualifications.highestQualification).toBe('M.Sc Physics');
+      expect(updateSpy.mock.calls[0][1].financial.panNumber).toBe('ABCDE1234F');
+      expect(updateSpy.mock.calls[0][1].documents.academicCertificates).toHaveLength(1);
+    });
+  });
 });
+
 
 
