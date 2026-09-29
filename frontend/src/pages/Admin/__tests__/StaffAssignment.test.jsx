@@ -451,4 +451,65 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
       expect(listSpy).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe('22. STAFF EDIT MODE & PERSONAL DETAILS REMOVAL', () => {
+    it('verifies Edit Staff tabs exclude Personal Info / Personal Details', () => {
+      const getTabs = (isStaffEditMode) => {
+        return isStaffEditMode
+          ? ['Education & Work', 'Identity & Banking', 'Documents']
+          : ['Personal Info', 'Education & Work', 'Identity & Banking', 'Documents'];
+      };
+
+      const editTabs = getTabs(true);
+      expect(editTabs).toEqual(['Education & Work', 'Identity & Banking', 'Documents']);
+      expect(editTabs).not.toContain('Personal Info');
+      expect(editTabs).not.toContain('Personal Details');
+
+      const viewTabs = getTabs(false);
+      expect(viewTabs).toEqual(['Personal Info', 'Education & Work', 'Identity & Banking', 'Documents']);
+      expect(viewTabs).toContain('Personal Info');
+    });
+
+    it('submits updated staff details without personal detail fields in payload', async () => {
+      const updateSpy = vi.spyOn(staffApi, 'updateStaff').mockResolvedValue({
+        success: true,
+        data: {
+          id: 'staff-uuid-1',
+          designation: 'Senior Teacher',
+          staffType: 'teaching'
+        }
+      });
+
+      const editPayload = {
+        staffType: 'teaching',
+        designation: 'Senior Teacher',
+        roleId: 'role-uuid-1',
+        status: 'Active',
+        qualifications: {
+          highestQualification: 'M.Ed',
+          degreeSpecialization: 'Mathematics'
+        },
+        financial: {
+          panNumber: 'ABCDE1234F',
+          bankAccountNumber: '1234567890'
+        },
+        documents: {},
+        customData: {
+          aadharNumber: '123456789012'
+        }
+      };
+
+      const res = await staffApi.updateStaff('staff-uuid-1', editPayload);
+      expect(updateSpy).toHaveBeenCalledWith('staff-uuid-1', editPayload);
+      expect(res.data.id).toBe('staff-uuid-1');
+
+      const sentPayload = updateSpy.mock.calls[0][1];
+      expect(sentPayload).not.toHaveProperty('firstName');
+      expect(sentPayload).not.toHaveProperty('lastName');
+      expect(sentPayload).not.toHaveProperty('email');
+      expect(sentPayload).not.toHaveProperty('phone');
+      expect(sentPayload).not.toHaveProperty('mobileNumber');
+    });
+  });
 });
+

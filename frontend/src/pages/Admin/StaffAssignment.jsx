@@ -770,33 +770,25 @@ export default function StaffAssignment() {
 
   const handleSaveStaffEdit = async () => {
     const errors = {};
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!editStaffData.firstName?.trim()) errors.firstName = 'First name is required';
-    if (!editStaffData.email?.trim()) errors.email = 'Email is required';
-    else if (!emailRegex.test(editStaffData.email.trim())) errors.email = 'Invalid email format';
-    if (editStaffData.mobileNumber?.trim() && !/^\d{10}$/.test(editStaffData.mobileNumber.trim())) {
-      errors.mobileNumber = 'Mobile number must be 10 digits';
-    }
     if (editStaffData.aadharNumber?.trim() && !/^\d{12}$/.test(editStaffData.aadharNumber.trim())) {
       errors.aadharNumber = 'Aadhaar number must be 12 digits';
     }
-    // Check for duplicate email/staffId (excluding self, ONLY if changed)
-    const currentEmail = (editStaffData.email || '').trim().toLowerCase();
-    const originalEmail = (selectedStaffToView.email || '').trim().toLowerCase();
-    const emailChanged = currentEmail !== originalEmail;
-    const isDupEmail = emailChanged && currentEmail !== '' && staff.some(s => s.id !== selectedStaffToView.id && (s.email || '').trim().toLowerCase() === currentEmail);
-    if (isDupEmail) errors.email = 'Email already in use by another staff member';
-
-    const currentStaffId = (editStaffData.staffId || '').trim().toLowerCase();
-    const originalStaffId = (selectedStaffToView.staffId || '').trim().toLowerCase();
-    const staffIdChanged = currentStaffId !== originalStaffId;
-    const isDupId = staffIdChanged && currentStaffId !== '' && staff.some(s => s.id !== selectedStaffToView.id && (s.staffId || '').trim().toLowerCase() === currentStaffId);
-    if (isDupId) errors.staffId = 'Staff ID already in use';
+    if (editStaffData.panNumber?.trim() && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(editStaffData.panNumber.trim().toUpperCase())) {
+      errors.panNumber = 'Invalid PAN format (e.g. ABCDE1234F)';
+    }
+    if (editStaffData.ifscCode?.trim() && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(editStaffData.ifscCode.trim().toUpperCase())) {
+      errors.ifscCode = 'Invalid IFSC Code format (e.g. SBIN0001234)';
+    }
+    if (editStaffData.bankAccountNumber?.trim() && !/^\d+$/.test(editStaffData.bankAccountNumber.trim())) {
+      errors.bankAccountNumber = 'Bank account number must contain only digits';
+    }
 
     setEditStaffErrors(errors);
     if (Object.keys(errors).length > 0) {
-      setAddStaffActiveTab('Personal Info');
-      toast.error('Please fix the highlighted errors in Personal Info.');
+      if (errors.aadharNumber || errors.panNumber || errors.ifscCode || errors.bankAccountNumber) {
+        setAddStaffActiveTab('Identity & Banking');
+      }
+      toast.error('Please fix the highlighted errors.');
       return;
     }
 
@@ -808,7 +800,7 @@ export default function StaffAssignment() {
       ];
       const docUpdates = {};
       const safeSchoolName = (schoolName || 'School').replace(/[^a-z0-9]/gi, '_').trim();
-      const staffName = ((editStaffData.firstName || '') + '_' + (editStaffData.lastName || '')).replace(/[^a-z0-9]/gi, '_').trim();
+      const staffName = ((selectedStaffToView.firstName || selectedStaffToView.name || 'Staff') + '_' + (selectedStaffToView.lastName || '')).replace(/[^a-z0-9]/gi, '_').trim();
 
       for (const cat of docCategories) {
         const newFiles = editStaffDocFiles[cat] || [];
@@ -831,24 +823,10 @@ export default function StaffAssignment() {
       const matchedRole = rolesList.find(r => r.name === selectedRoleName || r.slug === selectedRoleName || r.id === editStaffData.roleId);
 
       const updatePayload = {
-        firstName: (editStaffData.firstName || '').trim(),
-        lastName: (editStaffData.lastName || '').trim() || null,
-        email: (editStaffData.email || '').trim().toLowerCase(),
-        phone: (editStaffData.mobileNumber || '').trim() || null,
-        employeeId: (editStaffData.staffId || '').trim() || null,
-        staffType: editStaffData.staff_type || editStaffData.staffType || 'teaching',
-        designation: editStaffData.designation || selectedRoleName || null,
-        roleId: matchedRole ? matchedRole.id : (editStaffData.roleId || null),
-        status: editStaffData.status || 'Active',
-        dob: (editStaffData.dob || '').trim() || null,
-        gender: editStaffData.gender || 'Male',
-        bloodGroup: (editStaffData.bloodGroup || '').trim() || null,
-        maritalStatus: editStaffData.maritalStatus || 'Single',
-        nationality: (editStaffData.nationality || '').trim() || null,
-        address: (editStaffData.residentialAddress || '').trim() || null,
-        emergencyContact: (editStaffData.emergencyContact || '').trim() || null,
-        fatherGuardianName: (editStaffData.fatherName || editStaffData.fatherGuardianName || '').trim() || null,
-        languagesKnown: (editStaffData.languagesKnown || '').trim() || null,
+        staffType: editStaffData.staff_type || editStaffData.staffType || selectedStaffToView.staffType || 'teaching',
+        designation: editStaffData.designation || selectedRoleName || selectedStaffToView.designation || null,
+        roleId: matchedRole ? matchedRole.id : (editStaffData.roleId || selectedStaffToView.roleId || null),
+        status: editStaffData.status || selectedStaffToView.status || 'Active',
         qualifications: {
           ...(selectedStaffToView.customData?.qualifications || {}),
           highestQualification: (editStaffData.highestQualification || '').trim() || null,
@@ -2694,7 +2672,10 @@ export default function StaffAssignment() {
 
             {/* Tabbed details navigation */}
             <div className="flex border-b border-slate-150 overflow-x-auto bg-slate-50/50 dark:bg-slate-800/50 shrink-0 custom-scrollbar">
-              {['Personal Info', 'Education & Work', 'Identity & Banking', 'Documents'].map(tab => (
+              {(isStaffEditMode
+                ? ['Education & Work', 'Identity & Banking', 'Documents']
+                : ['Personal Info', 'Education & Work', 'Identity & Banking', 'Documents']
+              ).map(tab => (
                 <button
                   key={tab}
                   type="button"
@@ -2713,68 +2694,6 @@ export default function StaffAssignment() {
               {isStaffEditMode && editStaffData ? (
                 /* ── EDIT MODE (tab-driven) ── */
                 <div className="animate-fade-in">
-                  {/* Personal Info Tab */}
-                  {addStaffActiveTab === 'Personal Info' && (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        {[
-                          ['staffId', 'Staff ID'], ['firstName', 'First Name *'], ['lastName', 'Last Name'],
-                          ['mobileNumber', 'Mobile Number'], ['email', 'Email Address *'], ['dob', 'Date of Birth'],
-                          ['bloodGroup', 'Blood Group'], ['nationality', 'Nationality'], ['languagesKnown', 'Languages Known'],
-                          ['emergencyContact', 'Emergency Contact'], ['fatherName', 'Father / Guardian Name']
-                        ].map(([field, label]) => (
-                          <div key={field}>
-                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">{label}</label>
-                            <input
-                              type={field === 'dob' ? 'date' : field === 'email' ? 'email' : 'text'}
-                              value={editStaffData[field] || ''}
-                              onChange={e => setEditStaffData({ ...editStaffData, [field]: e.target.value })}
-                              className={`w-full px-3 py-2 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editStaffErrors[field] ? 'border-red-400 bg-red-50' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'}`}
-                            />
-                            {editStaffErrors[field] && <p className="text-red-500 text-xs mt-1">{editStaffErrors[field]}</p>}
-                          </div>
-                        ))}
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Gender</label>
-                          <select value={normalizeGender(editStaffData.gender, 'Male')} onChange={e => setEditStaffData({ ...editStaffData, gender: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                            {['Male', 'Female', 'Other'].map(g => <option key={g} value={g}>{g}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Marital Status</label>
-                          <select value={editStaffData.maritalStatus || 'Single'} onChange={e => setEditStaffData({ ...editStaffData, maritalStatus: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                            {['Single', 'Married', 'Divorced', 'Widowed'].map(s => <option key={s}>{s}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Status</label>
-                          <select value={editStaffData.status || 'Active'} onChange={e => setEditStaffData({ ...editStaffData, status: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                            <option>Active</option><option>Inactive</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Staff Type</label>
-                          <select value={editStaffData.staff_type || 'teaching'} onChange={e => setEditStaffData({ ...editStaffData, staff_type: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                            <option value="teaching">Teaching Staff</option>
-                            <option value="non-teaching">Non-Teaching Staff</option>
-                          </select>
-                        </div>
-                        <div className="sm:col-span-3">
-                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Residential Address</label>
-                          <textarea rows={2} value={editStaffData.residentialAddress || ''} onChange={e => setEditStaffData({ ...editStaffData, residentialAddress: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                        </div>
-                      </div>
-
-                      <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
-                        <CustomFieldsRenderer
-                          moduleKey="staff"
-                          customData={editStaffData.customData}
-                          onChange={(k, v) => setEditStaffData(prev => ({ ...prev, customData: { ...(prev.customData || {}), [k]: v } }))}
-                        />
-                      </div>
-                    </div>
-                  )}
-
                   {/* Education & Work Tab */}
                   {addStaffActiveTab === 'Education & Work' && (
                     <div className="space-y-4">
@@ -3295,13 +3214,11 @@ export default function StaffAssignment() {
                   <button
                     onClick={() => {
                       setEditStaffData({
-                        ...selectedStaffToView,
-                        firstName: selectedStaffToView.firstName || selectedStaffToView.name?.split(' ')[0] || '',
-                        lastName: selectedStaffToView.lastName || selectedStaffToView.name?.split(' ').slice(1).join(' ') || ''
+                        ...selectedStaffToView
                       });
                       setEditStaffErrors({});
                       setEditStaffDocFiles({});
-                      setAddStaffActiveTab('Personal Info');
+                      setAddStaffActiveTab('Education & Work');
                       setIsStaffEditMode(true);
                     }}
                     className="px-6 py-2.5 bg-primary-600 text-white font-bold hover:bg-primary-700 rounded-xl transition-colors shadow-sm"
