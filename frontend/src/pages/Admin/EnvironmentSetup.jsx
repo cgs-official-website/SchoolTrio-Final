@@ -402,9 +402,16 @@ export default function EnvironmentSetup() {
         faviconUrl: formData.branding?.faviconUrl || formData.branding?.logoUrl || ''
       };
 
+      const cleanedContactPhone = (formData.contactPhone || '').trim();
+      if (cleanedContactPhone && !/^[0-9]{10}$/.test(cleanedContactPhone)) {
+        toast.error('Contact phone must be exactly 10 digits.');
+        setSaving(false);
+        return;
+      }
+
       await updateSchoolSettings({
         name: formData.name?.trim() || '',
-        contactPhone: formData.contactPhone?.trim() || '',
+        contactPhone: cleanedContactPhone || undefined,
         location: formData.location?.trim() || '',
         website: formattedWebsite,
         branding,
@@ -560,10 +567,24 @@ export default function EnvironmentSetup() {
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1 flex items-center gap-2"><Phone size={16} className="text-slate-400 dark:text-slate-300"/> Contact Phone</label>
               <input 
                 type="tel" 
+                inputMode="numeric"
+                maxLength={10}
+                pattern="[0-9]{10}"
+                placeholder="10-digit mobile number"
                 value={formData.contactPhone}
-                onChange={(e) => setFormData({...formData, contactPhone: e.target.value})}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/\D/g, '').slice(0, 10);
+                  setFormData({ ...formData, contactPhone: cleaned });
+                }}
+                className={`w-full px-4 py-2.5 rounded-xl border ${
+                  formData.contactPhone && formData.contactPhone.length > 0 && formData.contactPhone.length !== 10
+                    ? 'border-rose-400 dark:border-rose-600 focus:ring-rose-500'
+                    : 'border-slate-200 dark:border-slate-700 focus:ring-primary-500'
+                } focus:ring-2 focus:border-transparent transition-all`}
               />
+              {formData.contactPhone && formData.contactPhone.length > 0 && formData.contactPhone.length !== 10 && (
+                <p className="text-xs text-rose-500 dark:text-rose-400 mt-1">Contact phone must be exactly 10 digits ({formData.contactPhone.length}/10).</p>
+              )}
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1 flex items-center gap-2"><Globe size={16} className="text-slate-400 dark:text-slate-300"/> Official Website</label>

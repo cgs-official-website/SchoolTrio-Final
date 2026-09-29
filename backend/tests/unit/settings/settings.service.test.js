@@ -11,7 +11,7 @@ describe('School Settings Service Unit Tests (Phase SETTINGS.2)', () => {
     id: SCHOOL_ID,
     name: 'Greenwood High',
     code: 'GW-01',
-    phone: '+91 9876543210',
+    phone: '9876543210',
     email: 'info@greenwood.edu',
     address: '123 Main Road',
     timezone: 'Asia/Kolkata',
@@ -66,8 +66,8 @@ describe('School Settings Service Unit Tests (Phase SETTINGS.2)', () => {
       expect(result).toBeDefined();
       expect(result.id).toBe(SCHOOL_ID);
       expect(result.name).toBe('Greenwood High');
-      expect(result.phone).toBe('+91 9876543210');
-      expect(result.contactPhone).toBe('+91 9876543210');
+      expect(result.phone).toBe('9876543210');
+      expect(result.contactPhone).toBe('9876543210');
       expect(result.location).toBe('123 Main Road');
       expect(result.website).toBe('https://greenwood.edu');
       expect(result.branding.logoUrl).toBe('https://cdn.example.com/school-logo.png');

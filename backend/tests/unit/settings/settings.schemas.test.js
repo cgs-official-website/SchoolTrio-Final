@@ -8,8 +8,8 @@ describe('School Settings & Environment Configuration Schemas Unit Tests (Phase 
     it('validates a valid complete school settings update payload', () => {
       const payload = {
         name: 'Greenwood High International',
-        phone: '+91 9876543210',
-        contactPhone: '+91 9876543210',
+        phone: '9876543210',
+        contactPhone: '9876543210',
         email: 'principal@greenwood.edu',
         address: '123 Academic Way, Knowledge City',
         location: '123 Academic Way, Knowledge City',
@@ -80,6 +80,42 @@ describe('School Settings & Environment Configuration Schemas Unit Tests (Phase 
 
       const parsed = schemas.updateSchoolSettingsSchema.body.safeParse(payload);
       expect(parsed.success).toBe(true);
+    });
+
+    describe('Contact Phone 10-Digit Validation', () => {
+      it('accepts valid 10-digit contactPhone and phone', () => {
+        const validPayloads = [
+          { contactPhone: '9876543210' },
+          { phone: '9876543210' },
+          { contactPhone: '9876543210', phone: '9876543210' }
+        ];
+
+        for (const payload of validPayloads) {
+          const parsed = schemas.updateSchoolSettingsSchema.body.safeParse(payload);
+          expect(parsed.success).toBe(true);
+        }
+      });
+
+      it('rejects invalid contactPhone formats (<10, >10, 13-digit, non-numeric, symbols, empty string)', () => {
+        const invalidPhones = [
+          '987654321', // 9 digits
+          '98765432101', // 11 digits
+          '9876543210111', // 13 digits (bug reproduction)
+          '', // empty string
+          '98765abc10', // alphanumeric
+          'abcdefghij', // alpha only
+          '+919876543210', // country code prefix
+          '98765 43210' // whitespace
+        ];
+
+        for (const phone of invalidPhones) {
+          const parsedContact = schemas.updateSchoolSettingsSchema.body.safeParse({ contactPhone: phone });
+          expect(parsedContact.success, `Expected contactPhone "${phone}" to be rejected`).toBe(false);
+
+          const parsedPhone = schemas.updateSchoolSettingsSchema.body.safeParse({ phone });
+          expect(parsedPhone.success, `Expected phone "${phone}" to be rejected`).toBe(false);
+        }
+      });
     });
   });
 

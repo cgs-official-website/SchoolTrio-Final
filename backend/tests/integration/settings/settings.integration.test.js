@@ -35,7 +35,7 @@ describe('Settings & Environment Configuration Integration Tests (Phase SETTINGS
     id: SCHOOL_ID,
     name: 'Greenwood High',
     code: 'GW-01',
-    phone: '+91 9876543210',
+    phone: '9876543210',
     email: 'info@greenwood.edu',
     address: '123 Main Road',
     timezone: 'Asia/Kolkata',
@@ -75,7 +75,7 @@ describe('Settings & Environment Configuration Integration Tests (Phase SETTINGS
     it('updates school settings successfully and returns updated DTO', async () => {
       vi.spyOn(settingsRepo, 'findSchoolById').mockResolvedValue(mockSchool);
       vi.spyOn(settingsRepo, 'executeTransaction').mockImplementation(async (cb) => cb({}));
-      vi.spyOn(settingsRepo, 'updateSchool').mockResolvedValue({ ...mockSchool, name: 'Greenwood High Updated' });
+      vi.spyOn(settingsRepo, 'updateSchool').mockResolvedValue({ ...mockSchool, name: 'Greenwood High Updated', phone: '9876543210' });
       vi.spyOn(settingsRepo, 'findSetting').mockResolvedValue(null);
       vi.spyOn(settingsRepo, 'upsertSetting').mockResolvedValue({});
       vi.spyOn(auditRepo, 'createAuditLog').mockResolvedValue({});
@@ -89,6 +89,7 @@ describe('Settings & Environment Configuration Integration Tests (Phase SETTINGS
         .set('Authorization', `Bearer ${token}`)
         .send({
           name: 'Greenwood High Updated',
+          contactPhone: '9876543210',
           website: 'https://newsite.edu'
         });
 
@@ -96,6 +97,41 @@ describe('Settings & Environment Configuration Integration Tests (Phase SETTINGS
       expect(res.body.success).toBe(true);
       expect(res.body.data.name).toBe('Greenwood High');
       expect(res.body.data.website).toBe('https://newsite.edu');
+      expect(settingsRepo.updateSchool).toHaveBeenCalledWith(
+        SCHOOL_ID,
+        expect.objectContaining({ phone: '9876543210' }),
+        expect.anything()
+      );
+    });
+
+    it('rejects 13-digit contactPhone (9876543210111) with HTTP 400 validation error', async () => {
+      const token = getAuthToken();
+      const res = await request(app)
+        .patch('/api/v1/settings/school')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          contactPhone: '9876543210111'
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.message).toMatch(/validation failed/i);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('rejects invalid contactPhone (<10 digits, letters, symbols) with HTTP 400', async () => {
+      const token = getAuthToken();
+      const invalidPhones = ['987654321', '98765432101', 'abcdefghij', '98765abc10', '+919876543210'];
+
+      for (const phone of invalidPhones) {
+        const res = await request(app)
+          .patch('/api/v1/settings/school')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ contactPhone: phone });
+
+        expect(res.status, `Expected HTTP 400 for phone: ${phone}`).toBe(400);
+        expect(res.body.success).toBe(false);
+      }
     });
   });
 

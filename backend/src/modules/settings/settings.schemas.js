@@ -7,8 +7,8 @@ import { z } from 'zod';
 export const updateSchoolSettingsSchema = {
   body: z.object({
     name: z.string().trim().min(1, 'School name cannot be empty').max(255).optional(),
-    contactPhone: z.string().trim().max(30).optional().nullable(),
-    phone: z.string().trim().max(30).optional().nullable(),
+    contactPhone: z.string().trim().regex(/^[0-9]{10}$/, 'Contact phone must be exactly 10 digits').optional().nullable(),
+    phone: z.string().trim().regex(/^[0-9]{10}$/, 'Contact phone must be exactly 10 digits').optional().nullable(),
     email: z.string().trim().email('Invalid email address').max(255).optional().nullable(),
     location: z.string().trim().max(1000).optional().nullable(),
     address: z.string().trim().max(1000).optional().nullable(),
