@@ -92,37 +92,10 @@ export const AuthProvider = ({ children }) => {
       }
     });
 
-    // Proactive background session refresh on tab visibility / focus and periodic heartbeat
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible' && getAccessToken()) {
-        try {
-          await authApi.refreshSession();
-        } catch (_err) {
-          // If refresh fails, client.js handles token clearing
-        }
-      }
-    };
-
-    // Heartbeat every 10 minutes to maintain session freshness for active tabs
-    const heartbeatInterval = setInterval(async () => {
-      if (getAccessToken() && document.visibilityState === 'visible') {
-        try {
-          await authApi.refreshSession();
-        } catch (_err) {
-          // Handled gracefully
-        }
-      }
-    }, 10 * 60 * 1000);
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleVisibilityChange);
-
+    // Let client.js handle on-demand token refresh upon 401 API responses.
     return () => {
       isMounted = false;
       unsubToken();
-      clearInterval(heartbeatInterval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleVisibilityChange);
     };
   }, []);
 
