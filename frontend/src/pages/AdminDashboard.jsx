@@ -66,33 +66,48 @@ export default function AdminDashboard() {
   useEffect(() => {
     // Check if the school is approved and fetch permissions
     const fetchSchoolData = async () => {
+      // If auth is still loading or userProfile not yet available, wait
+      if (!userProfile) return;
+
+      // Authoritative school status check: only redirect if school status is explicitly pending
+      const schoolStatus = String(userProfile.schoolStatus || '').toLowerCase();
+      if (schoolStatus === 'pending') {
+        navigate('/admin/pending');
+        return;
+      }
+
       try {
-        if (userProfile && userProfile.schoolId) {
-          const res = await getSchoolSettings();
-          const data = res?.data || res;
-          if (data && data.status && data.status !== 'approved') {
-            navigate('/admin/pending');
-            return;
-          }
-          if (data) {
-            setSchoolData(data);
+        if (userProfile.schoolId) {
+          // Parallelize dashboard startup requests (settings, sidebar order, custom modules)
+          const [settingsResult, sidebarResult, customModsResult] = await Promise.allSettled([
+            getSchoolSettings(),
+            getSidebarSettings(),
+            listCustomModules()
+          ]);
+
+          // Handle School Settings
+          if (settingsResult.status === 'fulfilled') {
+            const data = settingsResult.value?.data || settingsResult.value;
+            if (data && data.status && String(data.status).toLowerCase() === 'pending') {
+              navigate('/admin/pending');
+              return;
+            }
+            if (data) {
+              setSchoolData(data);
+            }
           }
 
-          // Fetch global sidebar order via REST
-          try {
-            const sidebarRes = await getSidebarSettings();
-            const sidebarData = sidebarRes?.data || sidebarRes;
+          // Handle Sidebar Order
+          if (sidebarResult.status === 'fulfilled') {
+            const sidebarData = sidebarResult.value?.data || sidebarResult.value;
             if (sidebarData?.order) {
               setSidebarOrder(sidebarData.order);
             }
-          } catch (sidebarErr) {
-            console.error("Error fetching sidebar settings:", sidebarErr);
           }
 
-          // Fetch custom modules via REST
-          try {
-            const customModsRes = await listCustomModules();
-            const customModsData = Array.isArray(customModsRes?.data) ? customModsRes.data : [];
+          // Handle Custom Modules
+          if (customModsResult.status === 'fulfilled') {
+            const customModsData = Array.isArray(customModsResult.value?.data) ? customModsResult.value.data : [];
             const customMods = customModsData
               .sort((a, b) => (a.order || 0) - (b.order || 0))
               .map(m => ({
@@ -103,17 +118,17 @@ export default function AdminDashboard() {
                 isCustom: true
               }));
             setCustomNavItems(customMods);
-          } catch (err) {
-            console.error("Error fetching custom modules:", err);
           }
-        } else {
-          // If no schoolId, they might need to go to pending
-          navigate('/admin/pending');
-          return;
         }
       } catch (error) {
         console.error("Error fetching school data:", error);
-        navigate('/admin/pending');
+        // If the error is an unauthenticated 401 error, do NOT route to /admin/pending
+        if (error?.status === 401) {
+          navigate('/login');
+          return;
+        }
+        // Fallback for school data to allow UI rendering even if network fails
+        setSchoolData(prev => prev || { id: userProfile.schoolId, name: userProfile.schoolName || 'School Admin' });
       } finally {
         setLoading(false);
       }

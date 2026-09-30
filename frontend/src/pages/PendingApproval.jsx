@@ -6,13 +6,20 @@ import { LuClock as Clock, LuRefreshCcw as RefreshCcw, LuLogOut as LogOut } from
 import toast from 'react-hot-toast';
 
 export default function PendingApproval() {
-  const { logoutUser } = useAuth();
+  const { userProfile, logoutUser } = useAuth();
   const [status, setStatus] = useState('pending');
   const navigate = useNavigate();
 
   const [checking, setChecking] = useState(false);
 
   const checkStatus = async () => {
+    // Immediate bypass if current user profile already indicates approved/active
+    const profileSchoolStatus = String(userProfile?.schoolStatus || '').toLowerCase();
+    if (profileSchoolStatus === 'approved' || profileSchoolStatus === 'active') {
+      navigate('/admin');
+      return;
+    }
+
     setChecking(true);
     try {
       const res = await authApi.getMe();
@@ -27,6 +34,9 @@ export default function PendingApproval() {
       }
     } catch (error) {
       console.error("Error checking status:", error);
+      if (error?.status === 401) {
+        navigate('/login');
+      }
     } finally {
       setChecking(false);
     }
@@ -34,7 +44,7 @@ export default function PendingApproval() {
 
   useEffect(() => {
     checkStatus();
-  }, []);
+  }, [userProfile]);
 
   const handleLogout = async () => {
     await logoutUser();
