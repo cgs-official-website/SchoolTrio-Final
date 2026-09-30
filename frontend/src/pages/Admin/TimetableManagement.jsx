@@ -90,6 +90,66 @@ const TimePicker12Hour = ({ value, onChange, required }) => {
   );
 };
 
+export function getEligibleTeachersForSubject(subNameOrId, currentClassId, teachersList = [], subjectsList = []) {
+  if (!subNameOrId || !Array.isArray(teachersList) || teachersList.length === 0) return [];
+  const subObj = (subjectsList || []).find(s => s.name === subNameOrId || s.id === subNameOrId);
+  const subId = subObj?.id;
+  const subName = subObj?.name || subNameOrId;
+
+  // 1. Find all teachers assigned to this subject
+  const subjectTeachers = teachersList.filter(t => {
+    if (!t) return false;
+    // Direct subject teacherId or assignedTeacherIds (if present on subject object)
+    if (Array.isArray(subObj?.assignedTeacherIds) && subObj.assignedTeacherIds.includes(t.id)) {
+      return true;
+    }
+    if (subObj?.teacherId === t.id) {
+      return true;
+    }
+
+    // Teacher profile assigned subjects (from assignments or customData)
+    const assignedSubIds = [
+      ...(Array.isArray(t?.assignments?.assignedSubjectIds) ? t.assignments.assignedSubjectIds : []),
+      ...(Array.isArray(t?.customData?.assignments?.assignedSubjectIds) ? t.customData.assignments.assignedSubjectIds : []),
+      ...(Array.isArray(t?.assignedSubjectIds) ? t.assignedSubjectIds : []),
+      ...(Array.isArray(t?.customData?.assignedSubjectIds) ? t.customData.assignedSubjectIds : [])
+    ];
+
+    return assignedSubIds.some(id => 
+      id === subId || 
+      id === subName || 
+      (typeof id === 'string' && typeof subName === 'string' && id.trim().toLowerCase() === subName.trim().toLowerCase())
+    );
+  });
+
+  if (subjectTeachers.length === 0) {
+    return [];
+  }
+
+  // 2. If currentClassId is specified, check if any subject teachers are specifically assigned to this class/section
+  if (currentClassId) {
+    const classSpecificTeachers = subjectTeachers.filter(t => {
+      const classIds = [
+        t?.assignments?.assignedClassId,
+        t?.customData?.assignments?.assignedClassId,
+        t?.assignedClassId,
+        ...(Array.isArray(t?.assignments?.subjectClassIds) ? t.assignments.subjectClassIds : []),
+        ...(Array.isArray(t?.customData?.assignments?.subjectClassIds) ? t.customData.assignments.subjectClassIds : []),
+        ...(Array.isArray(t?.subjectClassIds) ? t.subjectClassIds : []),
+        ...(Array.isArray(t?.customData?.subjectClassIds) ? t.customData.subjectClassIds : [])
+      ].filter(Boolean);
+
+      return classIds.includes(currentClassId);
+    });
+
+    if (classSpecificTeachers.length > 0) {
+      return classSpecificTeachers;
+    }
+  }
+
+  return subjectTeachers;
+}
+
 export default function TimetableManagement() {
   const { userProfile } = useAuth();
   const schoolId = userProfile?.schoolId;
@@ -634,17 +694,40 @@ export default function TimetableManagement() {
                       value={newSlot.subject}
                       onChange={(e) => {
                         const subName = e.target.value;
-                        const subObj = subjects.find(s => s.name === subName);
-                        const allowedIds = subObj?.assignedTeacherIds || [];
+                        const subObj = subjects.find(s => s.name === subName || s.id === subName);
+                        const subId = subObj?.id || '';
+
+                        if (!subName) {
+                          setNewSlot(prev => ({
+                            ...prev,
+                            subject: '',
+                            subjectId: '',
+                            teacher: '',
+                            teacherId: ''
+                          }));
+                          return;
+                        }
+
+                        const eligible = getEligibleTeachersForSubject(subName, selectedClassId, teachers, subjects);
                         
-                        // If current teacher is not assigned to the new subject, reset the selection
-                        const keepTeacher = allowedIds.includes(newSlot.teacherId);
-                        setNewSlot({
-                          ...newSlot,
-                          subject: subName,
-                          teacherId: keepTeacher ? newSlot.teacherId : '',
-                          teacher: keepTeacher ? newSlot.teacher : ''
-                        });
+                        // Auto-select assigned teacher: if current selected teacher is already eligible, keep it; otherwise select the first eligible teacher
+                        let chosenTeacherId = '';
+                        let chosenTeacherName = '';
+
+                        if (eligible.length > 0) {
+                          const matchingCurrent = eligible.find(t => t.id === newSlot.teacherId);
+                          const defaultTeacher = matchingCurrent || eligible[0];
+                          chosenTeacherId = defaultTeacher.id;
+                          chosenTeacherName = defaultTeacher.name || `${defaultTeacher.firstName || ''} ${defaultTeacher.lastName || ''}`.trim() || 'Unnamed Teacher';
+                        }
+
+                        setNewSlot(prev => ({
+                          ...prev,
+                          subject: subObj?.name || subName,
+                          subjectId: subId,
+                          teacherId: chosenTeacherId,
+                          teacher: chosenTeacherName
+                        }));
                       }}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                     >
@@ -656,41 +739,66 @@ export default function TimetableManagement() {
                   </div>
                   
                   <div>
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Teacher (Optional)</label>
-                  <select
-                    value={newSlot.teacherId}
-                    onChange={(e) => {
-                      const teacher = teachers.find(t => t.id === e.target.value);
-                      if (teacher) {
-                        const displayName = teacher.name || `${teacher.firstName || ''} ${teacher.lastName || ''}`.trim();
-                        setNewSlot({...newSlot, teacherId: teacher.id, teacher: displayName});
-                      } else {
-                        setNewSlot({...newSlot, teacherId: '', teacher: ''});
-                      }
-                    }}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
-                  >
-                    {!newSlot.subject ? (
-                      <option value="">-- Select Subject First --</option>
-                    ) : (
-                      <>
-                        <option value="">-- No Teacher Assigned --</option>
-                        {(() => {
-                          const selectedSubObj = subjects.find(s => s.name === newSlot.subject);
-                          const allowedTeacherIds = selectedSubObj?.assignedTeacherIds || [];
-                          return teachers
-                            .filter(t => allowedTeacherIds.includes(t.id))
-                            .map(t => {
-                              const displayName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Teacher (Optional)</label>
+                    <select
+                      value={newSlot.teacherId}
+                      onChange={(e) => {
+                        const teacher = teachers.find(t => t.id === e.target.value);
+                        if (teacher) {
+                          const displayName = teacher.name || `${teacher.firstName || ''} ${teacher.lastName || ''}`.trim() || 'Unnamed Teacher';
+                          setNewSlot(prev => ({ ...prev, teacherId: teacher.id, teacher: displayName }));
+                        } else {
+                          setNewSlot(prev => ({ ...prev, teacherId: '', teacher: '' }));
+                        }
+                      }}
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
+                    >
+                      {!newSlot.subject ? (
+                        <option value="">-- Select Subject First --</option>
+                      ) : (
+                        <>
+                          <option value="">-- No Teacher Assigned --</option>
+                          {(() => {
+                            const eligible = getEligibleTeachersForSubject(newSlot.subject, selectedClassId, teachers, subjects);
+                            const eligibleIds = new Set(eligible.map(t => t.id));
+                            const otherTeachers = teachers.filter(t => !eligibleIds.has(t.id));
+
+                            if (eligible.length > 0) {
                               return (
-                                <option key={t.id} value={t.id}>{displayName || 'Unnamed Teacher'}</option>
+                                <>
+                                  <optgroup label="Assigned Teachers">
+                                    {eligible.map(t => {
+                                      const displayName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim() || 'Unnamed Teacher';
+                                      return (
+                                        <option key={t.id} value={t.id}>{displayName}</option>
+                                      );
+                                    })}
+                                  </optgroup>
+                                  {otherTeachers.length > 0 && (
+                                    <optgroup label="Other Teachers">
+                                      {otherTeachers.map(t => {
+                                        const displayName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim() || 'Unnamed Teacher';
+                                        return (
+                                          <option key={t.id} value={t.id}>{displayName}</option>
+                                        );
+                                      })}
+                                    </optgroup>
+                                  )}
+                                </>
+                              );
+                            }
+
+                            return teachers.map(t => {
+                              const displayName = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim() || 'Unnamed Teacher';
+                              return (
+                                <option key={t.id} value={t.id}>{displayName}</option>
                               );
                             });
-                        })()}
-                      </>
-                    )}
-                  </select>
-                </div>
+                          })()}
+                        </>
+                      )}
+                    </select>
+                  </div>
                 </div>
               </div>
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import TimetableManagement from '../TimetableManagement.jsx';
+import TimetableManagement, { getEligibleTeachersForSubject } from '../TimetableManagement.jsx';
 import * as timetablesApiModule from '../../../api/timetables.js';
 import * as firestoreModule from '../../../firebase/firestore.js';
 
@@ -235,5 +235,97 @@ describe('Admin TimetableManagement Component REST Cutover (Phase T.3)', () => {
     expect(cRes.data).toHaveLength(1);
     expect(stRes.data).toHaveLength(1);
     expect(subRes.data).toHaveLength(1);
+  });
+
+  // ============================================================
+  // 4. ASSIGNED TEACHER AUTO-DISPLAY & FILTERING
+  // ============================================================
+
+  describe('getEligibleTeachersForSubject', () => {
+    const ENGLISH_SUB_ID = 'sub-eng-111';
+    const MATH_SUB_ID = 'sub-math-222';
+    const CLASS_A_ID = 'class-10-a';
+    const CLASS_B_ID = 'class-10-b';
+
+    const subjectsList = [
+      { id: ENGLISH_SUB_ID, name: 'English', code: 'ENG101' },
+      { id: MATH_SUB_ID, name: 'Mathematics', code: 'MATH101' }
+    ];
+
+    const teacherEnglishGeneral = {
+      id: 'teacher-eng-gen',
+      name: 'Alice English',
+      assignments: {
+        assignedSubjectIds: [ENGLISH_SUB_ID]
+      }
+    };
+
+    const teacherEnglishClassA = {
+      id: 'teacher-eng-a',
+      name: 'Bob English Class A',
+      assignments: {
+        assignedSubjectIds: [ENGLISH_SUB_ID],
+        subjectClassIds: [CLASS_A_ID]
+      }
+    };
+
+    const teacherEnglishClassB = {
+      id: 'teacher-eng-b',
+      name: 'Charlie English Class B',
+      customData: {
+        assignments: {
+          assignedSubjectIds: [ENGLISH_SUB_ID],
+          subjectClassIds: [CLASS_B_ID]
+        }
+      }
+    };
+
+    const teacherMath = {
+      id: 'teacher-math',
+      name: 'David Math',
+      assignments: {
+        assignedSubjectIds: [MATH_SUB_ID]
+      }
+    };
+
+    const teachersList = [
+      teacherEnglishGeneral,
+      teacherEnglishClassA,
+      teacherEnglishClassB,
+      teacherMath
+    ];
+
+    it('returns the assigned teacher when subject is selected', () => {
+      const eligible = getEligibleTeachersForSubject('Mathematics', null, teachersList, subjectsList);
+      expect(eligible).toHaveLength(1);
+      expect(eligible[0].id).toBe('teacher-math');
+      expect(eligible[0].name).toBe('David Math');
+    });
+
+    it('returns class-scoped assigned teacher when selectedClassId is specified', () => {
+      const eligibleClassA = getEligibleTeachersForSubject('English', CLASS_A_ID, teachersList, subjectsList);
+      expect(eligibleClassA).toHaveLength(1);
+      expect(eligibleClassA[0].id).toBe('teacher-eng-a');
+
+      const eligibleClassB = getEligibleTeachersForSubject('English', CLASS_B_ID, teachersList, subjectsList);
+      expect(eligibleClassB).toHaveLength(1);
+      expect(eligibleClassB[0].id).toBe('teacher-eng-b');
+    });
+
+    it('returns all assigned teachers when multiple teachers are assigned to the subject', () => {
+      // For a class where no class-specific teacher is set, returns general subject teachers
+      const eligible = getEligibleTeachersForSubject('English', 'class-other-unscoped', teachersList, subjectsList);
+      expect(eligible.map(t => t.id)).toContain('teacher-eng-gen');
+    });
+
+    it('returns empty array when no teacher is assigned to the subject', () => {
+      const eligible = getEligibleTeachersForSubject('Science', null, teachersList, subjectsList);
+      expect(eligible).toEqual([]);
+    });
+
+    it('handles empty inputs gracefully', () => {
+      expect(getEligibleTeachersForSubject('', null, teachersList, subjectsList)).toEqual([]);
+      expect(getEligibleTeachersForSubject('English', null, [], subjectsList)).toEqual([]);
+    });
   });
 });
