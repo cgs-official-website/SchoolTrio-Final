@@ -234,6 +234,112 @@ export async function generatePayroll(schoolId, body, actor = {}) {
 }
 
 /**
+ * Updates a payroll record (salary values, deductions, status, customData).
+ * Uses interactive transaction and row-level locking.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} id - Payroll record UUID
+ * @param {Object} body - Full update payload
+ * @param {Object} actor - Authenticated user context
+ * @returns {Promise<Object>}
+ */
+export async function updatePayroll(schoolId, id, body, actor = {}) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required');
+  }
+
+  const {
+    baseSalary,
+    deductions,
+    pfCalculated,
+    esiCalculated,
+    netPay,
+    status,
+    paidAt,
+    customData
+  } = body;
+
+  const modifiedFields = {};
+
+  const updated = await prisma.$transaction(async (tx) => {
+    // Acquire row-level lock
+    const locked = await hrPayrollRepository.findPayrollByIdForUpdate(schoolId, id, tx);
+    if (!locked) {
+      throw new NotFoundError('Payroll record not found');
+    }
+
+    const updateData = {};
+
+    if (baseSalary !== undefined) {
+      updateData.baseSalary = baseSalary;
+      modifiedFields.baseSalary = baseSalary;
+    }
+
+    if (deductions !== undefined) {
+      updateData.deductions = deductions;
+      modifiedFields.deductions = deductions;
+    }
+
+    if (pfCalculated !== undefined) {
+      updateData.pfCalculated = pfCalculated;
+      modifiedFields.pfCalculated = pfCalculated;
+    }
+
+    if (esiCalculated !== undefined) {
+      updateData.esiCalculated = esiCalculated;
+      modifiedFields.esiCalculated = esiCalculated;
+    }
+
+    if (netPay !== undefined) {
+      updateData.netPay = netPay;
+      modifiedFields.netPay = netPay;
+    } else if (baseSalary !== undefined || deductions !== undefined) {
+      const currentBase = baseSalary !== undefined ? baseSalary : Number(locked.base_salary);
+      const currentDed = deductions !== undefined ? deductions : Number(locked.deductions || 0);
+      updateData.netPay = currentBase - currentDed;
+      modifiedFields.netPay = updateData.netPay;
+    }
+
+    if (status !== undefined) {
+      updateData.status = status;
+      modifiedFields.status = status;
+
+      let updatedPaidAt = locked.paid_at;
+      if (status === 'Paid' || status === 'Payslip Released') {
+        updatedPaidAt = paidAt ? new Date(paidAt) : (locked.paid_at || new Date());
+      } else if (status === 'Pending') {
+        updatedPaidAt = null;
+      }
+      updateData.paidAt = updatedPaidAt;
+      modifiedFields.paidAt = updatedPaidAt;
+    } else if (paidAt !== undefined) {
+      updateData.paidAt = paidAt ? new Date(paidAt) : null;
+      modifiedFields.paidAt = updateData.paidAt;
+    }
+
+    if (customData !== undefined) {
+      updateData.customData = customData;
+      modifiedFields.customData = customData;
+    }
+
+    return hrPayrollRepository.updatePayroll(schoolId, id, updateData, tx);
+  });
+
+  // Non-blocking Audit log
+  createAuditLog({
+    schoolId,
+    entityType: 'HRPayrollRecord',
+    entityId: id,
+    actionPerformed: status ? `Updated payroll record (status: ${status})` : 'Updated payroll record',
+    userName: actor.email || actor.name || 'Administrator',
+    userRole: actor.systemRole || actor.role || 'Admin',
+    modifiedFields
+  }).catch(() => {});
+
+  return updated;
+}
+
+/**
  * Updates status of a payroll record.
  * Uses interactive transaction and row-level locking.
  *
@@ -244,50 +350,7 @@ export async function generatePayroll(schoolId, body, actor = {}) {
  * @returns {Promise<Object>}
  */
 export async function updatePayrollStatus(schoolId, id, body, actor = {}) {
-  if (!schoolId) {
-    throw new TenantAccessError('Tenant context required');
-  }
-
-  const { status, paidAt } = body;
-
-  const updated = await prisma.$transaction(async (tx) => {
-    // Acquire row-level lock
-    const locked = await hrPayrollRepository.findPayrollByIdForUpdate(schoolId, id, tx);
-    if (!locked) {
-      throw new NotFoundError('Payroll record not found');
-    }
-
-    // Handle timestamp updates
-    let updatedPaidAt = locked.paid_at;
-    if (status === 'Paid' || status === 'Payslip Released') {
-      updatedPaidAt = paidAt ? new Date(paidAt) : (locked.paid_at || new Date());
-    } else if (status === 'Pending') {
-      updatedPaidAt = null;
-    }
-
-    return hrPayrollRepository.updatePayroll(
-      schoolId,
-      id,
-      {
-        status,
-        paidAt: updatedPaidAt
-      },
-      tx
-    );
-  });
-
-  // Non-blocking Audit log
-  createAuditLog({
-    schoolId,
-    entityType: 'HRPayrollRecord',
-    entityId: id,
-    actionPerformed: `Updated payroll status to '${status}'`,
-    userName: actor.email || actor.name || 'Administrator',
-    userRole: actor.systemRole || actor.role || 'Admin',
-    modifiedFields: { status, paidAt: updated.paidAt }
-  }).catch(() => {});
-
-  return updated;
+  return updatePayroll(schoolId, id, body, actor);
 }
 
 /**

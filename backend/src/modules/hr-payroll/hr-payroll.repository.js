@@ -146,7 +146,7 @@ export async function findPayrollById(schoolId, id, tx = prisma) {
  */
 export async function findPayrollByIdForUpdate(schoolId, id, tx) {
   const rows = await tx.$queryRaw`
-    SELECT id, school_id, teacher_id, month, base_salary, status, paid_at
+    SELECT id, school_id, teacher_id, month, base_salary, deductions, pf_calculated, esi_calculated, net_pay, status, paid_at
     FROM hr_payroll_records
     WHERE school_id = ${schoolId}::uuid AND id = ${id}::uuid
     FOR UPDATE

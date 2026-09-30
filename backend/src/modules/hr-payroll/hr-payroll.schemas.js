@@ -100,6 +100,43 @@ export const updateStatusSchema = {
 };
 
 // ==========================================
+// 4b. Payroll Full Record Update Schema
+// ==========================================
+export const updatePayrollBodySchema = z.object({
+  baseSalary: z
+    .number({ invalid_type_error: 'baseSalary must be a number' })
+    .min(0, { message: 'baseSalary cannot be negative' })
+    .optional(),
+  deductions: z
+    .number({ invalid_type_error: 'deductions must be a number' })
+    .min(0, { message: 'deductions cannot be negative' })
+    .optional(),
+  pfCalculated: z
+    .number({ invalid_type_error: 'pfCalculated must be a number' })
+    .min(0, { message: 'pfCalculated cannot be negative' })
+    .optional(),
+  esiCalculated: z
+    .number({ invalid_type_error: 'esiCalculated must be a number' })
+    .min(0, { message: 'esiCalculated cannot be negative' })
+    .optional(),
+  netPay: z
+    .number({ invalid_type_error: 'netPay must be a number' })
+    .optional(),
+  status: z.enum(['Pending', 'Paid', 'Payslip Released']).optional(),
+  paidAt: z
+    .string()
+    .datetime({ offset: true, message: 'paidAt must be an ISO 8601 datetime string' })
+    .optional()
+    .nullable(),
+  customData: z.record(z.any()).optional().nullable()
+});
+
+export const updatePayrollSchema = {
+  params: z.object({ id: uuidSchema }),
+  body: updatePayrollBodySchema
+};
+
+// ==========================================
 // 5. HR Configuration Schema
 // ==========================================
 export const updateConfigBodySchema = z.object({

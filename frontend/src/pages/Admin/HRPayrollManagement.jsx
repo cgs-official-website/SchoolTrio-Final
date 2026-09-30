@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import {
   listPayroll,
   generatePayroll,
+  updatePayroll,
   updatePayrollStatus,
   deletePayroll,
   getConfig,
@@ -288,9 +289,21 @@ export default function HRPayrollManagement() {
     setSaving(true);
     try {
       if (formData.id) {
-        // Status and record update via REST
-        await updatePayrollStatus(formData.id, {
-          status: formData.status
+        // Full payroll record update via REST
+        const baseSalary = Number(formData.baseSalary || 0);
+        const deductions = Number(formData.deductions || 0);
+        const pfCalculated = Number(formData.pfCalculated || 0);
+        const esiCalculated = Number(formData.esiCalculated || 0);
+        const netPay = baseSalary - deductions;
+
+        await updatePayroll(formData.id, {
+          baseSalary,
+          deductions,
+          pfCalculated,
+          esiCalculated,
+          netPay,
+          status: formData.status,
+          customData: formData.customData || {}
         });
         toast.success("Payroll updated successfully");
       } else {

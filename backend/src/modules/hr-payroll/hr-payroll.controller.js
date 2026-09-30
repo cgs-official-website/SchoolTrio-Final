@@ -57,6 +57,22 @@ export const generatePayroll = async (req, res, next) => {
   }
 };
 
+export const updatePayroll = async (req, res, next) => {
+  try {
+    const schoolId = req.tenant.schoolId;
+    const { id } = req.params;
+    const record = await hrPayrollService.updatePayroll(schoolId, id, req.body, req.user);
+
+    res.status(200).json({
+      success: true,
+      message: 'Payroll record updated successfully',
+      data: record
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const updatePayrollStatus = async (req, res, next) => {
   try {
     const schoolId = req.tenant.schoolId;

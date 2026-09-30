@@ -4,6 +4,7 @@ import {
   listPayroll,
   getMySalary,
   generatePayroll,
+  updatePayroll,
   updatePayrollStatus,
   deletePayroll,
   getConfig,
@@ -104,6 +105,36 @@ describe('HR & Payroll API Client (src/api/hr-payroll.js)', () => {
         body: JSON.stringify(payload)
       });
       expect(res.data.status).toBe('Paid');
+    });
+  });
+
+  describe('updatePayroll', () => {
+    it('calls PATCH /api/v1/hr-payroll/:id with payload containing baseSalary, deductions, netPay, etc.', async () => {
+      const id = 'p-uuid-123';
+      const payload = {
+        baseSalary: 3000,
+        deductions: 360,
+        pfCalculated: 360,
+        esiCalculated: 0,
+        netPay: 2640,
+        status: 'Pending',
+        customData: {}
+      };
+
+      const spy = vi.spyOn(clientModule, 'apiClient').mockResolvedValue({
+        success: true,
+        message: 'Payroll record updated successfully',
+        data: { id, ...payload }
+      });
+
+      const res = await updatePayroll(id, payload);
+
+      expect(spy).toHaveBeenCalledWith(`/api/v1/hr-payroll/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload)
+      });
+      expect(res.data.baseSalary).toBe(3000);
+      expect(res.data.netPay).toBe(2640);
     });
   });
 

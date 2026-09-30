@@ -346,6 +346,58 @@ describe('HR & Payroll Routes & RBAC Integration Tests', () => {
   });
 
   // ==========================================
+  // 5b. PATCH /api/v1/hr-payroll/:id (Full Record Edit)
+  // ==========================================
+  describe('PATCH /api/v1/hr-payroll/:id', () => {
+    it('allows Admin to update payroll values (Base Salary ₹2000 -> ₹3000)', async () => {
+      vi.spyOn(hrPayrollService, 'updatePayroll').mockResolvedValue({
+        id: PAYROLL_ID,
+        baseSalary: 3000,
+        deductions: 360,
+        pfCalculated: 360,
+        esiCalculated: 0,
+        netPay: 2640,
+        status: 'Pending'
+      });
+
+      const res = await request(app)
+        .patch(`/api/v1/hr-payroll/${PAYROLL_ID}`)
+        .set('Authorization', `Bearer ${getAuthToken(adminUser)}`)
+        .send({
+          baseSalary: 3000,
+          deductions: 360,
+          pfCalculated: 360,
+          esiCalculated: 0,
+          netPay: 2640,
+          status: 'Pending'
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.baseSalary).toBe(3000);
+      expect(res.body.data.netPay).toBe(2640);
+    });
+
+    it('rejects unauthorized staff edit (403 Forbidden)', async () => {
+      const res = await request(app)
+        .patch(`/api/v1/hr-payroll/${PAYROLL_ID}`)
+        .set('Authorization', `Bearer ${getAuthToken(teacherUser)}`)
+        .send({ baseSalary: 5000 });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects negative salary values (400 Bad Request)', async () => {
+      const res = await request(app)
+        .patch(`/api/v1/hr-payroll/${PAYROLL_ID}`)
+        .set('Authorization', `Bearer ${getAuthToken(adminUser)}`)
+        .send({ baseSalary: -100 });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ==========================================
   // 6. DELETE /api/v1/hr-payroll/:id (Delete Draft)
   // ==========================================
   describe('DELETE /api/v1/hr-payroll/:id', () => {

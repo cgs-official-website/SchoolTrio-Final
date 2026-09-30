@@ -71,6 +71,16 @@ router.patch(
   hrPayrollController.updatePayrollStatus
 );
 
+// 6b. Admin: Update full payroll record (base salary, deductions, customData, status, etc.)
+router.patch(
+  '/:id',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('hr-payroll', 'edit'),
+  validate(hrPayrollSchemas.updatePayrollSchema),
+  hrPayrollController.updatePayroll
+);
+
 // 7. Admin: Delete draft payroll record (Pending only)
 router.delete(
   '/:id',

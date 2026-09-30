@@ -116,6 +116,29 @@ describe('Admin HRPayrollManagement Component REST Cutover (Phase HR.3)', () => 
     expect(res.data.status).toBe('Paid');
   });
 
+  it('updates payroll record details (baseSalary, deductions, netPay) via REST updatePayroll', async () => {
+    const editPayload = {
+      baseSalary: 3000,
+      deductions: 360,
+      pfCalculated: 360,
+      esiCalculated: 0,
+      netPay: 2640,
+      status: 'Pending',
+      customData: {}
+    };
+
+    const updateSpy = vi.spyOn(hrPayrollApi, 'updatePayroll').mockResolvedValue({
+      success: true,
+      message: 'Payroll record updated successfully',
+      data: { ...MOCK_PAYROLL, ...editPayload }
+    });
+
+    const res = await hrPayrollApi.updatePayroll(PAYROLL_ID, editPayload);
+    expect(updateSpy).toHaveBeenCalledWith(PAYROLL_ID, editPayload);
+    expect(res.data.baseSalary).toBe(3000);
+    expect(res.data.netPay).toBe(2640);
+  });
+
   it('deletes draft payroll record via REST deletePayroll', async () => {
     const deleteSpy = vi.spyOn(hrPayrollApi, 'deletePayroll').mockResolvedValue({
       success: true,

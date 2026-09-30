@@ -90,6 +90,21 @@ export async function updatePayrollStatus(id, payload) {
 }
 
 /**
+ * Updates a payroll record (base salary, deductions, customData, status, etc.).
+ * Calls PATCH /api/v1/hr-payroll/:id.
+ *
+ * @param {string} id - Payroll record UUID
+ * @param {Object} payload - { baseSalary?: number, deductions?: number, pfCalculated?: number, esiCalculated?: number, netPay?: number, status?: string, paidAt?: string, customData?: Object }
+ * @returns {Promise<{ success: boolean, message: string, data: Object }>}
+ */
+export async function updatePayroll(id, payload) {
+  return apiClient(`/api/v1/hr-payroll/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+}
+
+/**
  * Deletes a draft payroll record in 'Pending' status.
  * Calls DELETE /api/v1/hr-payroll/:id.
  *
