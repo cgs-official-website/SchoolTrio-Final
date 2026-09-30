@@ -104,7 +104,10 @@ export const refreshTokenSingleFlight = async () => {
         setAccessToken(newAccessToken);
         return data;
       } catch (err) {
-        clearAccessToken();
+        // Only clear access token if server explicitly returned 401/403 Unauthorized/Forbidden
+        if (err?.status === 401 || err?.status === 403) {
+          clearAccessToken();
+        }
         throw err;
       } finally {
         refreshPromise = null;

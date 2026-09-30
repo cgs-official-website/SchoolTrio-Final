@@ -12,33 +12,35 @@ const listeners = new Set();
 const SESSION_TOKEN_KEY = 'sms_access_token_session';
 
 /**
- * Retrieves current in-memory access token, falling back to sessionStorage across page reloads.
+ * Retrieves current in-memory access token, falling back to localStorage/sessionStorage across page reloads.
  * @returns {string|null}
  */
 export const getAccessToken = () => {
   if (inMemoryAccessToken) return inMemoryAccessToken;
   try {
-    const saved = sessionStorage.getItem(SESSION_TOKEN_KEY);
+    const saved = localStorage.getItem(SESSION_TOKEN_KEY) || sessionStorage.getItem(SESSION_TOKEN_KEY);
     if (saved) {
       inMemoryAccessToken = saved;
       return saved;
     }
   } catch (_e) {
-    // sessionStorage might be restricted in some private modes
+    // storage might be restricted in some private modes
   }
   return null;
 };
 
 /**
- * Sets access token in memory and tab-scoped sessionStorage, then notifies subscribers.
+ * Sets access token in memory and web storage, then notifies subscribers.
  * @param {string|null} token - JWT Access token string
  */
 export const setAccessToken = (token) => {
   inMemoryAccessToken = token || null;
   try {
     if (token) {
+      localStorage.setItem(SESSION_TOKEN_KEY, token);
       sessionStorage.setItem(SESSION_TOKEN_KEY, token);
     } else {
+      localStorage.removeItem(SESSION_TOKEN_KEY);
       sessionStorage.removeItem(SESSION_TOKEN_KEY);
     }
   } catch (_e) {
@@ -55,10 +57,11 @@ export const setAccessToken = (token) => {
 };
 
 /**
- * Clears access token from memory and sessionStorage, then notifies subscribers.
+ * Clears access token from memory and storage, then notifies subscribers.
  */
 export const clearAccessToken = () => {
   try {
+    localStorage.removeItem(SESSION_TOKEN_KEY);
     sessionStorage.removeItem(SESSION_TOKEN_KEY);
   } catch (_e) {
     // ignore

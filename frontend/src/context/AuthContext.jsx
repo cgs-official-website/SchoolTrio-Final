@@ -27,34 +27,49 @@ export const AuthProvider = ({ children }) => {
         const existingToken = getAccessToken();
 
         if (existingToken) {
-          const meRes = await authApi.getMe();
-          const userData = meRes?.data?.user || meRes?.data;
-          if (userData && isMounted) {
-            const normalized = normalizeAuthUser(userData);
-            setCurrentUser({ uid: normalized.uid, email: normalized.email, ...normalized });
-            setUserProfile(normalized);
-            setLoading(false);
-            return;
+          try {
+            const meRes = await authApi.getMe();
+            const userData = meRes?.data?.user || meRes?.data;
+            if (userData && isMounted) {
+              const normalized = normalizeAuthUser(userData);
+              setCurrentUser({ uid: normalized.uid, email: normalized.email, ...normalized });
+              setUserProfile(normalized);
+              setLoading(false);
+              return;
+            }
+          } catch (meErr) {
+            // Only clear if server explicitly rejected token with 401
+            if (meErr?.status === 401) {
+              clearAccessToken();
+            } else if (isMounted) {
+              // Network error or temporary failure, keep active state if profile cached
+              setLoading(false);
+              return;
+            }
           }
         }
 
         // Try rotating HttpOnly refresh cookie
-        const refreshRes = await authApi.refreshSession();
-        const newAccessToken = refreshRes?.data?.accessToken;
-        if (newAccessToken) {
-          setAccessToken(newAccessToken);
-          const meRes = await authApi.getMe();
-          const userData = meRes?.data?.user || meRes?.data;
-          if (userData && isMounted) {
-            const normalized = normalizeAuthUser(userData);
-            setCurrentUser({ uid: normalized.uid, email: normalized.email, ...normalized });
-            setUserProfile(normalized);
-            setLoading(false);
-            return;
+        try {
+          const refreshRes = await authApi.refreshSession();
+          const newAccessToken = refreshRes?.data?.accessToken;
+          if (newAccessToken) {
+            setAccessToken(newAccessToken);
+            const meRes = await authApi.getMe();
+            const userData = meRes?.data?.user || meRes?.data;
+            if (userData && isMounted) {
+              const normalized = normalizeAuthUser(userData);
+              setCurrentUser({ uid: normalized.uid, email: normalized.email, ...normalized });
+              setUserProfile(normalized);
+              setLoading(false);
+              return;
+            }
           }
+        } catch (_refreshErr) {
+          // No active refresh cookie or refresh failed
         }
       } catch (err) {
-        // No active session or refresh expired
+        // No active session
         clearAccessToken();
         if (isMounted) {
           setCurrentUser(null);
