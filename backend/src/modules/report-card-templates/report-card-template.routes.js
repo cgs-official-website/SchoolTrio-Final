@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import multer from 'multer';
 import * as reportCardTemplateController from './report-card-template.controller.js';
 import * as reportCardTemplateSchemas from './report-card-template.schemas.js';
 import { authenticate } from '../../middleware/auth.middleware.js';
@@ -8,10 +9,27 @@ import { validate } from '../../middleware/validate.middleware.js';
 
 const router = Router();
 
+// Memory storage for document parsing
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 } // 15MB max
+});
+
 /**
  * Report Card Template REST API Endpoints
  * Mounted under /api/v1/report-card-templates
  */
+
+// 0. Upload and parse Word (.docx) template with OpenRouter AI
+// POST /api/v1/report-card-templates/upload-docx
+router.post(
+  '/upload-docx',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('exams', 'edit'),
+  upload.single('file'),
+  reportCardTemplateController.uploadAndParseDocx
+);
 
 // 1. Get template
 // GET /api/v1/report-card-templates or GET /api/v1/report-card-templates/:templateType

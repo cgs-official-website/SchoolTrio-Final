@@ -75,3 +75,30 @@ export async function deleteTemplate(req, res, next) {
     return next(error);
   }
 }
+
+/**
+ * Uploads a Word (.docx) report card and extracts its template configuration using OpenRouter AI.
+ * POST /api/v1/report-card-templates/upload-docx
+ */
+export async function uploadAndParseDocx(req, res, next) {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'FILE_REQUIRED', message: 'Please upload a valid .docx Word document.' }
+      });
+    }
+
+    const { extractTemplateFromDocx } = await import('./docx-parser.service.js');
+    const parseResult = await extractTemplateFromDocx(req.file.buffer);
+
+    return ApiResponse.success(res, {
+      config: parseResult.config,
+      htmlPreview: parseResult.htmlPreview,
+      fileName: req.file.originalname
+    }, 'Word document analyzed and template extracted successfully');
+  } catch (error) {
+    return next(error);
+  }
+}
+

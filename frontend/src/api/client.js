@@ -132,8 +132,10 @@ export const apiClient = async (endpoint, options = {}) => {
     return refreshTokenSingleFlight();
   }
 
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+
   const defaultHeaders = {
-    'Content-Type': 'application/json',
+    ...(!isFormData ? { 'Content-Type': 'application/json' } : {}),
     ...options.headers
   };
 

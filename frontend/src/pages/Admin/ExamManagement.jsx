@@ -411,7 +411,9 @@ export default function ExamManagement() {
                                     </div>
                                   )}
                                   <div className={`flex-1 ${reportTemplate.header.showLogo ? 'text-center' : 'text-left'}`}>
-                                    <h1 className="text-3xl font-black uppercase text-slate-900 dark:text-white" style={{ color: reportTemplate.themeColor }}>{userProfile?.schoolName || 'YOUR SCHOOL NAME'}</h1>
+                                    <h1 className="text-3xl font-black uppercase text-slate-900 dark:text-white" style={{ color: reportTemplate.themeColor }}>
+                                      {reportTemplate.header.schoolName || userProfile?.schoolName || 'YOUR SCHOOL NAME'}
+                                    </h1>
                                     <div className="text-sm mt-2 text-slate-700 dark:text-slate-200">
                                       {reportTemplate.header.showAddress && <span>123 Education Street, Learning City, 10001<br/></span>}
                                       <span className="font-medium">
@@ -487,10 +489,20 @@ export default function ExamManagement() {
                                   <table className="w-full border-collapse font-sans text-sm">
                                     <thead>
                                       <tr className="text-white" style={{ backgroundColor: reportTemplate.themeColor }}>
-                                        <th className="border border-slate-400 p-2 text-left">Assessment</th>
-                                        <th className="border border-slate-400 p-2 text-center w-24">Max Marks</th>
-                                        {['marks', 'marks_and_grades'].includes(reportTemplate.grading.style) && <th className="border border-slate-400 p-2 text-center">Marks Obt.</th>}
-                                        {['grades', 'marks_and_grades'].includes(reportTemplate.grading.style) && <th className="border border-slate-400 p-2 text-center">Grade</th>}
+                                        {(reportTemplate.grading?.columns && reportTemplate.grading.columns.length > 0) ? (
+                                          reportTemplate.grading.columns.map((col, idx) => (
+                                            <th key={idx} className={`border border-slate-400 p-2 ${idx === 0 ? 'text-left' : 'text-center'}`}>
+                                              {col}
+                                            </th>
+                                          ))
+                                        ) : (
+                                          <>
+                                            <th className="border border-slate-400 p-2 text-left">Assessment</th>
+                                            <th className="border border-slate-400 p-2 text-center w-24">Max Marks</th>
+                                            {['marks', 'marks_and_grades'].includes(reportTemplate.grading.style) && <th className="border border-slate-400 p-2 text-center">Marks Obt.</th>}
+                                            {['grades', 'marks_and_grades'].includes(reportTemplate.grading.style) && <th className="border border-slate-400 p-2 text-center">Grade</th>}
+                                          </>
+                                        )}
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -498,23 +510,71 @@ export default function ExamManagement() {
                                         const markObj = row.marks?.[a.id];
                                         const mark = markObj?.obtained !== undefined ? markObj.obtained : '-';
                                         const grade = markObj?.grade || '-';
+                                        const cols = reportTemplate.grading?.columns && reportTemplate.grading.columns.length > 0
+                                          ? reportTemplate.grading.columns
+                                          : null;
 
                                         return (
                                           <tr key={a.id} className={i % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50 dark:bg-slate-800'}>
-                                            <td className="border border-slate-400 p-2 font-medium">{a.title}</td>
-                                            <td className="border border-slate-400 p-2 text-center">{a.totalMarks}</td>
-                                            {['marks', 'marks_and_grades'].includes(reportTemplate.grading.style) && <td className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">{mark}</td>}
-                                            {['grades', 'marks_and_grades'].includes(reportTemplate.grading.style) && <td className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">{grade}</td>}
+                                            {cols ? (
+                                              cols.map((colName, cIdx) => {
+                                                if (cIdx === 0) {
+                                                  return <td key={cIdx} className="border border-slate-400 p-2 font-medium">{a.title}</td>;
+                                                }
+                                                const lower = colName.toLowerCase();
+                                                if (lower.includes('max')) {
+                                                  return <td key={cIdx} className="border border-slate-400 p-2 text-center">{a.totalMarks}</td>;
+                                                }
+                                                if (lower.includes('grade')) {
+                                                  return <td key={cIdx} className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">{grade}</td>;
+                                                }
+                                                // Marks column
+                                                return (
+                                                  <td key={cIdx} className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">
+                                                    {mark}
+                                                  </td>
+                                                );
+                                              })
+                                            ) : (
+                                              <>
+                                                <td className="border border-slate-400 p-2 font-medium">{a.title}</td>
+                                                <td className="border border-slate-400 p-2 text-center">{a.totalMarks}</td>
+                                                {['marks', 'marks_and_grades'].includes(reportTemplate.grading.style) && <td className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">{mark}</td>}
+                                                {['grades', 'marks_and_grades'].includes(reportTemplate.grading.style) && <td className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">{grade}</td>}
+                                              </>
+                                            )}
                                           </tr>
                                         );
                                       })}
                                       {/* Totals */}
                                       {(reportTemplate.grading.showTotal || reportTemplate.grading.showPercentage) && (
                                         <tr className="bg-slate-100 dark:bg-slate-700 font-bold">
-                                          <td className="border border-slate-400 p-2 text-right">TOTAL</td>
-                                          <td className="border border-slate-400 p-2 text-center">{row.totalMax}</td>
-                                          {['marks', 'marks_and_grades'].includes(reportTemplate.grading.style) && <td className="border border-slate-400 p-2 text-center text-primary-700" style={{ color: reportTemplate.themeColor }}>{row.totalObtained}</td>}
-                                          {['grades', 'marks_and_grades'].includes(reportTemplate.grading.style) && <td className="border border-slate-400 p-2 text-center text-primary-700" style={{ color: reportTemplate.themeColor }}>{row.overallGrade || '-'}</td>}
+                                          {(reportTemplate.grading?.columns && reportTemplate.grading.columns.length > 0) ? (
+                                            reportTemplate.grading.columns.map((colName, cIdx) => {
+                                              if (cIdx === 0) {
+                                                return <td key={cIdx} className="border border-slate-400 p-2 text-right">TOTAL</td>;
+                                              }
+                                              const lower = colName.toLowerCase();
+                                              if (lower.includes('grade')) {
+                                                return <td key={cIdx} className="border border-slate-400 p-2 text-center text-primary-700" style={{ color: reportTemplate.themeColor }}>{row.overallGrade || '-'}</td>;
+                                              }
+                                              if (lower.includes('max')) {
+                                                return <td key={cIdx} className="border border-slate-400 p-2 text-center">{row.totalMax}</td>;
+                                              }
+                                              return (
+                                                <td key={cIdx} className="border border-slate-400 p-2 text-center text-primary-700" style={{ color: reportTemplate.themeColor }}>
+                                                  {row.totalObtained}
+                                                </td>
+                                              );
+                                            })
+                                          ) : (
+                                            <>
+                                              <td className="border border-slate-400 p-2 text-right">TOTAL</td>
+                                              <td className="border border-slate-400 p-2 text-center">{row.totalMax}</td>
+                                              {['marks', 'marks_and_grades'].includes(reportTemplate.grading.style) && <td className="border border-slate-400 p-2 text-center text-primary-700" style={{ color: reportTemplate.themeColor }}>{row.totalObtained}</td>}
+                                              {['grades', 'marks_and_grades'].includes(reportTemplate.grading.style) && <td className="border border-slate-400 p-2 text-center text-primary-700" style={{ color: reportTemplate.themeColor }}>{row.overallGrade || '-'}</td>}
+                                            </>
+                                          )}
                                         </tr>
                                       )}
                                     </tbody>

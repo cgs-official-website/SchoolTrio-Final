@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getReportCardTemplate, saveReportCardTemplate } from '../../api/reportCardTemplates';
-import { LuSave, LuPalette, LuLayoutTemplate, LuType, LuEye, LuArrowLeft, LuSettings, LuCircleCheck } from 'react-icons/lu';
+import { getReportCardTemplate, saveReportCardTemplate, uploadWordTemplate } from '../../api/reportCardTemplates';
+import { LuSave, LuPalette, LuLayoutTemplate, LuType, LuEye, LuArrowLeft, LuSettings, LuCircleCheck, LuFileUp, LuSparkles } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 
 export default function ReportTemplateBuilder({ onBack }) {
@@ -9,11 +9,17 @@ export default function ReportTemplateBuilder({ onBack }) {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [analyzingDoc, setAnalyzingDoc] = useState(false);
+  const [activePreviewTab, setActivePreviewTab] = useState('pdf'); // 'pdf' | 'original'
+  const [uploadedDocHtml, setUploadedDocHtml] = useState(null);
+  const [uploadedDocName, setUploadedDocName] = useState(null);
+  const fileInputRef = useRef(null);
 
   // Template State
   const [template, setTemplate] = useState({
     themeColor: '#c99bc1', // primary by default
     header: {
+      schoolName: '',
       showLogo: true,
       showAddress: true,
       showPhone: true,
@@ -58,12 +64,69 @@ export default function ReportTemplateBuilder({ onBack }) {
           grading: { ...prev.grading, ...(configData.grading || {}) },
           footer: { ...prev.footer, ...(configData.footer || {}) }
         }));
+        if (configData.rawHtmlTemplate) {
+          setUploadedDocHtml(configData.rawHtmlTemplate);
+          setUploadedDocName(configData.originalDocxName || 'Uploaded Document');
+          setActivePreviewTab('original');
+        }
       }
     } catch (error) {
       console.error("Error loading template", error);
       toast.error(error.message || "Failed to load existing template");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.docx')) {
+      toast.error('Please upload a Microsoft Word (.docx) document');
+      return;
+    }
+
+    setAnalyzingDoc(true);
+    const toastId = toast.loading('AI is analyzing your Word document layout...');
+
+    try {
+      const res = await uploadWordTemplate(file);
+      const extractedConfig = res?.data?.config;
+      const htmlPreview = res?.data?.htmlPreview;
+      const fileName = res?.data?.fileName || file.name;
+
+      if (extractedConfig) {
+        setTemplate(prev => ({
+          ...prev,
+          ...extractedConfig,
+          rawHtmlTemplate: htmlPreview || prev.rawHtmlTemplate || null,
+          originalDocxName: fileName || prev.originalDocxName || null,
+          header: { ...prev.header, ...(extractedConfig.header || {}) },
+          studentFields: { ...prev.studentFields, ...(extractedConfig.studentFields || {}) },
+          grading: { ...prev.grading, ...(extractedConfig.grading || {}) },
+          footer: { ...prev.footer, ...(extractedConfig.footer || {}) }
+        }));
+
+        if (htmlPreview) {
+          setUploadedDocHtml(htmlPreview);
+          setUploadedDocName(fileName);
+        }
+        // Auto-switch to Live PDF Preview so the uploaded document is immediately applied and visible
+        setActivePreviewTab('pdf');
+
+        toast.success('Word template analyzed and applied to Live PDF Preview! Click "Publish Template" to save.', { id: toastId });
+      } else {
+        toast.error('Could not extract configuration from file', { id: toastId });
+      }
+    } catch (error) {
+      console.error('Error analyzing Word template:', error);
+      toast.error(error.message || 'Failed to analyze Word document', { id: toastId });
+    } finally {
+      setAnalyzingDoc(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -104,7 +167,7 @@ export default function ReportTemplateBuilder({ onBack }) {
         </div>
         <button 
           onClick={handleSave} 
-          disabled={saving}
+          disabled={saving || analyzingDoc}
           className="px-6 py-2.5 bg-slate-900 text-white font-bold rounded-xl shadow-md hover:bg-slate-800 transition-colors flex items-center gap-2"
         >
           {saving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <LuSave size={18} />}
@@ -115,7 +178,7 @@ export default function ReportTemplateBuilder({ onBack }) {
       <div className="flex gap-6 flex-1 min-h-0">
         {/* Left: Controls Panel */}
         <div className="w-1/3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-sm overflow-y-auto custom-scrollbar flex flex-col">
-          <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 sticky top-0 z-10">
+          <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 sticky top-0 z-10 flex items-center justify-between">
             <h2 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <LuSettings className="text-primary-600" /> Configuration
             </h2>
@@ -123,6 +186,42 @@ export default function ReportTemplateBuilder({ onBack }) {
           
           <div className="p-6 space-y-8">
             
+            {/* AI Word Document Upload Card */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 border border-indigo-200/80 dark:border-indigo-800/50">
+              <div className="flex items-center gap-2 mb-2">
+                <LuSparkles className="text-indigo-600 dark:text-indigo-400" size={18} />
+                <h3 className="text-sm font-bold text-indigo-950 dark:text-indigo-200">Import Word (.docx)</h3>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300 mb-3">
+                Upload your school's report card in Word format. OpenRouter AI will automatically extract and apply the layout.
+              </p>
+              <input 
+                ref={fileInputRef}
+                type="file" 
+                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={handleFileUpload} 
+                className="hidden" 
+              />
+              <button
+                type="button"
+                disabled={analyzingDoc}
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
+              >
+                {analyzingDoc ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Analyzing with OpenRouter AI...</span>
+                  </>
+                ) : (
+                  <>
+                    <LuFileUp size={16} />
+                    <span>Upload Word Document (.docx)</span>
+                  </>
+                )}
+              </button>
+            </div>
+
             {/* Global Settings */}
             <div>
               <h3 className="text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-4 flex items-center gap-2">
@@ -145,6 +244,16 @@ export default function ReportTemplateBuilder({ onBack }) {
                 <LuLayoutTemplate /> Header Settings
               </h3>
               <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-200 block mb-1">School Name</label>
+                  <input 
+                    type="text" 
+                    value={template.header.schoolName || ''} 
+                    placeholder={userProfile?.schoolName || 'YOUR SCHOOL NAME'}
+                    onChange={e => updateHeader('schoolName', e.target.value)} 
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-primary-500" 
+                  />
+                </div>
                 <div>
                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-200 block mb-1">Report Title</label>
                   <input type="text" value={template.header.title} onChange={e => updateHeader('title', e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-primary-500" />
@@ -216,12 +325,60 @@ export default function ReportTemplateBuilder({ onBack }) {
               </div>
             </div>
 
-            {/* Footer */}
+            {/* Dynamic Columns Configuration */}
+            <div>
+              <h3 className="text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-2">
+                <LuLayoutTemplate /> Extracted Table Columns
+              </h3>
+              <p className="text-xs text-slate-500 mb-3">Columns extracted from your Word document. You can edit them live:</p>
+              <div className="space-y-2">
+                {(template.grading?.columns || ['Subject', 'Max Marks', 'Marks Obtained', 'Grade']).map((col, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-400 w-5 text-right">{idx + 1}.</span>
+                    <input
+                      type="text"
+                      value={col}
+                      onChange={(e) => {
+                        const newCols = [...(template.grading?.columns || ['Subject', 'Max Marks', 'Marks Obtained', 'Grade'])];
+                        newCols[idx] = e.target.value;
+                        setTemplate({
+                          ...template,
+                          grading: { ...template.grading, columns: newCols }
+                        });
+                      }}
+                      className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer & Signatures */}
             <div>
               <h3 className="text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <LuLayoutTemplate /> Footer & Signatures
               </h3>
-              <div className="space-y-3">
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-200 block mb-2">Signature Labels (Left to Right)</label>
+                  <div className="space-y-2">
+                    {(template.footer?.signatures || ['Class Teacher', 'Principal', 'Parent']).map((sig, sIdx) => (
+                      <div key={sIdx} className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-400 w-5 text-right">{sIdx + 1}.</span>
+                        <input
+                          type="text"
+                          value={sig}
+                          onChange={(e) => {
+                            const newSigs = [...(template.footer?.signatures || ['Class Teacher', 'Principal', 'Parent'])];
+                            newSigs[sIdx] = e.target.value;
+                            updateFooter('signatures', newSigs);
+                          }}
+                          className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs focus:ring-2 focus:ring-primary-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
                 <div>
                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-200 block mb-1">Grading Scale Text (Optional)</label>
                   <textarea 
@@ -243,13 +400,54 @@ export default function ReportTemplateBuilder({ onBack }) {
 
         {/* Right: Live Preview Pane */}
         <div className="w-2/3 bg-slate-200/50 rounded-3xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden">
-          <div className="p-4 bg-slate-800 text-white flex items-center justify-between">
-            <h2 className="font-bold flex items-center gap-2 text-sm"><LuEye /> Live PDF Preview</h2>
-            <span className="text-xs font-medium text-slate-400 dark:text-slate-300 bg-slate-700 px-2 py-1 rounded">A4 Portrait</span>
+          <div className="p-3 px-4 bg-slate-800 text-white flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActivePreviewTab('pdf')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  activePreviewTab === 'pdf'
+                    ? 'bg-primary-600 text-white shadow-sm'
+                    : 'bg-slate-700/60 text-slate-300 hover:bg-slate-700'
+                }`}
+              >
+                <LuEye size={14} /> Live PDF Preview
+              </button>
+              {uploadedDocHtml && (
+                <button
+                  type="button"
+                  onClick={() => setActivePreviewTab('original')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    activePreviewTab === 'original'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-slate-700/60 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  <LuSparkles size={14} /> Uploaded Document ({uploadedDocName || 'Word'})
+                </button>
+              )}
+            </div>
+            <span className="text-xs font-medium text-slate-400 dark:text-slate-300 bg-slate-700 px-2 py-1 rounded">
+              {activePreviewTab === 'pdf' ? 'A4 Portrait' : 'Document View'}
+            </span>
           </div>
           
           <div className="flex-1 overflow-y-auto p-8 flex justify-center custom-scrollbar">
-            {/* The A4 Paper representation */}
+            {activePreviewTab === 'original' && uploadedDocHtml ? (
+              <div className="bg-white dark:bg-slate-900 shadow-2xl w-full max-w-[794px] min-h-[1123px] p-10 font-sans text-slate-900 dark:text-white rounded-lg overflow-x-auto">
+                <div className="mb-4 pb-2 border-b border-indigo-200 dark:border-indigo-800 flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                    Uploaded Document Preview: {uploadedDocName}
+                  </span>
+                  <span className="text-xs text-slate-400">Rendered from .docx structure</span>
+                </div>
+                <div 
+                  className="prose dark:prose-invert max-w-none [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-slate-300 [&_th]:p-2 [&_td]:border [&_td]:border-slate-300 [&_td]:p-2 [&_p]:mb-2"
+                  dangerouslySetInnerHTML={{ __html: uploadedDocHtml }} 
+                />
+              </div>
+            ) : (
+            /* The A4 Paper representation */
             <div className="bg-white dark:bg-slate-900 shadow-2xl w-full max-w-[794px] min-h-[1123px] flex flex-col" style={{ fontFamily: "'Times New Roman', serif" }}>
               
               {/* Report Card Header */}
@@ -260,7 +458,9 @@ export default function ReportTemplateBuilder({ onBack }) {
                   </div>
                 )}
                 <div className={`flex-1 ${template.header.showLogo ? 'text-center' : 'text-left'}`}>
-                  <h1 className="text-3xl font-black uppercase text-slate-900 dark:text-white" style={{ color: template.themeColor }}>{userProfile?.schoolName || 'YOUR SCHOOL NAME'}</h1>
+                  <h1 className="text-3xl font-black uppercase text-slate-900 dark:text-white" style={{ color: template.themeColor }}>
+                    {template.header.schoolName || userProfile?.schoolName || 'YOUR SCHOOL NAME'}
+                  </h1>
                   
                   <div className="text-sm mt-2 text-slate-700 dark:text-slate-200">
                     {template.header.showAddress && <span>123 Education Street, Learning City, 10001<br/></span>}
@@ -335,28 +535,78 @@ export default function ReportTemplateBuilder({ onBack }) {
                 <table className="w-full border-collapse font-sans text-sm">
                   <thead>
                     <tr className="text-white" style={{ backgroundColor: template.themeColor }}>
-                      <th className="border border-slate-400 p-2 text-left w-1/2">Scholastic Area : Subjects</th>
-                      <th className="border border-slate-400 p-2 text-center w-24">Max Marks</th>
-                      {['marks', 'marks_and_grades'].includes(template.grading.style) && <th className="border border-slate-400 p-2 text-center">Marks Obt.</th>}
-                      {['grades', 'marks_and_grades'].includes(template.grading.style) && <th className="border border-slate-400 p-2 text-center">Grade</th>}
+                      {(template.grading?.columns && template.grading.columns.length > 0) ? (
+                        template.grading.columns.map((col, idx) => (
+                          <th key={idx} className={`border border-slate-400 p-2 ${idx === 0 ? 'text-left w-1/2' : 'text-center'}`}>
+                            {col}
+                          </th>
+                        ))
+                      ) : (
+                        <>
+                          <th className="border border-slate-400 p-2 text-left w-1/2">Scholastic Area : Subjects</th>
+                          <th className="border border-slate-400 p-2 text-center w-24">Max Marks</th>
+                          {['marks', 'marks_and_grades'].includes(template.grading.style) && <th className="border border-slate-400 p-2 text-center">Marks Obt.</th>}
+                          {['grades', 'marks_and_grades'].includes(template.grading.style) && <th className="border border-slate-400 p-2 text-center">Grade</th>}
+                        </>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
-                    {['English', 'Mathematics', 'Science', 'Social Studies', 'Computer Science'].map((sub, i) => (
-                      <tr key={sub} className={i % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50 dark:bg-slate-800'}>
-                        <td className="border border-slate-400 p-2 font-medium">{sub}</td>
-                        <td className="border border-slate-400 p-2 text-center">100</td>
-                        {['marks', 'marks_and_grades'].includes(template.grading.style) && <td className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">{85 + i}</td>}
-                        {['grades', 'marks_and_grades'].includes(template.grading.style) && <td className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">A2</td>}
-                      </tr>
-                    ))}
+                    {['English', 'Mathematics', 'Science', 'Social Studies', 'Computer Science'].map((sub, i) => {
+                      const cols = template.grading?.columns && template.grading.columns.length > 0
+                        ? template.grading.columns
+                        : ['Subject', 'Max Marks', 'Marks Obt.', 'Grade'];
+
+                      return (
+                        <tr key={sub} className={i % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50 dark:bg-slate-800'}>
+                          {cols.map((colName, cIdx) => {
+                            if (cIdx === 0) {
+                              return <td key={cIdx} className="border border-slate-400 p-2 font-medium">{sub}</td>;
+                            }
+                            const lower = colName.toLowerCase();
+                            if (lower.includes('max')) {
+                              return <td key={cIdx} className="border border-slate-400 p-2 text-center">100</td>;
+                            }
+                            if (lower.includes('grade')) {
+                              return <td key={cIdx} className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">{i % 2 === 0 ? 'A1' : 'A2'}</td>;
+                            }
+                            // Default to sample mark score (e.g. for PT/20, T/50, Total, etc.)
+                            const sampleScore = lower.includes('/20') ? (16 + (i % 4))
+                              : lower.includes('/50') ? (42 + (i % 6))
+                              : lower.includes('/10') ? (8 + (i % 2))
+                              : (85 + i);
+                            return (
+                              <td key={cIdx} className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">
+                                {sampleScore}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
                     {/* Totals */}
                     {(template.grading.showTotal || template.grading.showPercentage) && (
                       <tr className="bg-slate-100 dark:bg-slate-700 font-bold">
-                        <td className="border border-slate-400 p-2 text-right">TOTAL</td>
-                        <td className="border border-slate-400 p-2 text-center">500</td>
-                        {['marks', 'marks_and_grades'].includes(template.grading.style) && <td className="border border-slate-400 p-2 text-center text-primary-700" style={{ color: template.themeColor }}>435</td>}
-                        {['grades', 'marks_and_grades'].includes(template.grading.style) && <td className="border border-slate-400 p-2 text-center text-primary-700" style={{ color: template.themeColor }}>A1</td>}
+                        {(template.grading?.columns && template.grading.columns.length > 0
+                          ? template.grading.columns
+                          : ['Subject', 'Max Marks', 'Marks Obt.', 'Grade']
+                        ).map((colName, cIdx) => {
+                          if (cIdx === 0) {
+                            return <td key={cIdx} className="border border-slate-400 p-2 text-right">TOTAL</td>;
+                          }
+                          const lower = colName.toLowerCase();
+                          if (lower.includes('grade')) {
+                            return <td key={cIdx} className="border border-slate-400 p-2 text-center text-primary-700" style={{ color: template.themeColor }}>A1</td>;
+                          }
+                          if (lower.includes('max')) {
+                            return <td key={cIdx} className="border border-slate-400 p-2 text-center">500</td>;
+                          }
+                          return (
+                            <td key={cIdx} className="border border-slate-400 p-2 text-center text-primary-700" style={{ color: template.themeColor }}>
+                              {lower.includes('/20') ? '85' : lower.includes('/50') ? '215' : '435'}
+                            </td>
+                          );
+                        })}
                       </tr>
                     )}
                   </tbody>
@@ -405,9 +655,11 @@ export default function ReportTemplateBuilder({ onBack }) {
               </div>
 
             </div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
 }
+

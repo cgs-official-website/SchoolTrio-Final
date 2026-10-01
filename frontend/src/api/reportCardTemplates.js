@@ -45,10 +45,28 @@ export async function deleteReportCardTemplate(templateType = 'report_card') {
   });
 }
 
+/**
+ * Uploads a Word (.docx) document to extract report card layout and configuration using AI.
+ *
+ * @param {File} file - .docx file
+ * @returns {Promise<{ success: boolean, data: { config: Object, fileName: string }, message?: string }>}
+ */
+export async function uploadWordTemplate(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  return apiClient('/api/v1/report-card-templates/upload-docx', {
+    method: 'POST',
+    body: formData
+  });
+}
+
 export const reportCardTemplatesApi = {
   getReportCardTemplate,
   saveReportCardTemplate,
-  deleteReportCardTemplate
+  deleteReportCardTemplate,
+  uploadWordTemplate
 };
 
 export default reportCardTemplatesApi;
+

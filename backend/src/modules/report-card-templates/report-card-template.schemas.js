@@ -19,6 +19,7 @@ export const templateTypeSchema = z
 // Header configuration schema
 export const headerConfigSchema = z
   .object({
+    schoolName: z.string().trim().max(200, 'School name cannot exceed 200 characters').optional(),
     showLogo: z.boolean().optional(),
     showAddress: z.boolean().optional(),
     showPhone: z.boolean().optional(),
@@ -76,7 +77,9 @@ export const templateConfigSchema = z
     header: headerConfigSchema.optional(),
     studentFields: studentFieldsConfigSchema.optional(),
     grading: gradingConfigSchema.optional(),
-    footer: footerConfigSchema.optional()
+    footer: footerConfigSchema.optional(),
+    rawHtmlTemplate: z.string().optional().nullable(),
+    originalDocxName: z.string().optional().nullable()
   })
   .passthrough();
 
