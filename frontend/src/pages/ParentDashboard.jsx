@@ -195,15 +195,15 @@ export default function ParentDashboard() {
     }
   }, []);
 
-  // Refresh fee badge whenever activeStudentId changes
+  // Refresh fee badge whenever activeStudentId changes and enrolled children are confirmed
   useEffect(() => {
-    if (activeStudentId) {
+    if (!loadingChildren && activeStudentId && enrolledChildren.some(c => c.id === activeStudentId)) {
       fetchFeeBadge(activeStudentId);
     } else {
       setUnpaidFeeCount(0);
       setHasOverdueFees(false);
     }
-  }, [activeStudentId, fetchFeeBadge]);
+  }, [loadingChildren, activeStudentId, enrolledChildren, fetchFeeBadge]);
 
   // Listen for payment events to refresh badge immediately
   useEffect(() => {

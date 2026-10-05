@@ -211,4 +211,55 @@ describe('Integration: Students Endpoints — Phase 4C.3-A', () => {
       expect(res.body.error.code).toBe('CONFLICT');
     });
   });
+
+  describe('POST /api/v1/students/bulk-import', () => {
+    it('successfully processes bulk student import batch with 201', async () => {
+      const mockResult = {
+        success: true,
+        totalProcessed: 2,
+        createdCount: 1,
+        updatedCount: 1,
+        failedCount: 0,
+        students: [
+          { id: STUDENT_ID, admissionNumber: 'ADM-101', firstName: 'John', lastName: 'Doe', dob: '2015-05-15', schoolId: SCHOOL_ID },
+          { id: '33333333-3333-4333-8333-333333333333', admissionNumber: 'ADM-102', firstName: 'Jane', lastName: 'Smith', dob: '2016-06-16', schoolId: SCHOOL_ID }
+        ],
+        errors: []
+      };
+
+      vi.spyOn(authRepository, 'findUserById').mockResolvedValue(mockAdminUser);
+      vi.spyOn(studentService, 'bulkImportStudents').mockResolvedValue(mockResult);
+
+      const token = getAuthToken();
+      const res = await request(app)
+        .post('/api/v1/students/bulk-import')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          students: [
+            { admissionNumber: 'ADM-101', firstName: 'John', lastName: 'Doe', dob: '2015-05-15' },
+            { admissionNumber: 'ADM-102', firstName: 'Jane', lastName: 'Smith', dob: '2016-06-16' }
+          ]
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.createdCount).toBe(1);
+      expect(res.body.data.updatedCount).toBe(1);
+      expect(res.body.data.students).toHaveLength(2);
+    });
+
+    it('rejects empty students array with 400', async () => {
+      vi.spyOn(authRepository, 'findUserById').mockResolvedValue(mockAdminUser);
+
+      const token = getAuthToken();
+      const res = await request(app)
+        .post('/api/v1/students/bulk-import')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ students: [] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+  });
 });

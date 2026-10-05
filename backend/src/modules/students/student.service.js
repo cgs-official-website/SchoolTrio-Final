@@ -598,9 +598,9 @@ export async function bulkImportStudents(schoolId, studentsPayload = [], actor =
         const newLastName = data.lastName ? data.lastName.trim() : null;
         if (newLastName !== (existing.lastName || null)) updateData.lastName = newLastName;
 
-        const existingDobStr = existing.dob ? new Date(existing.dob).toISOString().split('T')[0] : null;
-        const newDobStr = data.dob ? new Date(data.dob).toISOString().split('T')[0] : null;
-        if (newDobStr !== existingDobStr) updateData.dob = data.dob ? new Date(data.dob) : null;
+        const existingDobStr = existing.dob ? String(existing.dob).trim() : null;
+        const newDobStr = data.dob ? String(data.dob).trim() : null;
+        if (newDobStr !== existingDobStr) updateData.dob = newDobStr;
 
         const newGender = data.gender ? data.gender.trim() : null;
         if (newGender !== (existing.gender || null)) updateData.gender = newGender;
