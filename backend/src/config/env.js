@@ -13,7 +13,7 @@ export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5000),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   REDIS_URL: z.string().default('redis://localhost:6379'),
-  CORS_ORIGINS: z.string().default('http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,*.vercel.app,https://school-trio-final-frontend.vercel.app'),
+  CORS_ORIGINS: z.string().default('http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,*.vercel.app,https://school-trio-final-frontend.vercel.app,*.teamzuna.in,https://schooltrio.teamzuna.in'),
 
   // Rate Limiting defaults
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),

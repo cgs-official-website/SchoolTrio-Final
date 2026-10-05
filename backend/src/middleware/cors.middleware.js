@@ -14,16 +14,18 @@ export const corsMiddleware = cors({
 
     const cleanOrigin = origin.replace(/\/+$/, '').toLowerCase();
 
-    // Dynamically allow Vercel domains (*.vercel.app)
+    // Dynamically allow Vercel domains (*.vercel.app) and Teamzuna domains (*.teamzuna.in)
     const isVercelDomain = cleanOrigin.endsWith('.vercel.app') || cleanOrigin.includes('vercel.app');
+    const isTeamzunaDomain = cleanOrigin.endsWith('.teamzuna.in') || cleanOrigin === 'https://teamzuna.in' || cleanOrigin.includes('teamzuna.in');
 
     const isAllowed =
       isVercelDomain ||
+      isTeamzunaDomain ||
       env.parsedCorsOrigins.some(allowedOrigin => {
         const cleanAllowed = allowedOrigin.toLowerCase();
         if (cleanAllowed === '*') return true;
         if (cleanAllowed.startsWith('*.')) {
-          const domainSuffix = cleanAllowed.slice(1); // e.g. .vercel.app
+          const domainSuffix = cleanAllowed.slice(1); // e.g. .vercel.app or .teamzuna.in
           return cleanOrigin.endsWith(domainSuffix);
         }
         return cleanAllowed === cleanOrigin;
