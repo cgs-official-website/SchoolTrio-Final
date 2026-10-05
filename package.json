@@ -5,7 +5,7 @@
   "description": "SchoolTrio SaaS - Full Stack Educational Platform",
   "type": "module",
   "engines": {
-    "node": "24.x"
+    "node": ">=20.0.0"
   },
   "workspaces": [
     "backend",

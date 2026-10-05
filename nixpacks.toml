@@ -2,7 +2,7 @@
 providers = ['node']
 
 [phases.setup]
-nixPkgs = ['nodejs_20']
+nixPkgs = ['nodejs_22']
 
 [phases.install]
 cmds = ['sh -c "if [ -d backend ]; then cd backend; fi && npm install"']

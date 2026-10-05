@@ -4,6 +4,9 @@
   "description": "Backend API Foundation for School Management System SaaS",
   "type": "module",
   "main": "src/server.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
