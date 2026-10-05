@@ -2,9 +2,11 @@ import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load .env
+// Load .env from root or backend
 dotenv.config({ path: path.resolve('.env') });
+dotenv.config({ path: path.resolve('backend/.env') });
 
+const recipientArg = process.argv[2];
 const smtpHost = process.env.SMTP_HOST;
 const smtpPort = Number(process.env.SMTP_PORT) || 587;
 const smtpSecure = process.env.SMTP_SECURE === 'true' || process.env.SMTP_SECURE === '1';
@@ -32,7 +34,7 @@ async function testEmail() {
     await transporter.verify();
     console.log("✅ SMTP connection and authentication verified successfully!");
 
-    const testRecipient = process.env.TEST_EMAIL_RECIPIENT || smtpUser || 'admin@schoolmanagement.com';
+    const testRecipient = recipientArg || process.env.TEST_EMAIL_RECIPIENT || smtpUser || 'admin@schoolmanagement.com';
     console.log(`✉️ Sending test message to ${testRecipient}...`);
 
     const info = await transporter.sendMail({
