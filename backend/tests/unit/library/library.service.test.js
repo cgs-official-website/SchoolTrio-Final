@@ -322,4 +322,149 @@ describe('Library Service Layer', () => {
       await expect(libraryService.returnBook(SCHOOL_ID, actor, ISSUE_ID)).rejects.toThrow(ConflictError);
     });
   });
+
+  describe('getMyIssuedBooks (Student & Parent Scoped Reads)', () => {
+    const PARENT_USER_ID = '77777777-7777-4777-8777-777777777777';
+    const STUDENT_USER_ID = '88888888-8888-4888-8888-888888888888';
+    const CHILD_A_ID = STUDENT_ID;
+    const CHILD_B_ID = '99999999-9999-4999-8999-999999999999';
+    const UNRELATED_STUDENT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+    it('student retrieves own issued books', async () => {
+      const studentActor = {
+        id: STUDENT_USER_ID,
+        role: 'STUDENT',
+        email: 'student@school.edu'
+      };
+
+      vi.spyOn(libraryRepo, 'findStudentByUserId').mockResolvedValue({
+        id: CHILD_A_ID,
+        schoolId: SCHOOL_ID,
+        firstName: 'Alice'
+      });
+      vi.spyOn(libraryRepo, 'findIssues').mockResolvedValue({
+        total: 1,
+        data: [sampleIssue]
+      });
+
+      const result = await libraryService.getMyIssuedBooks(SCHOOL_ID, {}, studentActor);
+
+      expect(libraryRepo.findStudentByUserId).toHaveBeenCalledWith(SCHOOL_ID, STUDENT_USER_ID);
+      expect(libraryRepo.findIssues).toHaveBeenCalledWith(
+        SCHOOL_ID,
+        expect.objectContaining({ studentId: CHILD_A_ID })
+      );
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].id).toBe(ISSUE_ID);
+    });
+
+    it('student is rejected with 403 Forbidden when requesting another studentId', async () => {
+      const studentActor = {
+        id: STUDENT_USER_ID,
+        role: 'STUDENT',
+        email: 'student@school.edu'
+      };
+
+      vi.spyOn(libraryRepo, 'findStudentByUserId').mockResolvedValue({
+        id: CHILD_A_ID,
+        schoolId: SCHOOL_ID
+      });
+
+      await expect(
+        libraryService.getMyIssuedBooks(SCHOOL_ID, { studentId: UNRELATED_STUDENT_ID }, studentActor)
+      ).rejects.toThrow();
+    });
+
+    it('parent retrieves issued books for authorized linked child', async () => {
+      const parentActor = {
+        id: PARENT_USER_ID,
+        role: 'PARENT',
+        email: 'parent@school.edu'
+      };
+
+      vi.spyOn(libraryRepo, 'findAuthorizedStudentIdsForParent').mockResolvedValue([
+        CHILD_A_ID,
+        CHILD_B_ID
+      ]);
+      vi.spyOn(libraryRepo, 'findIssues').mockResolvedValue({
+        total: 1,
+        data: [sampleIssue]
+      });
+
+      const result = await libraryService.getMyIssuedBooks(
+        SCHOOL_ID,
+        { studentId: CHILD_A_ID },
+        parentActor
+      );
+
+      expect(libraryRepo.findAuthorizedStudentIdsForParent).toHaveBeenCalledWith(
+        SCHOOL_ID,
+        PARENT_USER_ID
+      );
+      expect(libraryRepo.findIssues).toHaveBeenCalledWith(
+        SCHOOL_ID,
+        expect.objectContaining({ studentId: CHILD_A_ID })
+      );
+      expect(result.data).toHaveLength(1);
+    });
+
+    it('parent is rejected with 403 Forbidden when requesting unauthorized studentId', async () => {
+      const parentActor = {
+        id: PARENT_USER_ID,
+        role: 'PARENT',
+        email: 'parent@school.edu'
+      };
+
+      vi.spyOn(libraryRepo, 'findAuthorizedStudentIdsForParent').mockResolvedValue([CHILD_A_ID]);
+
+      await expect(
+        libraryService.getMyIssuedBooks(
+          SCHOOL_ID,
+          { studentId: UNRELATED_STUDENT_ID },
+          parentActor
+        )
+      ).rejects.toThrow();
+    });
+
+    it('parent with multiple children retrieves all linked children issues when studentId is omitted', async () => {
+      const parentActor = {
+        id: PARENT_USER_ID,
+        role: 'PARENT',
+        email: 'parent@school.edu'
+      };
+
+      vi.spyOn(libraryRepo, 'findAuthorizedStudentIdsForParent').mockResolvedValue([
+        CHILD_A_ID,
+        CHILD_B_ID
+      ]);
+      vi.spyOn(libraryRepo, 'findIssues').mockResolvedValue({
+        total: 2,
+        data: [sampleIssue, { ...sampleIssue, id: 'issue-2', studentId: CHILD_B_ID }]
+      });
+
+      const result = await libraryService.getMyIssuedBooks(SCHOOL_ID, {}, parentActor);
+
+      expect(libraryRepo.findIssues).toHaveBeenCalledWith(
+        SCHOOL_ID,
+        expect.objectContaining({ studentIds: [CHILD_A_ID, CHILD_B_ID] })
+      );
+      expect(result.data).toHaveLength(2);
+    });
+
+    it('returns empty list when parent has no linked children', async () => {
+      const parentActor = {
+        id: PARENT_USER_ID,
+        role: 'PARENT',
+        email: 'parent@school.edu'
+      };
+
+      vi.spyOn(libraryRepo, 'findAuthorizedStudentIdsForParent').mockResolvedValue([]);
+
+      const result = await libraryService.getMyIssuedBooks(SCHOOL_ID, {}, parentActor);
+
+      expect(result.data).toEqual([]);
+      expect(result.pagination.total).toBe(0);
+    });
+  });
 });
+

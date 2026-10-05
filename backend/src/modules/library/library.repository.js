@@ -265,6 +265,8 @@ export async function findIssues(schoolId, options = {}, tx = prisma) {
 
   if (studentId) {
     where.studentId = studentId;
+  } else if (options.studentIds && Array.isArray(options.studentIds)) {
+    where.studentId = { in: options.studentIds };
   }
 
   const currentDateStr = new Date().toISOString().split('T')[0];
@@ -439,4 +441,48 @@ export async function findStudentById(schoolId, studentId, tx = prisma) {
       admissionNumber: true
     }
   });
+}
+
+/**
+ * Finds a student entity by user ID within a tenant.
+ */
+export async function findStudentByUserId(schoolId, userId, tx = prisma) {
+  return tx.student.findFirst({
+    where: {
+      userId,
+      schoolId
+    },
+    select: {
+      id: true,
+      schoolId: true,
+      status: true,
+      firstName: true,
+      lastName: true,
+      admissionNumber: true
+    }
+  });
+}
+
+/**
+ * Finds all student IDs linked to a parent user ID within a tenant.
+ */
+export async function findAuthorizedStudentIdsForParent(schoolId, parentUserId, tx = prisma) {
+  const parentProfile = await tx.parentProfile.findFirst({
+    where: {
+      userId: parentUserId,
+      schoolId
+    },
+    include: {
+      children: {
+        where: { schoolId },
+        select: { studentId: true }
+      }
+    }
+  });
+
+  if (!parentProfile || !parentProfile.children) {
+    return [];
+  }
+
+  return parentProfile.children.map(link => link.studentId);
 }

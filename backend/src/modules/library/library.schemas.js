@@ -178,3 +178,19 @@ export const listIssuesQuerySchema = z.object({
 export const listIssuesSchema = {
   query: listIssuesQuerySchema
 };
+
+export const myIssuedBooksQuerySchema = z.object({
+  studentId: z.string().uuid({ message: 'studentId must be a valid UUID' }).optional(),
+  status: z.enum(['issued', 'returned', 'Issued', 'Returned']).transform(s => s.toLowerCase()).optional(),
+  search: z.string().trim().max(100, { message: 'Search term must not exceed 100 characters' }).optional(),
+  overdue: z
+    .enum(['true', 'false', '1', '0'])
+    .transform(val => val === 'true' || val === '1')
+    .optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20)
+});
+
+export const myIssuedBooksSchema = {
+  query: myIssuedBooksQuerySchema
+};

@@ -75,6 +75,16 @@ describe('Library Routes & RBAC Integration Tests', () => {
     school: { id: SCHOOL_ID, name: 'School A', code: 'SCH-A', status: 'active' }
   };
 
+  const studentUser = {
+    id: 'ssssssss-ssss-4sss-8sss-ssssssssssss',
+    schoolId: SCHOOL_ID,
+    email: 'student@school.com',
+    systemRole: SYSTEM_ROLES.STUDENT,
+    tokenVersion: 1,
+    isActive: true,
+    school: { id: SCHOOL_ID, name: 'School A', code: 'SCH-A', status: 'active' }
+  };
+
   const MOCK_BOOK_DTO = {
     id: BOOK_ID,
     schoolId: SCHOOL_ID,
@@ -133,6 +143,7 @@ describe('Library Routes & RBAC Integration Tests', () => {
       if (id === VP_USER_ID) return vpUser;
       if (id === TEACHER_USER_ID) return teacherUser;
       if (id === PARENT_USER_ID) return parentUser;
+      if (id === studentUser.id) return studentUser;
       return null;
     });
 
@@ -352,5 +363,65 @@ describe('Library Routes & RBAC Integration Tests', () => {
       expect(res.status).toBe(200);
       expect(res.body.data.status).toBe('returned');
     });
+
+    it('GET /my-issued-books allows authenticated parent to view issued books', async () => {
+      vi.spyOn(libraryService, 'getMyIssuedBooks').mockResolvedValue({
+        data: [MOCK_ISSUE_DTO],
+        pagination: { total: 1, page: 1, limit: 20, totalPages: 1 }
+      });
+
+      const res = await request(app)
+        .get('/api/v1/library/my-issued-books')
+        .set('Authorization', `Bearer ${getAuthToken(parentUser)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+    });
+
+    it('GET /my-issued-books allows authenticated student to view issued books', async () => {
+      vi.spyOn(libraryService, 'getMyIssuedBooks').mockResolvedValue({
+        data: [MOCK_ISSUE_DTO],
+        pagination: { total: 1, page: 1, limit: 20, totalPages: 1 }
+      });
+
+      const res = await request(app)
+        .get('/api/v1/library/my-issued-books')
+        .set('Authorization', `Bearer ${getAuthToken(studentUser)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+    });
+
+    it('denies student or parent from mutating library issues or books (403 Forbidden)', async () => {
+      const studentToken = getAuthToken(studentUser);
+      const parentToken = getAuthToken(parentUser);
+
+      // Student cannot issue books
+      const issueRes1 = await request(app)
+        .post('/api/v1/library/issues')
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({ bookId: BOOK_ID, studentId: STUDENT_ID, dueDate: '2099-06-30' });
+      expect(issueRes1.status).toBe(403);
+
+      // Parent cannot issue books
+      const issueRes2 = await request(app)
+        .post('/api/v1/library/issues')
+        .set('Authorization', `Bearer ${parentToken}`)
+        .send({ bookId: BOOK_ID, studentId: STUDENT_ID, dueDate: '2099-06-30' });
+      expect(issueRes2.status).toBe(403);
+
+      // Student cannot return books
+      const returnRes = await request(app)
+        .post(`/api/v1/library/issues/${ISSUE_ID}/return`)
+        .set('Authorization', `Bearer ${studentToken}`);
+      expect(returnRes.status).toBe(403);
+
+      // Parent cannot delete books
+      const deleteRes = await request(app)
+        .delete(`/api/v1/library/books/${BOOK_ID}`)
+        .set('Authorization', `Bearer ${parentToken}`);
+      expect(deleteRes.status).toBe(403);
+    });
   });
 });
+

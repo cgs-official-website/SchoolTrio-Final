@@ -111,6 +111,7 @@ const ParentAttendance = lazy(() => import('./pages/Parent/Attendance'));
 const ParentPerformance = lazy(() => import('./pages/Parent/Performance'));
 const ParentPTM = lazy(() => import('./pages/Parent/PTM'));
 const ParentChat = lazy(() => import('./pages/Parent/Chat'));
+const ParentLibrary = lazy(() => import('./pages/Parent/ParentLibrary'));
 
 import { Toaster } from 'react-hot-toast';
 
@@ -279,6 +280,7 @@ function App() {
               <Route index element={<StudentOverview />} />
               <Route path="children" element={<MyChildren />} />
               <Route path="attendance" element={<ParentAttendance />} />
+              <Route path="library" element={<ParentLibrary />} />
               <Route path="homework" element={<HomeworkOverview />} />
               <Route path="grades" element={<ParentGrades />} />
               <Route path="performance" element={<ParentPerformance />} />

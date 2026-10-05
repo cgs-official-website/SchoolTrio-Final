@@ -34,6 +34,12 @@ libraryRouter.post(
 // ==========================================
 
 libraryRouter.get(
+  '/my-issued-books',
+  validate(librarySchemas.myIssuedBooksSchema),
+  libraryController.getMyIssuedBooks
+);
+
+libraryRouter.get(
   '/issues',
   requirePermission('library', 'read'),
   validate(librarySchemas.listIssuesSchema),

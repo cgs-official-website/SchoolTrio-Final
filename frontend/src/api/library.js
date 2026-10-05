@@ -168,6 +168,22 @@ export async function returnBook(id) {
   });
 }
 
+const ALLOWED_MY_ISSUES_QUERY_KEYS = ['status', 'studentId', 'search', 'overdue', 'page', 'limit'];
+
+/**
+ * Lists issued books for the currently authenticated student or parent (or selected child).
+ * Calls GET /api/v1/library/my-issued-books.
+ *
+ * @param {Object} [params={}] - Query options (status, studentId, search, overdue, page, limit)
+ * @returns {Promise<{ status: string, data: Array<Object>, pagination: Object, message?: string }>}
+ */
+export async function getMyIssuedBooks(params = {}) {
+  const qs = buildQueryString(params, ALLOWED_MY_ISSUES_QUERY_KEYS);
+  return apiClient(`/api/v1/library/my-issued-books${qs}`, {
+    method: 'GET'
+  });
+}
+
 export const libraryApi = {
   listCategories,
   createCategory,
@@ -178,7 +194,9 @@ export const libraryApi = {
   deleteBook,
   listIssues,
   issueBook,
-  returnBook
+  returnBook,
+  getMyIssuedBooks
 };
 
 export default libraryApi;
+

@@ -191,3 +191,21 @@ export async function returnBook(req, res, next) {
     next(err);
   }
 }
+
+export async function getMyIssuedBooks(req, res, next) {
+  try {
+    const schoolId = req.tenant?.schoolId;
+    const actor = req.auth || req.user;
+    const result = await libraryService.getMyIssuedBooks(schoolId, req.query, actor);
+
+    return ApiResponse.paginated(
+      res,
+      result.data,
+      result.pagination,
+      'Issued books retrieved successfully',
+      200
+    );
+  } catch (err) {
+    next(err);
+  }
+}

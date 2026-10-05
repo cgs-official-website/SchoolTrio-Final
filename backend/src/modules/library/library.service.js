@@ -1,10 +1,12 @@
 import { prisma } from '../../database/prisma.client.js';
 import * as libraryRepo from './library.repository.js';
 import { createAuditLog } from '../audit/audit.repository.js';
+import { SYSTEM_ROLES } from '../../config/constants.js';
 import {
   ValidationError,
   NotFoundError,
   ConflictError,
+  ForbiddenError,
   TenantAccessError
 } from '../../utils/app-error.js';
 
@@ -490,4 +492,95 @@ export async function returnBook(schoolId, actor, issueId) {
   });
 
   return formatIssueDto(issue);
+}
+
+/**
+ * Retrieves issued books for the currently authenticated student or parent (or selected linked child).
+ * Strictly validates tenant isolation and parent-child authorization server-side.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Object} query - Filter & pagination query
+ * @param {Object} actor - Authenticated user context
+ * @returns {Promise<{ data: Array<Object>, pagination: Object }>}
+ */
+export async function getMyIssuedBooks(schoolId, query = {}, actor = {}) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required to retrieve issued books');
+  }
+
+  const userId = actor?.id || actor?.userId;
+  const role = (actor?.systemRole || actor?.role || '').toUpperCase();
+
+  let targetStudentIds = [];
+
+  if (role === SYSTEM_ROLES.PARENT || role === 'PARENT') {
+    const authorizedStudentIds = await libraryRepo.findAuthorizedStudentIdsForParent(schoolId, userId);
+    if (!authorizedStudentIds || authorizedStudentIds.length === 0) {
+      return {
+        data: [],
+        pagination: {
+          total: 0,
+          page: query.page || 1,
+          limit: query.limit || 20,
+          totalPages: 0
+        }
+      };
+    }
+
+    if (query.studentId) {
+      if (!authorizedStudentIds.includes(query.studentId)) {
+        throw new ForbiddenError('You are not authorized to view library records for this student');
+      }
+      targetStudentIds = [query.studentId];
+    } else {
+      targetStudentIds = authorizedStudentIds;
+    }
+  } else if (role === SYSTEM_ROLES.STUDENT || role === 'STUDENT') {
+    const student = await libraryRepo.findStudentByUserId(schoolId, userId);
+    if (!student) {
+      const studentDirect = await libraryRepo.findStudentById(schoolId, userId);
+      if (!studentDirect) {
+        return {
+          data: [],
+          pagination: {
+            total: 0,
+            page: query.page || 1,
+            limit: query.limit || 20,
+            totalPages: 0
+          }
+        };
+      }
+      targetStudentIds = [studentDirect.id];
+    } else {
+      targetStudentIds = [student.id];
+    }
+
+    if (query.studentId && !targetStudentIds.includes(query.studentId)) {
+      throw new ForbiddenError('You cannot view other students library records');
+    }
+  } else {
+    // Administrative / Staff roles
+    if (query.studentId) {
+      targetStudentIds = [query.studentId];
+    }
+  }
+
+  const findOptions = {
+    ...query,
+    studentIds: targetStudentIds.length > 0 ? targetStudentIds : undefined,
+    studentId: targetStudentIds.length === 1 ? targetStudentIds[0] : undefined
+  };
+
+  const result = await libraryRepo.findIssues(schoolId, findOptions);
+  const totalPages = Math.ceil(result.total / (query.limit || 20)) || 1;
+
+  return {
+    data: result.data.map(formatIssueDto),
+    pagination: {
+      total: result.total,
+      page: query.page || 1,
+      limit: query.limit || 20,
+      totalPages
+    }
+  };
 }

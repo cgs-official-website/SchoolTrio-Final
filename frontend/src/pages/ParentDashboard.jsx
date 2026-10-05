@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { getMyChildren, linkChild } from '../api/parents';
 import { getStudentInvoices } from '../api/invoices';
 import TopNavbar from '../components/TopNavbar';
-import { LuCircleUser as UserCircle, LuLogOut as LogOut, LuSquareCheck as CheckSquare, LuGraduationCap as GraduationCap, LuCreditCard as CreditCard, LuLink as LinkIcon, LuBell as Bell, LuX as X, LuFileText as FileText, LuCalendar as Calendar, LuCoffee as Coffee, LuTrendingUp as TrendingUp, LuCalendarClock as CalendarClock, LuMessageSquare as MessageSquare, LuUsers as Users, LuChevronDown as ChevronDown, LuPlus as Plus } from 'react-icons/lu';
+import { LuCircleUser as UserCircle, LuLogOut as LogOut, LuSquareCheck as CheckSquare, LuGraduationCap as GraduationCap, LuCreditCard as CreditCard, LuLink as LinkIcon, LuBell as Bell, LuX as X, LuFileText as FileText, LuCalendar as Calendar, LuCoffee as Coffee, LuTrendingUp as TrendingUp, LuCalendarClock as CalendarClock, LuMessageSquare as MessageSquare, LuUsers as Users, LuChevronDown as ChevronDown, LuPlus as Plus, LuBookOpen as BookOpen } from 'react-icons/lu';
 import useSchoolBranding from '../hooks/useSchoolBranding';
 import { useNotifications } from '../context/NotificationContext';
 
@@ -36,6 +36,7 @@ const NAV_ITEMS = [
   { name: 'Noticeboard', path: '/parent/notices', icon: Bell, moduleKey: 'noticeboard' },
   { name: 'Calendar', path: '/parent/calendar', icon: Calendar },
   { name: 'Attendance', path: '/parent/attendance', icon: CheckSquare },
+  { name: 'Library', path: '/parent/library', icon: BookOpen, moduleKey: 'library' },
   { name: 'Canteen', path: '/parent/canteen', icon: Coffee },
   { name: 'Homework', path: '/parent/homework', icon: FileText, moduleKey: 'homework' },
   { name: 'Report Card', path: '/parent/grades', icon: GraduationCap },
