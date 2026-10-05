@@ -43,6 +43,7 @@ import studentHealthRoutes from '../modules/student-health/student-health.routes
 import { publicRegistrationRouter } from '../modules/registration/registration.routes.js';
 import emailTemplateRoutes from '../modules/email-templates/email-templates.routes.js';
 import { platformBrandingRouter } from '../modules/platform-branding/platform-branding.routes.js';
+import { emailsRouter } from '../modules/emails/emails.routes.js';
 
 const router = Router();
 
@@ -320,6 +321,12 @@ router.use('/email-templates', emailTemplateRoutes);
  * Global Platform Branding Endpoints mounted under /api/v1/platform/branding
  */
 router.use('/platform/branding', platformBrandingRouter);
+
+/**
+ * Transactional Email Dispatch Endpoints mounted under /api/v1/emails
+ */
+router.use('/emails', emailsRouter);
+
 
 /**
  * API v1 Foundation Root Status Endpoint

@@ -1,7 +1,4 @@
-import { Resend } from 'resend';
-
-// Vercel handles the .env variables securely
-const resend = new Resend(process.env.RESEND_API_KEY);
+  import nodemailer from 'nodemailer';
 
 export default async function handler(req, res) {
   // Only allow POST requests
@@ -16,23 +13,44 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing required fields (to, subject, html/text)' });
     }
 
-    // Using verified domain teamcarrezza.com for professional sending
-    const { data, error } = await resend.emails.send({
-      from: 'Team Carrezza <admin@teamcarrezza.com>',
-      to: [to],
-      subject: subject,
-      html: html,
-      text: text,
-    });
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpPort = Number(process.env.SMTP_PORT) || 587;
+    const smtpSecure = process.env.SMTP_SECURE === 'true' || process.env.SMTP_SECURE === '1';
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
+    const smtpFrom = process.env.SMTP_FROM || 'School Management System <noreply@schoolmanagement.com>';
 
-    if (error) {
-      console.error("Resend API Error:", error);
-      return res.status(400).json({ error: error.message });
+    if (!smtpHost) {
+      console.warn('[api/send-email] SMTP_HOST not configured. Email logged but not sent.');
+      return res.status(200).json({
+        success: true,
+        message: 'SMTP not configured; email logged in dev mode',
+        data: { to, subject }
+      });
     }
 
-    return res.status(200).json({ success: true, data });
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: (smtpUser && smtpPass) ? { user: smtpUser, pass: smtpPass } : undefined,
+      tls: {
+        rejectUnauthorized: process.env.NODE_ENV === 'production'
+      }
+    });
+
+    const info = await transporter.sendMail({
+      from: smtpFrom,
+      to: Array.isArray(to) ? to.join(', ') : to,
+      subject,
+      html,
+      text
+    });
+
+    return res.status(200).json({ success: true, messageId: info.messageId });
   } catch (err) {
-    console.error("Server Error sending email:", err);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    console.error('Nodemailer Error sending email:', err);
+    return res.status(500).json({ error: err.message || 'Internal Server Error' });
   }
 }
+

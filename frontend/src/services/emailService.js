@@ -118,7 +118,7 @@ export const sendEmail = async ({ to, templateType, data }) => {
     }
   }
 
-  // First try serverless function endpoint /api/send-email
+  // Primary: Dispatch to /api/send-email (handles Nodemailer SMTP)
   try {
     const response = await fetch('/api/send-email', {
       method: 'POST',
@@ -126,42 +126,28 @@ export const sendEmail = async ({ to, templateType, data }) => {
       body: JSON.stringify({ to, subject, html }),
     });
 
-    if (response.ok) {
-      const contentType = response.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
+    if (response && response.ok) {
+      if (typeof response.json === 'function') {
         return await response.json();
       }
+      return { success: true };
     }
   } catch (error) {
-    console.warn("Serverless API endpoint unavailable, attempting direct Resend API call...", error);
-  }
-
-  // Direct Resend API invocation (ensures Resend sends email in both local dev & production)
-  const resendApiKey = import.meta.env.VITE_RESEND_API_KEY;
-  if (resendApiKey) {
+    console.warn('[emailService] /api/send-email failed, attempting /api/v1/emails/send fallback...', error);
     try {
-      const directRes = await fetch('https://api.resend.com/emails', {
+      const backendRes = await fetch('/api/v1/emails/send', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${resendApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: 'Team Carrezza <admin@teamcarrezza.com>',
-          to: [to],
-          subject: subject,
-          html: html,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to, subject, html }),
       });
-
-      const data = await directRes.json();
-      if (!directRes.ok) {
-        throw new Error(data.message || 'Resend API returned error');
+      if (backendRes && backendRes.ok && typeof backendRes.json === 'function') {
+        return await backendRes.json();
       }
-      return data;
-    } catch (directErr) {
-      console.error("Direct Resend API error:", directErr);
-      throw directErr;
+    } catch (backendErr) {
+      console.error('[emailService] Failed to dispatch email:', backendErr);
+      throw backendErr;
     }
   }
 };
+
+

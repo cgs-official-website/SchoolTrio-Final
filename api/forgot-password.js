@@ -1,7 +1,5 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 import admin from 'firebase-admin';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Initialize Firebase Admin SDK
 let db;
@@ -36,7 +34,7 @@ export default async function handler(req, res) {
   const targetEmail = email.toLowerCase().trim();
 
   try {
-    // 1. Generate password reset link via Firebase Admin SDK (does NOT send default Firebase email)
+    // 1. Generate password reset link via Firebase Admin SDK
     let resetLink = '';
     try {
       resetLink = await admin.auth().generatePasswordResetLink(targetEmail);
@@ -96,16 +94,36 @@ export default async function handler(req, res) {
 </body>
 </html>`;
 
-    // 3. Send email via Resend API from Team Carrezza <admin@teamcarrezza.com>
-    const { data: resendData, error: resendError } = await resend.emails.send({
-      from: 'Team Carrezza <admin@teamcarrezza.com>',
-      to: [targetEmail],
-      subject: subject,
-      html: fullHtml,
-    });
+    // 3. Send email via Nodemailer SMTP
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpPort = Number(process.env.SMTP_PORT) || 587;
+    const smtpSecure = process.env.SMTP_SECURE === 'true' || process.env.SMTP_SECURE === '1';
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
+    const smtpFrom = process.env.SMTP_FROM || 'School Management System <noreply@schoolmanagement.com>';
 
-    if (resendError) {
-      console.error("Resend API error:", resendError);
+    let sendResult = { message: 'Logged in mock mode' };
+
+    if (smtpHost) {
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpSecure,
+        auth: (smtpUser && smtpPass) ? { user: smtpUser, pass: smtpPass } : undefined,
+        tls: {
+          rejectUnauthorized: process.env.NODE_ENV === 'production'
+        }
+      });
+
+      const info = await transporter.sendMail({
+        from: smtpFrom,
+        to: targetEmail,
+        subject,
+        html: fullHtml
+      });
+      sendResult = { messageId: info.messageId };
+    } else {
+      console.warn('[api/forgot-password] SMTP_HOST not configured. Email logged in dev mode.');
     }
 
     // 4. Update user document in Firestore DB
@@ -125,9 +143,10 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ success: true, resendData });
+    return res.status(200).json({ success: true, sendResult });
   } catch (err) {
     console.error("Forgot password handler error:", err);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 }
+

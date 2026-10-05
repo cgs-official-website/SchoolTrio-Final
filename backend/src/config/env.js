@@ -35,8 +35,21 @@ export const envSchema = z.object({
   // Firebase Authentication Bridge (Phase 4B.6)
   FIREBASE_PROJECT_ID: z.string().default('school-management-system-6a2c4'),
   FIREBASE_SERVICE_ACCOUNT_KEY: z.string().optional(),
-  FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional()
+  FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional(),
+
+  // SMTP Email Delivery Configuration (Nodemailer)
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: z
+    .enum(['true', 'false', '1', '0'])
+    .transform(v => v === 'true' || v === '1')
+    .optional()
+    .default('false'),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().default('School Management System <noreply@schoolmanagement.com>')
 });
+
 
 
 /**

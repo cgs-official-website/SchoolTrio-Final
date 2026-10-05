@@ -26,8 +26,8 @@ describe('Email Delivery Service Abstraction (email.service.js)', () => {
       expect(emails).toHaveLength(1);
       expect(emails[0].to).toBe('teacher@school.edu');
       expect(emails[0].subject).toContain('Password Reset Request');
-      expect(emails[0].schoolName).toBe('Greenwood High');
-      expect(emails[0].resetUrl).toContain('a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890');
+      expect(emails[0].subject).toContain('Greenwood High');
+      expect(emails[0].html).toContain('a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890');
     });
 
     it('handles default school name if omitted', async () => {
@@ -37,7 +37,7 @@ describe('Email Delivery Service Abstraction (email.service.js)', () => {
       });
 
       const emails = getSentEmails();
-      expect(emails[0].schoolName).toBe('School Management System');
+      expect(emails[0].subject).toContain('School Management System');
     });
   });
 
@@ -56,10 +56,9 @@ describe('Email Delivery Service Abstraction (email.service.js)', () => {
       expect(emails).toHaveLength(1);
       expect(emails[0].to).toBe('newparent@school.edu');
       expect(emails[0].subject).toContain('Account Setup Invitation');
-      expect(emails[0].schoolName).toBe('Spring Mount Public School');
-      expect(emails[0].setupUrl).toContain('e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4');
+      expect(emails[0].subject).toContain('Spring Mount Public School');
+      expect(emails[0].html).toContain('e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4');
     });
-
   });
 
   describe('queue management', () => {
