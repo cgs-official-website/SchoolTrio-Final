@@ -50,7 +50,8 @@ export const gradingConfigSchema = z
       .optional(),
     showTotal: z.boolean().optional(),
     showPercentage: z.boolean().optional(),
-    showRank: z.boolean().optional()
+    showRank: z.boolean().optional(),
+    columns: z.array(z.string().trim().max(100)).max(20).optional()
   })
   .passthrough();
 
