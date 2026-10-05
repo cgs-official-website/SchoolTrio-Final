@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getStudentReportCards } from '../../api/reportCards';
 import { adaptReportCards } from '../../utils/reportCardAdapter';
 import { LuFileSpreadsheet as FileIcon, LuPrinter as Printer, LuArrowLeft as ArrowLeft, LuCalendar as Calendar, LuAward as Award } from 'react-icons/lu';
 import toast from 'react-hot-toast';
-import { useLocation } from 'react-router-dom';
 
 export default function ParentGrades() {
   const { userProfile } = useAuth();
-  const studentId = userProfile?.linkedStudentId;
+  const outletContext = useOutletContext();
+  const activeStudentIdFromContext = outletContext?.activeStudentId || outletContext?.activeChild?.id;
+  const studentId = activeStudentIdFromContext || userProfile?.linkedStudentId;
   const location = useLocation();
 
   const [loading, setLoading] = useState(true);

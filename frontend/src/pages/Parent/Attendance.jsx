@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getStudentAttendance } from '../../api/attendance';
 import { LuCalendar as Calendar, LuCircleCheck as CheckCircle2, LuCircleX as XCircle, LuCircleAlert as AlertCircle } from 'react-icons/lu';
@@ -6,7 +7,9 @@ import toast from 'react-hot-toast';
 
 export default function ParentAttendance() {
   const { userProfile } = useAuth();
-  const studentId = userProfile?.linkedStudentId;
+  const outletContext = useOutletContext();
+  const activeStudentIdFromContext = outletContext?.activeStudentId || outletContext?.activeChild?.id;
+  const studentId = activeStudentIdFromContext || userProfile?.linkedStudentId;
 
   const [attendanceRecords, setAttendanceRecords] = useState([]);
   const [loading, setLoading] = useState(true);

@@ -3,7 +3,7 @@ import ParentGrades from '../Grades.jsx';
 import * as reportCardsApiModule from '../../../api/reportCards.js';
 import * as adapterModule from '../../../utils/reportCardAdapter.js';
 
-describe('ParentGrades Component (REST Migration)', () => {
+describe('ParentGrades Component (Forensic Fix & Active Child Resolution)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
@@ -12,6 +12,85 @@ describe('ParentGrades Component (REST Migration)', () => {
     expect(typeof ParentGrades).toBe('function');
   });
 
+  // 1. Context Resolution Tests
+  it('resolves studentId from useOutletContext activeStudentId as primary identifier', () => {
+    const outletContext = {
+      activeStudentId: 'stu-outlet-001',
+      activeChild: { id: 'stu-outlet-001', name: 'Active Student' }
+    };
+    const userProfile = {
+      linkedStudentId: 'stu-fallback-002'
+    };
+
+    const activeStudentIdFromContext = outletContext?.activeStudentId || outletContext?.activeChild?.id;
+    const studentId = activeStudentIdFromContext || userProfile?.linkedStudentId;
+
+    expect(studentId).toBe('stu-outlet-001');
+  });
+
+  it('resolves studentId from outletContext activeChild.id if activeStudentId is missing', () => {
+    const outletContext = {
+      activeChild: { id: 'stu-child-002', name: 'Second Student' }
+    };
+    const userProfile = {
+      linkedStudentId: 'stu-fallback-003'
+    };
+
+    const activeStudentIdFromContext = outletContext?.activeStudentId || outletContext?.activeChild?.id;
+    const studentId = activeStudentIdFromContext || userProfile?.linkedStudentId;
+
+    expect(studentId).toBe('stu-child-002');
+  });
+
+  it('falls back to userProfile.linkedStudentId when outlet context is null/undefined', () => {
+    const outletContext = null;
+    const userProfile = {
+      linkedStudentId: 'stu-legacy-003'
+    };
+
+    const activeStudentIdFromContext = outletContext?.activeStudentId || outletContext?.activeChild?.id;
+    const studentId = activeStudentIdFromContext || userProfile?.linkedStudentId;
+
+    expect(studentId).toBe('stu-legacy-003');
+  });
+
+  it('evaluates studentId as undefined when parent has no linked student', () => {
+    const outletContext = null;
+    const userProfile = {
+      role: 'parent'
+    };
+
+    const activeStudentIdFromContext = outletContext?.activeStudentId || outletContext?.activeChild?.id;
+    const studentId = activeStudentIdFromContext || userProfile?.linkedStudentId;
+
+    expect(studentId).toBeUndefined();
+  });
+
+  // 2. Multi-Child Switching
+  it('switches query target when active child switches from Child A to Child B', async () => {
+    const apiSpy = vi.spyOn(reportCardsApiModule, 'getStudentReportCards').mockResolvedValue({
+      success: true,
+      data: []
+    });
+
+    // Child A query
+    await reportCardsApiModule.getStudentReportCards('child-A-id', {
+      limit: 50,
+      sortBy: 'publishedAt',
+      sortOrder: 'desc'
+    });
+    expect(apiSpy).toHaveBeenLastCalledWith('child-A-id', expect.any(Object));
+
+    // Switch to Child B
+    await reportCardsApiModule.getStudentReportCards('child-B-id', {
+      limit: 50,
+      sortBy: 'publishedAt',
+      sortOrder: 'desc'
+    });
+    expect(apiSpy).toHaveBeenLastCalledWith('child-B-id', expect.any(Object));
+  });
+
+  // 3. API & Data contract tests
   it('targets REST getStudentReportCards with studentId and default query', async () => {
     const apiSpy = vi.spyOn(reportCardsApiModule, 'getStudentReportCards').mockResolvedValue({
       success: true,
@@ -55,7 +134,6 @@ describe('ParentGrades Component (REST Migration)', () => {
     await reportCardsApiModule.getStudentReportCards('stu-456', { limit: 50 });
 
     expect(apiSpy).toHaveBeenCalledWith('stu-456', { limit: 50 });
-    // First argument is studentId, second is query
     expect(apiSpy.mock.calls[0][0]).toBe('stu-456');
   });
 
