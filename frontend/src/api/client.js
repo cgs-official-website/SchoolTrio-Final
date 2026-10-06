@@ -90,8 +90,8 @@ export const refreshTokenSingleFlight = async () => {
           );
         }
 
-        const contentType = res.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) {
+        const contentType = res.headers?.get ? (res.headers.get('content-type') || '') : '';
+        if (contentType && !contentType.includes('application/json')) {
           throw new ApiError('Invalid response from auth server', res.status, 'INVALID_REFRESH_RESPONSE');
         }
 
@@ -226,8 +226,8 @@ export const apiClient = async (endpoint, options = {}) => {
     return null;
   }
 
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
+  const contentType = response.headers?.get ? (response.headers.get('content-type') || '') : '';
+  if (contentType && !contentType.includes('application/json')) {
     const text = await response.text();
     try {
       return JSON.parse(text);
