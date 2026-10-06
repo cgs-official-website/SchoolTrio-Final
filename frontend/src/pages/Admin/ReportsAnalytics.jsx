@@ -32,16 +32,25 @@ export default function ReportsAnalytics() {
     const currentMonthIndex = new Date().getMonth();
     const currentYear = new Date().getFullYear();
 
-    // Prepare 7-day attendance date metadata
+    // Prepare 7-day attendance date metadata using local calendar dates
     const dayDates = [];
     const dayRequests = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const iso = d.toISOString().split('T')[0];
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const iso = `${year}-${month}-${day}`;
       const dayName = days[d.getDay()];
-      dayDates.push({ iso, dayName });
-      dayRequests.push(attendanceApi.getAttendanceDashboardStats({ date: iso }));
+      const formattedDate = `${day}/${month}`;
+      dayDates.push({ iso, dayName, formattedDate });
+      dayRequests.push(
+        attendanceApi.getAttendanceDashboardStats({ date: iso }).catch((err) => {
+          console.warn(`[ReportsAnalytics] Failed to fetch attendance stats for ${iso}:`, err);
+          return null;
+        })
+      );
     }
 
     try {
@@ -53,11 +62,11 @@ export default function ReportsAnalytics() {
         todayAttendanceRes,
         ...dailyStatsResults
       ] = await Promise.all([
-        invoicesApi.getInvoiceStats(),
-        invoicesApi.getMonthlyRevenueReports({ months: 7 }),
-        studentsApi.listStudents({ limit: 1 }),
-        staffApi.listStaff({ limit: 1 }),
-        attendanceApi.getAttendanceDashboardStats(),
+        invoicesApi.getInvoiceStats().catch(() => null),
+        invoicesApi.getMonthlyRevenueReports({ months: 7 }).catch(() => null),
+        studentsApi.listStudents({ limit: 1 }).catch(() => null),
+        staffApi.listStaff({ limit: 1 }).catch(() => null),
+        attendanceApi.getAttendanceDashboardStats().catch(() => null),
         ...dayRequests
       ]);
 
@@ -107,10 +116,27 @@ export default function ReportsAnalytics() {
       // 3. Attendance Trends (Last 7 Days)
       const attChart = dayDates.map((d, index) => {
         const res = dailyStatsResults[index];
-        const percentage = res?.data?.schoolWide?.percentage;
-        const total = res?.data?.schoolWide?.total || 0;
-        const val = total > 0 && percentage !== undefined ? Math.round(Number(percentage)) : 0;
-        return { day: d.dayName, attendance: val };
+        const sw = res?.data?.schoolWide || res?.schoolWide || {};
+        const total = Number(sw.total || 0);
+        const present = Number(sw.present || 0);
+        const absent = Number(sw.absent || 0);
+        const late = Number(sw.late || 0);
+        const percentage = sw.percentage !== undefined && total > 0
+          ? Math.round(Number(sw.percentage))
+          : total > 0
+            ? Math.round(((present + late) / total) * 100)
+            : 0;
+
+        return {
+          date: d.iso,
+          formattedDate: d.formattedDate,
+          day: d.dayName,
+          attendance: percentage,
+          present,
+          absent,
+          late,
+          total
+        };
       });
       setAttendanceData(attChart);
 
@@ -151,7 +177,15 @@ export default function ReportsAnalytics() {
       }));
 
       const exportRevenue = revenueData.map(r => ({ Month: r.month, Revenue: `₹${r.revenue}` }));
-      const exportAttendance = attendanceData.map(a => ({ Day: a.day, Attendance: `${a.attendance}%` }));
+      const exportAttendance = attendanceData.map(a => ({
+        Date: a.date,
+        Day: a.day,
+        Attendance: `${a.attendance}%`,
+        Present: a.present,
+        Absent: a.absent,
+        Late: a.late,
+        Total: a.total
+      }));
 
       const wb = XLSX.utils.book_new();
       
@@ -229,18 +263,59 @@ export default function ReportsAnalytics() {
 
         {/* Attendance Chart */}
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6">Attendance Trends (Last 7 Days)</h3>
-          <div className="flex-1 flex items-end justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2">
-            {attendanceData.map((data, i) => (
-              <div key={i} className="w-full bg-indigo-100 rounded-t-md relative group hover:bg-indigo-200 transition-colors" style={{ height: `${data.attendance}%` }}>
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                  {data.attendance}%
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Attendance Trends (Last 7 Days)</h3>
+              <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 mt-0.5">Daily attendance percentage and student breakdown</p>
+            </div>
+            {attendanceData.some(d => d.total > 0) && (
+              <div className="flex items-center gap-3 text-xs font-bold text-slate-500 dark:text-slate-400">
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span> Present %</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 flex items-end justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2 min-h-[160px]">
+            {attendanceData.map((data, i) => {
+              const hasRecords = data.total > 0;
+              const barHeight = hasRecords ? Math.max(data.attendance, 6) : 4;
+              const barBg = hasRecords
+                ? 'bg-indigo-500/80 hover:bg-indigo-600 dark:bg-indigo-500 dark:hover:bg-indigo-400'
+                : 'bg-slate-100 dark:bg-slate-800';
+
+              return (
+                <div
+                  key={i}
+                  className={`w-full ${barBg} rounded-t-lg relative group transition-all duration-300 cursor-pointer`}
+                  style={{ height: `${barHeight}%` }}
+                >
+                  {/* Tooltip */}
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900 text-white text-xs px-3 py-2 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xl z-20 border border-slate-700">
+                    <p className="font-bold border-b border-slate-700 pb-1 mb-1">{data.formattedDate} ({data.day})</p>
+                    {hasRecords ? (
+                      <div className="space-y-0.5 text-[11px]">
+                        <p className="text-indigo-300 font-bold">Attendance: {data.attendance}%</p>
+                        <p className="text-emerald-400 font-medium">Present: {data.present}</p>
+                        <p className="text-rose-400 font-medium">Absent: {data.absent}</p>
+                        {data.late > 0 && <p className="text-amber-400 font-medium">Late: {data.late}</p>}
+                        <p className="text-slate-400">Total: {data.total}</p>
+                      </div>
+                    ) : (
+                      <p className="text-slate-400 text-[11px] italic">No attendance recorded</p>
+                    )}
+                  </div>
                 </div>
+              );
+            })}
+          </div>
+
+          <div className="flex justify-between text-xs text-slate-400 dark:text-slate-300 mt-3 font-semibold px-1">
+            {attendanceData.map((data, i) => (
+              <div key={i} className="flex flex-col items-center">
+                <span className="text-slate-700 dark:text-slate-200 font-bold">{data.day}</span>
+                <span className="text-[10px] text-slate-400">{data.formattedDate}</span>
               </div>
             ))}
-          </div>
-          <div className="flex justify-between text-xs text-slate-400 dark:text-slate-300 mt-2 font-medium px-2">
-            {attendanceData.map((data, i) => <span key={i}>{data.day}</span>)}
           </div>
         </div>
       </div>

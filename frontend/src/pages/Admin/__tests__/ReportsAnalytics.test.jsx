@@ -180,7 +180,42 @@ describe('Admin ReportsAnalytics Component (REST Cutover & Verification)', () =>
   });
 
   // ============================================================
-  // 4. ERROR HANDLING
+  // 4. ATTENDANCE TRENDS BREAKDOWN & 7-DAY TIMELINE
+  // ============================================================
+
+  it('aggregates daily attendance statistics with Present, Absent, Late, Total, and Percentage metrics for 7 days', async () => {
+    const dates = ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07'];
+    const mockDailyResponses = {
+      '2026-10-01': { success: true, data: { schoolWide: { total: 50, present: 45, absent: 3, late: 2, percentage: 94.0 } } },
+      '2026-10-02': { success: true, data: { schoolWide: { total: 50, present: 48, absent: 1, late: 1, percentage: 98.0 } } },
+      '2026-10-03': { success: true, data: { schoolWide: { total: 50, present: 40, absent: 8, late: 2, percentage: 84.0 } } },
+      '2026-10-04': { success: true, data: { schoolWide: { total: 0, present: 0, absent: 0, late: 0, percentage: 100 } } },
+      '2026-10-05': { success: true, data: { schoolWide: { total: 50, present: 47, absent: 2, late: 1, percentage: 96.0 } } },
+      '2026-10-06': { success: true, data: { schoolWide: { total: 50, present: 46, absent: 3, late: 1, percentage: 94.0 } } },
+      '2026-10-07': { success: true, data: { schoolWide: { total: 50, present: 49, absent: 1, late: 0, percentage: 98.0 } } }
+    };
+
+    const attSpy = vi.spyOn(attendanceApiModule, 'getAttendanceDashboardStats').mockImplementation(async (query = {}) => {
+      if (query.date && mockDailyResponses[query.date]) {
+        return mockDailyResponses[query.date];
+      }
+      return { success: true, data: MOCK_ATTENDANCE_STATS };
+    });
+
+    const results = await Promise.all(
+      dates.map(date => attendanceApiModule.getAttendanceDashboardStats({ date }))
+    );
+
+    expect(results).toHaveLength(7);
+    expect(results[0].data.schoolWide.present).toBe(45);
+    expect(results[0].data.schoolWide.absent).toBe(3);
+    expect(results[0].data.schoolWide.late).toBe(2);
+    expect(results[3].data.schoolWide.total).toBe(0);
+    expect(attSpy).toHaveBeenCalledTimes(7);
+  });
+
+  // ============================================================
+  // 5. ERROR HANDLING
   // ============================================================
 
   it('handles API failure gracefully and propagates error without falling back to Firestore', async () => {
