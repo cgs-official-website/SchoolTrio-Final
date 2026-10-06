@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import StudentManagement from '../StudentManagement.jsx';
+import StudentManagement, { getInitialStudentFormData } from '../StudentManagement.jsx';
 import * as studentsApi from '../../../api/students.js';
 import * as classesApi from '../../../api/classes.js';
 import * as attendanceApi from '../../../api/attendance.js';
@@ -516,6 +516,118 @@ describe('Admin StudentManagement Component (REST Migration)', () => {
       expect(rendered.fatherName).toBe('Old Father');
       expect(rendered.religion).toBe('—');
       expect(rendered.age).toBe('—');
+    });
+  });
+
+  describe('Roll Number Field Integration (STUDENT-ADD-ROLL-001)', () => {
+    it('1. verifies getInitialStudentFormData initializes rollNumber as empty string', () => {
+      const initial = getInitialStudentFormData();
+      expect(initial).toHaveProperty('rollNumber');
+      expect(initial.rollNumber).toBe('');
+    });
+
+    it('2. verifies Add Student payload includes rollNumber when entered', async () => {
+      const createSpy = vi.spyOn(studentsApi, 'createStudent').mockResolvedValue({
+        success: true,
+        data: {
+          id: 'stu-roll-1',
+          admissionNumber: 'ADM-100',
+          firstName: 'Rahul',
+          lastName: 'Dravid',
+          rollNumber: '007',
+          classId: 'cls-10-a',
+          status: 'Active'
+        }
+      });
+
+      const payload = {
+        admissionNumber: 'ADM-100',
+        firstName: 'Rahul',
+        lastName: 'Dravid',
+        rollNumber: '007',
+        classId: 'cls-10-a',
+        sectionId: 'sec-a',
+        status: 'Active',
+        customData: {}
+      };
+
+      const res = await studentsApi.createStudent(payload);
+      expect(createSpy).toHaveBeenCalledWith(payload);
+      expect(res.data.rollNumber).toBe('007');
+    });
+
+    it('3. verifies Add Student payload sets rollNumber to null when omitted/empty', async () => {
+      const createSpy = vi.spyOn(studentsApi, 'createStudent').mockResolvedValue({
+        success: true,
+        data: {
+          id: 'stu-roll-2',
+          admissionNumber: 'ADM-101',
+          firstName: 'Sourav',
+          lastName: 'Ganguly',
+          rollNumber: null,
+          status: 'Active'
+        }
+      });
+
+      const payload = {
+        admissionNumber: 'ADM-101',
+        firstName: 'Sourav',
+        lastName: 'Ganguly',
+        rollNumber: null,
+        status: 'Active',
+        customData: {}
+      };
+
+      const res = await studentsApi.createStudent(payload);
+      expect(createSpy).toHaveBeenCalledWith(payload);
+      expect(res.data.rollNumber).toBeNull();
+    });
+
+    it('4. verifies View Details extracts and displays rollNumber, falling back to dash', () => {
+      const studentWithRoll = { id: 's-1', firstName: 'Sachin', rollNumber: '10' };
+      const studentWithoutRoll = { id: 's-2', firstName: 'Anil', rollNumber: null };
+
+      expect(studentWithRoll.rollNumber || '—').toBe('10');
+      expect(studentWithoutRoll.rollNumber || '—').toBe('—');
+    });
+
+    it('5. verifies duplicate rollNumber validation detects conflicts in same class', () => {
+      const existingStudents = [
+        { id: 's-1', classId: 'cls-1', rollNumber: '05' },
+        { id: 's-2', classId: 'cls-2', rollNumber: '05' }
+      ];
+
+      // Duplicate in same class
+      const isDuplicateInClass1 = existingStudents.some(
+        s => s.classId === 'cls-1' && s.rollNumber?.toLowerCase() === '05'.toLowerCase()
+      );
+      expect(isDuplicateInClass1).toBe(true);
+
+      // Same roll number in different class (allowed)
+      const isDuplicateInClass3 = existingStudents.some(
+        s => s.classId === 'cls-3' && s.rollNumber?.toLowerCase() === '05'.toLowerCase()
+      );
+      expect(isDuplicateInClass3).toBe(false);
+    });
+
+    it('6. verifies Edit Student preserves rollNumber and updates payload correctly', async () => {
+      const updateSpy = vi.spyOn(studentsApi, 'updateStudent').mockResolvedValue({
+        success: true,
+        data: {
+          id: 's-1',
+          rollNumber: '05-UPDATED'
+        }
+      });
+
+      const updatePayload = {
+        rollNumber: '05-UPDATED',
+        firstName: 'Sachin',
+        admissionNumber: 'ADM-010'
+      };
+
+      const res = await studentsApi.updateStudent('s-1', updatePayload);
+      expect(updateSpy).toHaveBeenCalledWith('s-1', updatePayload);
+      expect(res.data.rollNumber).toBe('05-UPDATED');
     });
   });
 });

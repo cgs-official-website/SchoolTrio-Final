@@ -28,7 +28,7 @@ import { notifyDataChanged } from '../../utils/liveData';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { formatDate } from '../../utils/dateUtils';
 export const getInitialStudentFormData = () => ({
-  firstName: '', lastName: '', middleName: '', admissionNumber: '', classId: '', sectionId: '', status: 'Active',
+  firstName: '', lastName: '', middleName: '', admissionNumber: '', rollNumber: '', classId: '', sectionId: '', status: 'Active',
   dob: '', age: '', gender: 'Male', bloodGroup: '', nationality: 'Indian', religion: '', motherTongue: '', studentTongue: '', aadharNumber: '',
   studentEmail: '', studentPhone: '', admissionDate: getTodayDateString ? getTodayDateString() : new Date().toISOString().split('T')[0],
   parentName: '', fatherName: '', parentPhone: '', parentEmail: '', parentOccupation: '', fatherOccupation: '',
@@ -518,7 +518,19 @@ export default function StudentManagement() {
       }
     }
 
-    if (firstNameError || lastNameError || dobError || bloodGroupError || aadhaarError || parentPhoneError || parentEmailError || admissionNumberError) {
+    let rollNumberError = null;
+    const [cId, sId] = (formData.classId || '').split(':');
+    if (formData.rollNumber?.trim() && cId) {
+      const isRollDuplicate = students.some(
+        s => s.classId === cId &&
+             s.rollNumber?.toLowerCase() === formData.rollNumber.trim().toLowerCase()
+      );
+      if (isRollDuplicate) {
+        rollNumberError = "Roll Number already exists in this class";
+      }
+    }
+
+    if (firstNameError || lastNameError || dobError || bloodGroupError || aadhaarError || parentPhoneError || parentEmailError || admissionNumberError || rollNumberError) {
       const errors = {};
       if (firstNameError) errors.firstName = firstNameError;
       if (lastNameError) errors.lastName = lastNameError;
@@ -528,8 +540,9 @@ export default function StudentManagement() {
       if (parentPhoneError) errors.parentPhone = parentPhoneError;
       if (parentEmailError) errors.parentEmail = parentEmailError;
       if (admissionNumberError) errors.admissionNumber = admissionNumberError;
+      if (rollNumberError) errors.rollNumber = rollNumberError;
       setAddErrors(prev => ({ ...prev, ...errors }));
-      toast.error(firstNameError || lastNameError || dobError || bloodGroupError || aadhaarError || parentPhoneError || parentEmailError || admissionNumberError);
+      toast.error(firstNameError || lastNameError || dobError || bloodGroupError || aadhaarError || parentPhoneError || parentEmailError || admissionNumberError || rollNumberError);
       return;
     }
 
@@ -604,8 +617,6 @@ export default function StudentManagement() {
         ...(uploadedCustomData || {})
       };
 
-      const [cId, sId] = (formData.classId || '').split(':');
-
       const payload = {
         admissionNumber: formData.admissionNumber.trim(),
         firstName: formData.firstName.trim(),
@@ -615,6 +626,7 @@ export default function StudentManagement() {
         bloodGroup: formData.bloodGroup ? formData.bloodGroup.trim().toUpperCase() : null,
         aadhaarNumber: formData.aadharNumber ? formData.aadharNumber.trim() : null,
         photoUrl: photoUrl || null,
+        rollNumber: formData.rollNumber ? formData.rollNumber.trim() : null,
         classId: cId || null,
         sectionId: sId || formData.sectionId || null,
         status: formData.status || 'Active',
@@ -2147,6 +2159,31 @@ export default function StudentManagement() {
                   {addErrors.admissionNumber && (
                     <span className="text-xs text-red-500 font-semibold mt-1 block" data-testid="error-admissionNumber">
                       {addErrors.admissionNumber}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Roll Number</label>
+                  <input
+                    type="text"
+                    id="add-student-rollNumber"
+                    value={formData.rollNumber || ''}
+                    onChange={(e) => {
+                      setFormData({...formData, rollNumber: e.target.value});
+                      if (addErrors.rollNumber) {
+                        setAddErrors(prev => {
+                          const updated = { ...prev };
+                          delete updated.rollNumber;
+                          return updated;
+                        });
+                      }
+                    }}
+                    className={`w-full px-4 py-2.5 rounded-xl border bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 ${addErrors.rollNumber ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 dark:border-slate-700'}`}
+                    placeholder="e.g. 01, 10A"
+                  />
+                  {addErrors.rollNumber && (
+                    <span className="text-xs text-red-500 font-semibold mt-1 block" data-testid="error-rollNumber">
+                      {addErrors.rollNumber}
                     </span>
                   )}
                 </div>
