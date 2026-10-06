@@ -176,8 +176,8 @@ export function normalizeStaffMember(s) {
     bloodGroup: s.bloodGroup || custom.bloodGroup || '',
     maritalStatus: s.maritalStatus || custom.maritalStatus || 'Single',
     nationality: s.nationality || custom.nationality || '',
-    residentialAddress: s.address || custom.residentialAddress || custom.address || '',
-    address: s.address || custom.residentialAddress || custom.address || '',
+    residentialAddress: s.residentialAddress || s.address || custom.residentialAddress || custom.address || '',
+    address: s.residentialAddress || s.address || custom.residentialAddress || custom.address || '',
     emergencyContact: s.emergencyContact || custom.emergencyContact || '',
     fatherName: s.fatherGuardianName || custom.fatherName || custom.fatherGuardianName || '',
     fatherGuardianName: s.fatherGuardianName || custom.fatherName || custom.fatherGuardianName || '',
@@ -2758,19 +2758,24 @@ export default function StaffAssignment() {
               {(isStaffEditMode
                 ? ['Education & Work', 'Identity & Banking', 'Documents']
                 : ['Personal Info', 'Education & Work', 'Identity & Banking', 'Documents']
-              ).map(tab => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setAddStaffActiveTab(tab)}
-                  className={`px-5 py-3.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-all ${addStaffActiveTab === tab
-                      ? 'border-indigo-600 text-indigo-700 bg-white dark:bg-slate-900'
-                      : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
-                >
-                  {tab}
-                </button>
-              ))}
+              ).map(tab => {
+                const isTabActive = (isStaffEditMode && addStaffActiveTab === 'Personal Info')
+                  ? tab === 'Education & Work'
+                  : addStaffActiveTab === tab;
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setAddStaffActiveTab(tab)}
+                    className={`px-5 py-3.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-all ${isTabActive
+                        ? 'border-indigo-600 text-indigo-700 bg-white dark:bg-slate-900'
+                        : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
+                  >
+                    {tab}
+                  </button>
+                );
+              })}
             </div>
 
             <div className="p-6 flex-1 overflow-y-auto custom-scrollbar space-y-6">
@@ -2778,7 +2783,7 @@ export default function StaffAssignment() {
                 /* ── EDIT MODE (tab-driven) ── */
                 <div className="animate-fade-in">
                   {/* Education & Work Tab */}
-                  {addStaffActiveTab === 'Education & Work' && (
+                  {(addStaffActiveTab === 'Education & Work' || addStaffActiveTab === 'Personal Info') && (
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {[

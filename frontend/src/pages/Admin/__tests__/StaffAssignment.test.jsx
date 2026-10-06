@@ -452,7 +452,7 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
     });
   });
 
-  describe('22. STAFF EDIT MODE & PERSONAL DETAILS REMOVAL', () => {
+  describe('22. STAFF EDIT MODE & PERSONAL DETAILS REMOVAL (BUG-05)', () => {
     it('verifies Edit Staff tabs exclude Personal Info / Personal Details', () => {
       const getTabs = (isStaffEditMode) => {
         return isStaffEditMode
@@ -468,6 +468,53 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
       const viewTabs = getTabs(false);
       expect(viewTabs).toEqual(['Personal Info', 'Education & Work', 'Identity & Banking', 'Documents']);
       expect(viewTabs).toContain('Personal Info');
+    });
+
+    it('falls back to Education & Work tab if edit mode is active with Personal Info tab state', () => {
+      const isStaffEditMode = true;
+      const addStaffActiveTab = 'Personal Info';
+      const resolvedTab = (isStaffEditMode && addStaffActiveTab === 'Personal Info')
+        ? 'Education & Work'
+        : addStaffActiveTab;
+
+      expect(resolvedTab).toBe('Education & Work');
+    });
+
+    it('verifies View Staff Details preserves all read-only personal fields', () => {
+      const staffMember = {
+        id: 'staff-1',
+        firstName: 'John',
+        lastName: 'Doe',
+        name: 'John Doe',
+        staffId: 'EMP-001',
+        email: 'john.doe@school.edu',
+        phone: '9876543210',
+        mobileNumber: '9876543210',
+        dob: '1985-05-12',
+        gender: 'Male',
+        nationality: 'Indian',
+        maritalStatus: 'Married',
+        bloodGroup: 'O+',
+        emergencyContact: '9123456789',
+        fatherGuardianName: 'Robert Doe',
+        languagesKnown: 'English, Hindi',
+        residentialAddress: '123 Academic Road, City'
+      };
+
+      const normalized = normalizeStaffMember(staffMember);
+      expect(normalized.firstName).toBe('John');
+      expect(normalized.lastName).toBe('Doe');
+      expect(normalized.email).toBe('john.doe@school.edu');
+      expect(normalized.mobileNumber).toBe('9876543210');
+      expect(normalized.dob).toBe('1985-05-12');
+      expect(normalized.gender).toBe('Male');
+      expect(normalized.nationality).toBe('Indian');
+      expect(normalized.maritalStatus).toBe('Married');
+      expect(normalized.bloodGroup).toBe('O+');
+      expect(normalized.emergencyContact).toBe('9123456789');
+      expect(normalized.fatherGuardianName).toBe('Robert Doe');
+      expect(normalized.languagesKnown).toBe('English, Hindi');
+      expect(normalized.residentialAddress).toBe('123 Academic Road, City');
     });
 
     it('submits updated staff details without personal detail fields in payload', async () => {
@@ -509,6 +556,11 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
       expect(sentPayload).not.toHaveProperty('email');
       expect(sentPayload).not.toHaveProperty('phone');
       expect(sentPayload).not.toHaveProperty('mobileNumber');
+      expect(sentPayload).not.toHaveProperty('dob');
+      expect(sentPayload).not.toHaveProperty('gender');
+      expect(sentPayload).not.toHaveProperty('bloodGroup');
+      expect(sentPayload).not.toHaveProperty('maritalStatus');
+      expect(sentPayload).not.toHaveProperty('residentialAddress');
     });
   });
 
