@@ -83,6 +83,11 @@ export async function updateExam(id, payload = {}) {
  * @param {string} id - PostgreSQL Examination UUID
  * @returns {Promise<{ success: boolean, data: { message: string, id: string }, message?: string }>}
  */
+export async function deleteExam(id) {
+  return apiClient(`/api/v1/exams/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  });
+}
 /**
  * Updates examination status (DRAFT, PUBLISHED, FINALIZED).
  *

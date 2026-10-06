@@ -33,7 +33,7 @@ import { TableSkeleton } from '../../components/Skeleton';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
 import usePermissions from '../../hooks/usePermissions';
-import { sortClassesAscending } from '../../utils/classSorting';
+import { sortClassesAscending, getSectionName, formatClassSection } from '../../utils/classSorting';
 import { notifyDataChanged } from '../../utils/liveData';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
@@ -684,9 +684,9 @@ export default function ClassManagement() {
                 <div>
                   <h3 className="text-xl font-bold text-slate-900 dark:text-white">{cls.name}</h3>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    {cls.section && (
+                    {getSectionName(cls) && (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
-                        Section {cls.section}
+                        Section {getSectionName(cls)}
                       </span>
                     )}
                     {cls.categoryId && (

@@ -17,7 +17,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
 import { uploadCustomDataFiles } from '../../utils/cloudinary';
 import usePermissions from '../../hooks/usePermissions';
-import { sortClassesAscending } from '../../utils/classSorting';
+import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
 
 const DEFAULT_CATEGORIES = [
   'General'
@@ -100,7 +100,7 @@ export default function LibraryManagement() {
         s.classId === issueData.classId ||
         s.class === issueData.classId ||
         (classes.find(c => c.id === issueData.classId) && 
-          (s.className === `${classes.find(c => c.id === issueData.classId).name} - Section ${classes.find(c => c.id === issueData.classId).section}` ||
+          (s.className === formatClassSection(classes.find(c => c.id === issueData.classId)) ||
            s.class === classes.find(c => c.id === issueData.classId).name))
       )
     : students;
@@ -699,7 +699,7 @@ export default function LibraryManagement() {
                         <option value="">All Classes / Select Class...</option>
                         {classes.map(c => (
                           <option key={c.id} value={c.id}>
-                            {c.name} - Section {c.section}
+                            {formatClassSection(c)}
                           </option>
                         ))}
                       </select>

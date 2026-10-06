@@ -18,7 +18,7 @@ import {
   LuRotateCcw as ResetIcon,
   LuCalendar as CalendarIcon
 } from 'react-icons/lu';
-import { sortClassesAscending } from '../../utils/classSorting';
+import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
 
 export default function CanteenManagement() {
   const { userProfile } = useAuth();
@@ -148,7 +148,7 @@ export default function CanteenManagement() {
           ...req,
           studentName: req.student?.name || student?.name || (student?.firstName ? `${student.firstName} ${student.lastName || ''}`.trim() : 'Unknown Student'),
           admissionNumber: req.student?.admissionNumber || student?.admissionNumber || 'N/A',
-          className: req.student?.className || (studentClass ? `${studentClass.name} - Section ${studentClass.section || ''}` : (student?.classId || 'N/A')),
+          className: req.student?.className || (studentClass ? formatClassSection(studentClass) : (student?.classId || 'N/A')),
           resolvedDateStr
         };
       })

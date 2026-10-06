@@ -8,7 +8,7 @@ import { uploadFileToCloudinaryOrFirebase } from '../../utils/cloudinary';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
 import usePermissions from '../../hooks/usePermissions';
-import { sortClassesAscending } from '../../utils/classSorting';
+import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
 
 export default function ResourceSharing() {
   const { userProfile, currentUser } = useAuth();
@@ -441,7 +441,7 @@ export default function ResourceSharing() {
                   >
                     {classes.map(c => (
                       <option key={c.id} value={c.id}>
-                        {c.name} {c.section ? `- Section ${c.section}` : ''}
+                        {formatClassSection(c)}
                       </option>
                     ))}
                   </select>

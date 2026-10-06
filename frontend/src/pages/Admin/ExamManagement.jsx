@@ -29,7 +29,7 @@ import {
 import toast from 'react-hot-toast';
 import ReportTemplateBuilder from './ReportTemplateBuilder';
 import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
-import { sortClassesAscending } from '../../utils/classSorting';
+import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
 
 export default function ExamManagement() {
   const { userProfile } = useAuth();
@@ -661,7 +661,7 @@ export default function ExamManagement() {
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200! bg-white! text-black! focus:ring-2 focus:ring-primary-500"
                   >
                     <option value="" className="text-black bg-white dark:bg-slate-900">-- Choose Class --</option>
-                    {classes.map(c => <option key={c.id} value={c.id} className="text-black bg-white dark:bg-slate-900">{c.name} - Section {c.section}</option>)}
+                    {classes.map(c => <option key={c.id} value={c.id} className="text-black bg-white dark:bg-slate-900">{formatClassSection(c)}</option>)}
                   </select>
                 </div>
                 <button 

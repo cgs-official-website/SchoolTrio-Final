@@ -27,7 +27,7 @@ import {
 } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
-import { sortClassesAscending } from '../../utils/classSorting';
+import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
 
 export default function Attendance() {
   const { userProfile } = useAuth();
@@ -1124,7 +1124,7 @@ export default function Attendance() {
                 >
                   <option value="all">All Classes</option>
                   {classes.map(cls => (
-                    <option key={cls.id} value={cls.id}>{cls.name} - {cls.section || 'A'}</option>
+                    <option key={cls.id} value={cls.id}>{formatClassSection(cls)}</option>
                   ))}
                 </select>
                 <button
@@ -1199,7 +1199,7 @@ export default function Attendance() {
               >
                 <option value="" disabled>Select Class</option>
                 {classes.map(cls => (
-                  <option key={cls.id} value={cls.id}>{cls.name} - Section {cls.section || 'A'}</option>
+                  <option key={cls.id} value={cls.id}>{formatClassSection(cls)}</option>
                 ))}
               </select>
               <select

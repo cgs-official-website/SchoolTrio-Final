@@ -10,7 +10,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
 import { uploadCustomDataFiles } from '../../utils/cloudinary';
 import usePermissions from '../../hooks/usePermissions';
-import { sortClassesAscending } from '../../utils/classSorting';
+import { sortClassesAscending, formatClassSection, getSectionName } from '../../utils/classSorting';
 
 const formatTime12hr = (time24) => {
   if (!time24) return '';
@@ -88,6 +88,29 @@ const TimePicker12Hour = ({ value, onChange, required }) => {
       </select>
     </div>
   );
+};
+
+export const formatSectionLabel = (section) => {
+  if (!section) return '';
+  return getSectionName(section);
+};
+
+export const formatDisplayValue = (val, fallback = '') => {
+  if (!val) return fallback;
+  if (typeof val === 'object' && val !== null) {
+    return val.name || val.code || fallback;
+  }
+  return String(val);
+};
+
+export const formatTeacherDisplay = (teacher, fallback = '') => {
+  if (!teacher) return fallback;
+  if (typeof teacher === 'object' && teacher !== null) {
+    if (teacher.name) return teacher.name;
+    const combined = `${teacher.firstName || ''} ${teacher.lastName || ''}`.trim();
+    return combined || fallback;
+  }
+  return String(teacher);
 };
 
 export function getEligibleTeachersForSubject(subNameOrId, currentClassId, teachersList = [], subjectsList = []) {
@@ -203,14 +226,21 @@ export default function TimetableManagement() {
         }
         const day = p.day || 'Monday';
         if (timetablesMap[p.classId][day]) {
+          const subjectName = typeof p.subject === 'object' && p.subject !== null
+            ? (p.subject.name || p.subject.code || 'Subject')
+            : (p.subjectName || (typeof p.subject === 'string' ? p.subject : '') || 'Subject');
+          const teacherName = typeof p.teacher === 'object' && p.teacher !== null
+            ? (p.teacher.name || `${p.teacher.firstName || ''} ${p.teacher.lastName || ''}`.trim() || '')
+            : (p.teacherName || (typeof p.teacher === 'string' ? p.teacher : '') || '');
+
           timetablesMap[p.classId][day].push({
             id: p.id,
             startTime: p.startTime,
             endTime: p.endTime,
-            subject: p.subjectName || p.subject?.name || 'Subject',
-            subjectId: p.subjectId,
-            teacher: p.teacherName || p.teacher?.name || '',
-            teacherId: p.teacherId,
+            subject: subjectName,
+            subjectId: p.subjectId || (typeof p.subject === 'object' && p.subject !== null ? p.subject.id : null),
+            teacher: teacherName,
+            teacherId: p.teacherId || (typeof p.teacher === 'object' && p.teacher !== null ? p.teacher.id : null),
             sectionId: p.sectionId,
             roomNumber: p.roomNumber
           });
@@ -267,14 +297,32 @@ export default function TimetableManagement() {
         .then((res) => {
           if (!isCurrent) return;
           const scheduleData = res.data?.schedule || {};
-          setSchedule({
-            Monday: scheduleData.Monday || [],
-            Tuesday: scheduleData.Tuesday || [],
-            Wednesday: scheduleData.Wednesday || [],
-            Thursday: scheduleData.Thursday || [],
-            Friday: scheduleData.Friday || [],
-            Saturday: scheduleData.Saturday || []
+          const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+          const normalizedSchedule = {};
+
+          days.forEach(day => {
+            normalizedSchedule[day] = (scheduleData[day] || []).map(slot => {
+              const subDisplayName = typeof slot.subject === 'object' && slot.subject !== null
+                ? (slot.subject.name || slot.subject.code || 'Subject')
+                : (slot.subjectName || (typeof slot.subject === 'string' ? slot.subject : '') || 'Subject');
+              const subId = slot.subjectId || (typeof slot.subject === 'object' && slot.subject !== null ? slot.subject.id : null);
+
+              const teacherDisplayName = typeof slot.teacher === 'object' && slot.teacher !== null
+                ? (slot.teacher.name || `${slot.teacher.firstName || ''} ${slot.teacher.lastName || ''}`.trim() || '')
+                : (slot.teacherName || (typeof slot.teacher === 'string' ? slot.teacher : '') || '');
+              const teacherId = slot.teacherId || (typeof slot.teacher === 'object' && slot.teacher !== null ? slot.teacher.id : null);
+
+              return {
+                ...slot,
+                subject: subDisplayName,
+                subjectId: subId,
+                teacher: teacherDisplayName,
+                teacherId: teacherId
+              };
+            });
           });
+
+          setSchedule(normalizedSchedule);
           setCustomData(res.data?.customData || {});
           setLoading(false);
         })
@@ -350,13 +398,24 @@ export default function TimetableManagement() {
     if (!hasEditPermission) return;
     setActiveDay(day);
     setEditingSlotId(slot.id);
+
+    const subjectStr = typeof slot.subject === 'object' && slot.subject !== null
+      ? (slot.subject.name || slot.subject.code || '')
+      : (slot.subjectName || (typeof slot.subject === 'string' ? slot.subject : ''));
+    const subjectId = slot.subjectId || (typeof slot.subject === 'object' && slot.subject !== null ? slot.subject.id : '');
+
+    const teacherStr = typeof slot.teacher === 'object' && slot.teacher !== null
+      ? (slot.teacher.name || `${slot.teacher.firstName || ''} ${slot.teacher.lastName || ''}`.trim() || '')
+      : (slot.teacherName || (typeof slot.teacher === 'string' ? slot.teacher : ''));
+    const teacherId = slot.teacherId || (typeof slot.teacher === 'object' && slot.teacher !== null ? slot.teacher.id : '');
+
     setNewSlot({
       startTime: slot.startTime,
       endTime: slot.endTime,
-      subject: slot.subject || slot.subjectName || '',
-      subjectId: slot.subjectId || '',
-      teacher: slot.teacher || slot.teacherName || '',
-      teacherId: slot.teacherId || ''
+      subject: subjectStr,
+      subjectId: subjectId,
+      teacher: teacherStr,
+      teacherId: teacherId
     });
     setShowAddModal(true);
   };
@@ -394,13 +453,21 @@ export default function TimetableManagement() {
       for (const day of dayKeys) {
         payloadSchedule[day] = (schedule[day] || []).map((slot, idx) => {
           let subjectId = slot.subjectId;
-          if (!subjectId && slot.subject) {
-            const foundSub = subjects.find(s => s.name === slot.subject || s.id === slot.subject);
+          const subjectStr = typeof slot.subject === 'object' && slot.subject !== null
+            ? (slot.subject.name || slot.subject.code || '')
+            : (typeof slot.subject === 'string' ? slot.subject : '');
+
+          if (!subjectId && subjectStr) {
+            const foundSub = subjects.find(s => s.name === subjectStr || s.id === subjectStr);
             subjectId = foundSub?.id || null;
           }
           let teacherId = slot.teacherId || null;
-          if (!teacherId && slot.teacher) {
-            const foundTeacher = teachers.find(t => t.name === slot.teacher || t.id === slot.teacher);
+          const teacherStr = typeof slot.teacher === 'object' && slot.teacher !== null
+            ? (slot.teacher.name || '')
+            : (typeof slot.teacher === 'string' ? slot.teacher : '');
+
+          if (!teacherId && teacherStr) {
+            const foundTeacher = teachers.find(t => t.name === teacherStr || t.id === teacherStr);
             teacherId = foundTeacher?.id || null;
           }
           return {
@@ -454,7 +521,9 @@ export default function TimetableManagement() {
           >
             <option value="">Select a Class...</option>
             {classes.map(c => (
-              <option key={c.id} value={c.id}>{c.name} - Section {c.section}</option>
+              <option key={c.id} value={c.id}>
+                {formatClassSection(c)}
+              </option>
             ))}
           </select>
           
@@ -508,7 +577,7 @@ export default function TimetableManagement() {
                     <div className="bg-slate-50/80 px-5 py-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
                       <h3 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-primary-500"></span>
-                        {cls.name} - Section {cls.section}
+                        {formatClassSection(cls)}
                       </h3>
                       <button 
                         onClick={() => setSelectedClassId(cls.id)}
@@ -530,13 +599,13 @@ export default function TimetableManagement() {
                               {formatTime12hr(slot.startTime)} - {formatTime12hr(slot.endTime)}
                             </div>
                             <div className="mt-2 space-y-1.5 min-w-0">
-                            <div className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 leading-tight truncate" title={slot.subject}>
+                            <div className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 leading-tight truncate" title={formatDisplayValue(slot.subject, 'Subject')}>
                               <BookOpen size={14} className="text-primary-500 shrink-0" />
-                              <span className="truncate">{slot.subject}</span>
+                              <span className="truncate">{formatDisplayValue(slot.subject, 'Subject')}</span>
                             </div>
-                            <div className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5 truncate bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md" title={slot.teacher || 'Not Assigned'}>
+                            <div className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5 truncate bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md" title={formatTeacherDisplay(slot.teacher, 'Not Assigned')}>
                               <User size={12} className="text-slate-400 shrink-0" />
-                              {slot.teacher || 'Not Assigned'}
+                              {formatTeacherDisplay(slot.teacher, 'Not Assigned')}
                             </div>
                           </div>
                           </div>
@@ -565,6 +634,7 @@ export default function TimetableManagement() {
                         startTime: '09:00',
                         endTime: '10:00',
                         subject: '',
+                        subjectId: '',
                         teacher: '',
                         teacherId: ''
                       });
@@ -603,12 +673,12 @@ export default function TimetableManagement() {
                         
                         <div className="font-bold text-slate-900 dark:text-white mb-2 flex items-start gap-1.5 leading-tight">
                           <BookOpen size={14} className="text-primary-500 shrink-0 mt-0.5" />
-                          {slot.subject}
+                          {formatDisplayValue(slot.subject, 'Subject')}
                         </div>
                         
                         <div className="text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded-lg inline-flex items-center gap-1.5 border border-slate-100 dark:border-slate-800">
                           <User size={12} className="text-slate-400 dark:text-slate-300" />
-                          {slot.teacher || 'Not Assigned'}
+                          {formatTeacherDisplay(slot.teacher, 'Not Assigned')}
                         </div>
 
                         {/* Edit and Delete Buttons (visible on hover) */}

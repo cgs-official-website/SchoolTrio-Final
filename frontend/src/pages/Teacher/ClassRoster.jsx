@@ -10,6 +10,7 @@ import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { isMale, isFemale, normalizeGender } from '../../utils/genderUtils';
+import { formatClassSection, getSectionName } from '../../utils/classSorting';
 
 export default function ClassRoster() {
   const { userProfile } = useAuth();
@@ -132,7 +133,7 @@ export default function ClassRoster() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Class Roster");
     
-    const rawName = exportFileName.trim() || (classDetails ? `${classDetails.name}_Section_${classDetails.section}_Students` : "Class_Roster_Students");
+    const rawName = exportFileName.trim() || (classDetails ? `${classDetails.name}_Section_${getSectionName(classDetails)}_Students` : "Class_Roster_Students");
     const finalFileName = rawName.toLowerCase().endsWith('.xlsx') ? rawName : `${rawName}.xlsx`;
     
     XLSX.writeFile(workbook, finalFileName);
@@ -269,7 +270,7 @@ export default function ClassRoster() {
             </h1>
             <div className="flex flex-wrap items-center gap-3">
               <p className="text-slate-300 text-lg">
-                {classDetails ? `${classDetails.name} - Section ${classDetails.section}` : 'Loading Class...'}
+                {classDetails ? formatClassSection(classDetails) : 'Loading Class...'}
               </p>
               {classDetails?.classTeacher?.name && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-primary-500/30 text-white border border-primary-400/40 backdrop-blur-sm">
@@ -289,7 +290,7 @@ export default function ClassRoster() {
               >
                 {classList.map((c) => (
                   <option key={c.id} value={c.id} className="text-slate-900 bg-white">
-                    {c.name} {c.section ? `- Section ${c.section}` : ''}
+                    {formatClassSection(c)}
                   </option>
                 ))}
               </select>

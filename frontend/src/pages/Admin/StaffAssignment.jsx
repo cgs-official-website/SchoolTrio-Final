@@ -928,6 +928,7 @@ export default function StaffAssignment() {
   };
 
   const handleSaveStaffEdit = async () => {
+    if (savingStaffEdit) return;
     const errors = {};
     if (editStaffData.aadharNumber?.trim() && !/^\d{12}$/.test(editStaffData.aadharNumber.trim())) {
       errors.aadharNumber = 'Aadhaar number must be 12 digits';
@@ -1765,7 +1766,7 @@ export default function StaffAssignment() {
                           <button
                             onClick={() => {
                               setSelectedStaffToView(member);
-                              setAddStaffActiveTab('Personal Info');
+                              setAddStaffActiveTab('Education & Work');
                               setIsStaffEditMode(false);
                               setEditStaffData(null);
                               setEditStaffErrors({});
@@ -2818,28 +2819,29 @@ export default function StaffAssignment() {
                 <Users className="text-indigo-600" />
                 {isStaffEditMode ? 'Edit Staff Details' : 'Staff Details'}
               </h2>
-              <button onClick={() => {
-                if (isStaffEditMode) {
-                  setIsStaffEditMode(false);
-                  setEditStaffData(null);
-                  setEditStaffErrors({});
-                } else {
-                  setViewStaffModalOpen(false);
-                }
-              }} className="p-2 text-slate-400 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full transition-colors">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isStaffEditMode) {
+                    setIsStaffEditMode(false);
+                    setEditStaffData(null);
+                    setEditStaffErrors({});
+                    setEditStaffDocFiles({});
+                    setSavingStaffEdit(false);
+                  } else {
+                    setViewStaffModalOpen(false);
+                  }
+                }}
+                className="p-2 text-slate-400 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full transition-colors"
+              >
                 <X size={20} />
               </button>
             </div>
 
             {/* Tabbed details navigation */}
             <div className="flex border-b border-slate-150 overflow-x-auto bg-slate-50/50 dark:bg-slate-800/50 shrink-0 custom-scrollbar">
-              {(isStaffEditMode
-                ? ['Education & Work', 'Identity & Banking', 'Documents']
-                : ['Personal Info', 'Education & Work', 'Identity & Banking', 'Documents']
-              ).map(tab => {
-                const isTabActive = (isStaffEditMode && addStaffActiveTab === 'Personal Info')
-                  ? tab === 'Education & Work'
-                  : addStaffActiveTab === tab;
+              {['Education & Work', 'Identity & Banking', 'Documents'].map(tab => {
+                const isTabActive = addStaffActiveTab === tab;
                 return (
                   <button
                     key={tab}
@@ -2861,7 +2863,7 @@ export default function StaffAssignment() {
                 /* ── EDIT MODE (tab-driven) ── */
                 <div className="animate-fade-in">
                   {/* Education & Work Tab */}
-                  {(addStaffActiveTab === 'Education & Work' || addStaffActiveTab === 'Personal Info') && (
+                  {addStaffActiveTab === 'Education & Work' && (
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {[
@@ -3089,135 +3091,8 @@ export default function StaffAssignment() {
               ) : (
                 /* ── VIEW MODE ── */
                 <>
-                  {addStaffActiveTab === 'Personal Info' && (
-                    <div className="space-y-6 animate-fade-in">
-                      <div className="flex items-center gap-4 pb-6 border-b border-slate-100 dark:border-slate-800">
-                        {selectedStaffToView.photoUrl ? (
-                          <img src={selectedStaffToView.photoUrl} alt="Staff Photograph" className="w-16 h-16 rounded-full object-cover border border-slate-200 dark:border-slate-700" />
-                        ) : (
-                          <div className="w-16 h-16 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-2xl">
-                            {(selectedStaffToView.name || `${selectedStaffToView.firstName} ${selectedStaffToView.lastName}`).charAt(0)}
-                          </div>
-                        )}
-                        <div>
-                          <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                            {selectedStaffToView.name || `${selectedStaffToView.firstName} ${selectedStaffToView.lastName}`}
-                          </h3>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {(selectedStaffToView.roles || [selectedStaffToView.role || 'Staffs']).map(r => (
-                              <span key={r} className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-lg border border-indigo-150 uppercase tracking-wider">{r}</span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Staff ID</label>
-                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.staffId || '—'}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Email Address</label>
-                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.email || '—'}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Mobile Number</label>
-                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.mobileNumber || '—'}</p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Date of Birth</label>
-                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.dob || '—'}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Gender</label>
-                          <p className="text-slate-900 dark:text-white font-semibold">{normalizeGender(selectedStaffToView.gender, '—')}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Nationality</label>
-                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.nationality || '—'}</p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Marital Status</label>
-                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.maritalStatus || '—'}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Blood Group</label>
-                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.bloodGroup || '—'}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Emergency Contact</label>
-                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.emergencyContact || '—'}</p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Father / Guardian Name</label>
-                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.fatherGuardianName || '—'}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Languages Known</label>
-                          <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.languagesKnown || '—'}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Joined Date</label>
-                          <p className="text-slate-900 dark:text-white font-semibold">
-                            {selectedStaffToView.createdAt ? new Date(selectedStaffToView.createdAt).toLocaleDateString('en-GB') : 'N/A'}
-                          </p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Staff Type</label>
-                          <p className="text-slate-900 dark:text-white font-semibold capitalize">
-                            {selectedStaffToView.staff_type || 'teaching'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Residential Address</label>
-                        <p className="text-slate-900 dark:text-white font-semibold whitespace-pre-line">{selectedStaffToView.residentialAddress || '—'}</p>
-                      </div>
-
-                      <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
-                        <CustomFieldsRenderer
-                          moduleKey="staff"
-                          customData={selectedStaffToView.customData || {}}
-                          readOnly={true}
-                        />
-                      </div>
-                    </div>
-                  )}
-
                   {addStaffActiveTab === 'Education & Work' && (
                     <div className="space-y-6 animate-fade-in">
-                      <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200/60">
-                        <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">Academic Qualifications</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Highest Qualification</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.highestQualification || '—'}</p>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Degree & Specialization</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.degreeSpecialization || '—'}</p>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">University / College</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.universityName || '—'}</p>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Year of Passing</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.yearOfPassing || '—'}</p>
-                          </div>
-                        </div>
-                      </div>
-
                       <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200/60">
                         <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">Professional Experience</h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -3377,12 +3252,20 @@ export default function StaffAssignment() {
               {isStaffEditMode ? (
                 <>
                   <button
-                    onClick={() => { setIsStaffEditMode(false); setEditStaffData(null); setEditStaffErrors({}); setEditStaffDocFiles({}); }}
+                    type="button"
+                    onClick={() => {
+                      setIsStaffEditMode(false);
+                      setEditStaffData(null);
+                      setEditStaffErrors({});
+                      setEditStaffDocFiles({});
+                      setSavingStaffEdit(false);
+                    }}
                     className="px-6 py-2.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-300 rounded-xl transition-colors"
                   >
                     Cancel
                   </button>
                   <button
+                    type="button"
                     onClick={handleSaveStaffEdit}
                     disabled={savingStaffEdit}
                     className="px-6 py-2.5 bg-primary-600 text-white font-bold hover:bg-primary-700 rounded-xl transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
@@ -3393,6 +3276,7 @@ export default function StaffAssignment() {
               ) : (
                 <>
                   <button
+                    type="button"
                     onClick={() => {
                       setEditStaffData({
                         ...selectedStaffToView
@@ -3407,7 +3291,14 @@ export default function StaffAssignment() {
                     Edit
                   </button>
                   <button
-                    onClick={() => { setViewStaffModalOpen(false); setIsStaffEditMode(false); setEditStaffData(null); setEditStaffDocFiles({}); }}
+                    type="button"
+                    onClick={() => {
+                      setViewStaffModalOpen(false);
+                      setIsStaffEditMode(false);
+                      setEditStaffData(null);
+                      setEditStaffDocFiles({});
+                      setSavingStaffEdit(false);
+                    }}
                     className="px-6 py-2.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-300 rounded-xl transition-colors"
                   >
                     Close

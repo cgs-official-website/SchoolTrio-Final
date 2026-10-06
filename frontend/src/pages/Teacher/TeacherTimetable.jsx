@@ -72,10 +72,10 @@ export default function TeacherTimetable() {
       daySlots.forEach(slot => {
         const row = { "Day": day };
         const timeStr = slot.time || `${formatTime12hr(slot.startTime)} - ${formatTime12hr(slot.endTime)}`;
-        const subjectStr = slot.subjectName || slot.subject || '';
-        const classStr = slot.className || slot.class || '';
+        const subjectStr = slot.subjectName || (typeof slot.subject === 'object' && slot.subject !== null ? (slot.subject.name || slot.subject.code || '') : (slot.subject || ''));
+        const classStr = slot.className || (typeof slot.class === 'object' && slot.class !== null ? (slot.class.name || '') : (slot.class || ''));
         const roomStr = slot.roomNumber || slot.room || 'Room (Auto)';
-        const teacherStr = slot.teacherName || slot.teacher || 'Unassigned';
+        const teacherStr = slot.teacherName || (typeof slot.teacher === 'object' && slot.teacher !== null ? (slot.teacher.name || '') : (slot.teacher || 'Unassigned'));
         
         if (selectedFields.time) row["Time Slot"] = timeStr;
         if (selectedFields.subject) row["Subject Name"] = subjectStr;
@@ -215,8 +215,8 @@ export default function TeacherTimetable() {
                       </div>
                       <h4 className="text-base font-bold text-slate-900 dark:text-white mb-1">{period.subjectName || period.subject?.name || period.subject || 'Subject'}</h4>
                       <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-3">{period.className || period.class?.name || period.class || ''}</p>
-                      {viewType === 'class' && (period.teacherName || period.teacher?.name || period.teacher) && (
-                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3">Teacher: {period.teacherName || period.teacher?.name || period.teacher}</p>
+                      {viewType === 'class' && (period.teacherName || (typeof period.teacher === 'object' && period.teacher !== null ? period.teacher?.name : period.teacher)) && (
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3">Teacher: {period.teacherName || (typeof period.teacher === 'object' && period.teacher !== null ? period.teacher?.name : period.teacher)}</p>
                       )}
                       
                       <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400 pt-3 border-t border-slate-100 dark:border-slate-800">

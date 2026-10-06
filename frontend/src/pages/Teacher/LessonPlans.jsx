@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import usePermissions from '../../hooks/usePermissions';
 import ConfirmModal from '../../components/ConfirmModal';
-import { sortClassesAscending } from '../../utils/classSorting';
+import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
 
 /**
  * Returns today's date formatted as local YYYY-MM-DD.
@@ -470,7 +470,7 @@ export default function LessonPlans() {
                     <option value="">Select a Class</option>
                     {classes.map(c => (
                       <option key={c.id} value={c.id}>
-                        {c.name}{c.section ? ` - Section ${c.section}` : ''}
+                        {formatClassSection(c)}
                       </option>
                     ))}
                   </select>

@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import TimetableManagement, { getEligibleTeachersForSubject } from '../TimetableManagement.jsx';
+import TimetableManagement, { 
+  getEligibleTeachersForSubject,
+  formatSectionLabel,
+  formatDisplayValue,
+  formatTeacherDisplay
+} from '../TimetableManagement.jsx';
 import * as timetablesApiModule from '../../../api/timetables.js';
 import * as firestoreModule from '../../../firebase/firestore.js';
 
@@ -326,6 +331,133 @@ describe('Admin TimetableManagement Component REST Cutover (Phase T.3)', () => {
     it('handles empty inputs gracefully', () => {
       expect(getEligibleTeachersForSubject('', null, teachersList, subjectsList)).toEqual([]);
       expect(getEligibleTeachersForSubject('English', null, [], subjectsList)).toEqual([]);
+    });
+  });
+
+  // ============================================================
+  // 5. BUG-006 REGRESSION: OBJECT-SHAPED DATA NORMALIZATION & REACT #31 PREVENTION
+  // ============================================================
+
+  describe('BUG-006: Object-Shaped Data Normalization & React #31 Prevention', () => {
+    describe('formatSectionLabel', () => {
+      it('returns empty string for null, undefined, or empty section', () => {
+        expect(formatSectionLabel(null)).toBe('');
+        expect(formatSectionLabel(undefined)).toBe('');
+        expect(formatSectionLabel('')).toBe('');
+      });
+
+      it('returns string section as-is', () => {
+        expect(formatSectionLabel('A')).toBe('A');
+        expect(formatSectionLabel('Section B')).toBe('Section B');
+      });
+
+      it('extracts name or code from object-shaped section { id, name, code }', () => {
+        expect(formatSectionLabel({ id: 'sec-1', name: 'A', code: 'SEC-A' })).toBe('A');
+        expect(formatSectionLabel({ id: 'sec-2', name: '', code: 'B' })).toBe('B');
+        expect(formatSectionLabel({ id: 'sec-3' })).toBe('');
+      });
+    });
+
+    describe('formatDisplayValue', () => {
+      it('returns fallback for null or undefined value', () => {
+        expect(formatDisplayValue(null, 'Subject')).toBe('Subject');
+        expect(formatDisplayValue(undefined, 'Fallback')).toBe('Fallback');
+      });
+
+      it('returns string value as-is', () => {
+        expect(formatDisplayValue('Mathematics', 'Subject')).toBe('Mathematics');
+      });
+
+      it('extracts name or code from object-shaped value { id, name, code }', () => {
+        const objSubject = { id: 'sub-1', name: 'Mathematics', code: 'MATH' };
+        expect(formatDisplayValue(objSubject, 'Subject')).toBe('Mathematics');
+
+        const codeOnlySubject = { id: 'sub-2', code: 'PHY' };
+        expect(formatDisplayValue(codeOnlySubject, 'Subject')).toBe('PHY');
+      });
+    });
+
+    describe('formatTeacherDisplay', () => {
+      it('returns fallback for null or undefined teacher', () => {
+        expect(formatTeacherDisplay(null, 'Not Assigned')).toBe('Not Assigned');
+        expect(formatTeacherDisplay(undefined, 'Not Assigned')).toBe('Not Assigned');
+      });
+
+      it('returns string teacher as-is', () => {
+        expect(formatTeacherDisplay('Jane Doe', 'Not Assigned')).toBe('Jane Doe');
+      });
+
+      it('extracts name or combined name from object-shaped teacher { id, name, email }', () => {
+        const objTeacherWithName = { id: 't-1', name: 'Jane Doe', email: 'jane@school.edu' };
+        expect(formatTeacherDisplay(objTeacherWithName, 'Not Assigned')).toBe('Jane Doe');
+
+        const objTeacherWithFirstLast = { id: 't-2', firstName: 'John', lastName: 'Smith' };
+        expect(formatTeacherDisplay(objTeacherWithFirstLast, 'Not Assigned')).toBe('John Smith');
+
+        const emptyObjTeacher = { id: 't-3' };
+        expect(formatTeacherDisplay(emptyObjTeacher, 'Not Assigned')).toBe('Not Assigned');
+      });
+    });
+
+    it('correctly handles Don Bosco I - Section timetable response containing object-shaped subject and teacher', async () => {
+      const DON_BOSCO_CLASS_ID = 'class-don-bosco-i-sec';
+      const OBJECT_SHAPED_PERIOD = {
+        id: 'period-don-bosco-1',
+        classId: DON_BOSCO_CLASS_ID,
+        className: 'I - Section',
+        subjectId: 'sub-eng',
+        subjectName: 'English',
+        subject: {
+          id: 'sub-eng',
+          name: 'English',
+          code: 'ENG'
+        },
+        teacherId: 'teacher-smith',
+        teacherName: 'Mr. Smith',
+        teacher: {
+          id: 'teacher-smith',
+          name: 'Mr. Smith',
+          email: 'smith@donbosco.edu',
+          phone: null
+        },
+        dayOfWeek: 1,
+        day: 'Monday',
+        periodNumber: 1,
+        startTime: '09:00',
+        endTime: '10:00'
+      };
+
+      const mockDonBoscoTimetable = {
+        classId: DON_BOSCO_CLASS_ID,
+        className: 'I - Section',
+        schedule: {
+          Monday: [OBJECT_SHAPED_PERIOD],
+          Tuesday: [],
+          Wednesday: [],
+          Thursday: [],
+          Friday: [],
+          Saturday: []
+        },
+        periods: [OBJECT_SHAPED_PERIOD]
+      };
+
+      vi.spyOn(timetablesApiModule, 'getClassTimetable').mockResolvedValue({
+        status: 'success',
+        data: mockDonBoscoTimetable
+      });
+
+      const res = await timetablesApiModule.getClassTimetable(DON_BOSCO_CLASS_ID);
+
+      expect(res.data.classId).toBe(DON_BOSCO_CLASS_ID);
+      const mondaySlot = res.data.schedule.Monday[0];
+      
+      // Verify raw API response contains nested objects
+      expect(typeof mondaySlot.subject).toBe('object');
+      expect(typeof mondaySlot.teacher).toBe('object');
+
+      // Verify normalization helpers prevent React #31 by producing scalar strings
+      expect(formatDisplayValue(mondaySlot.subject, 'Subject')).toBe('English');
+      expect(formatTeacherDisplay(mondaySlot.teacher, 'Not Assigned')).toBe('Mr. Smith');
     });
   });
 });

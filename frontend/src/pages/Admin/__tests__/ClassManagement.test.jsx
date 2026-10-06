@@ -318,4 +318,42 @@ describe('Admin ClassManagement Component (REST Migration)', () => {
     expect(sentPayload).not.toHaveProperty('schoolId');
     expect(sentPayload).not.toHaveProperty('tenantId');
   });
+
+  // ============================================================
+  // BUG-007: SECTION VALUE DISPLAY VERIFICATION
+  // ============================================================
+
+  it('24. BUG-007: preserves and formats section value "A" for class "I Standard"', async () => {
+    const { getSectionName, formatClassSection } = await import('../../../utils/classSorting.js');
+
+    const rawClass = {
+      id: 'cls-i-standard',
+      name: 'I Standard',
+      sections: [{ id: 'sec-a', name: 'A', _count: { students: 30 } }]
+    };
+
+    expect(getSectionName(rawClass)).toBe('A');
+    expect(formatClassSection(rawClass)).toBe('I Standard - Section A');
+  });
+
+  it('25. BUG-007: correctly formats multiple sections and non-sectioned classes without null/undefined', async () => {
+    const { getSectionName, formatClassSection } = await import('../../../utils/classSorting.js');
+
+    const multiSecClass = {
+      id: 'cls-multi',
+      name: 'I Standard',
+      sections: [{ id: 'sec-a', name: 'A' }, { id: 'sec-b', name: 'B' }]
+    };
+    expect(getSectionName(multiSecClass)).toBe('A, B');
+    expect(formatClassSection(multiSecClass)).toBe('I Standard - Section A, B');
+
+    const noSecClass = {
+      id: 'cls-no-sec',
+      name: 'Kindergarten',
+      sections: []
+    };
+    expect(getSectionName(noSecClass)).toBe('');
+    expect(formatClassSection(noSecClass)).toBe('Kindergarten');
+  });
 });
+

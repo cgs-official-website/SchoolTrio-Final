@@ -28,7 +28,7 @@ import * as XLSX from 'xlsx';
 import { TableSkeleton } from '../../components/Skeleton';
 import { uploadFileToCloudinaryOrFirebase } from '../../utils/cloudinary';
 import usePermissions from '../../hooks/usePermissions';
-import { sortClassesAscending } from '../../utils/classSorting';
+import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
 
 export default function HomeworkManagement() {
   const { userProfile } = useAuth();
@@ -666,7 +666,7 @@ export default function HomeworkManagement() {
             <option value="">All Classes</option>
             {classes.map(c => (
               <option key={c.id} value={c.id}>
-                {c.name}{c.section ? ` - Section ${c.section}` : ''}
+                {formatClassSection(c)}
               </option>
             ))}
           </select>
@@ -821,7 +821,7 @@ export default function HomeworkManagement() {
                       <option value="">Select a Class</option>
                       {classes.map(c => (
                         <option key={c.id} value={c.id}>
-                          {c.name}{c.section ? ` - Section ${c.section}` : ''}
+                          {formatClassSection(c)}
                         </option>
                       ))}
                     </select>
@@ -977,7 +977,7 @@ export default function HomeworkManagement() {
                       <option value="">Select a Class</option>
                       {classes.map(c => (
                         <option key={c.id} value={c.id}>
-                          {c.name}{c.section ? ` - Section ${c.section}` : ''}
+                          {formatClassSection(c)}
                         </option>
                       ))}
                     </select>

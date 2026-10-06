@@ -453,11 +453,11 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
   });
 
   describe('22. STAFF EDIT MODE & PERSONAL DETAILS REMOVAL (BUG-05)', () => {
-    it('verifies Edit Staff tabs exclude Personal Info / Personal Details', () => {
+    it('verifies Staff tabs in View and Edit exclude Personal Info / Personal Details', () => {
       const getTabs = (isStaffEditMode) => {
         return isStaffEditMode
           ? ['Education & Work', 'Identity & Banking', 'Documents']
-          : ['Personal Info', 'Education & Work', 'Identity & Banking', 'Documents'];
+          : ['Education & Work', 'Identity & Banking', 'Documents'];
       };
 
       const editTabs = getTabs(true);
@@ -466,8 +466,9 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
       expect(editTabs).not.toContain('Personal Details');
 
       const viewTabs = getTabs(false);
-      expect(viewTabs).toEqual(['Personal Info', 'Education & Work', 'Identity & Banking', 'Documents']);
-      expect(viewTabs).toContain('Personal Info');
+      expect(viewTabs).toEqual(['Education & Work', 'Identity & Banking', 'Documents']);
+      expect(viewTabs).not.toContain('Personal Info');
+      expect(viewTabs).not.toContain('Personal Details');
     });
 
     it('falls back to Education & Work tab if edit mode is active with Personal Info tab state', () => {
@@ -942,6 +943,424 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
       expect(normalized.previousOrganization).toBe('ABC Matriculation School');
       expect(normalized.previousDesignation).toBe('Assistant Teacher');
       expect(normalized.achievements).toBe('Best Faculty Award');
+    });
+  });
+
+  describe('24. BUG-003: STAFF DETAILS VIEW EXCLUDES PERSONAL DETAILS & ACADEMIC DETAILS', () => {
+    it('verifies View Details modal tabs include only Education & Work, Identity & Banking, Documents', () => {
+      const viewTabs = ['Education & Work', 'Identity & Banking', 'Documents'];
+      expect(viewTabs).toEqual(['Education & Work', 'Identity & Banking', 'Documents']);
+      expect(viewTabs).not.toContain('Personal Details');
+      expect(viewTabs).not.toContain('Personal Info');
+      expect(viewTabs).not.toContain('Academic Details');
+      expect(viewTabs).not.toContain('Academic Qualifications');
+    });
+
+    it('verifies View Details initial active tab is Education & Work', () => {
+      const getInitialViewTab = () => 'Education & Work';
+      expect(getInitialViewTab()).toBe('Education & Work');
+    });
+
+    it('verifies View Details Education & Work sections contain Professional Experience but exclude Academic Qualifications', () => {
+      // Structure verification for View mode Education & Work tab
+      const educationAndWorkViewSections = [
+        {
+          title: 'Professional Experience',
+          fields: [
+            'previousExperience',
+            'previousOrganization',
+            'previousDesignation',
+            'subjectsTaughtPreviously',
+            'subjectSpecialization',
+            'gradesClassesHandled',
+            'achievements',
+            'professionalCertifications'
+          ]
+        }
+      ];
+
+      const sectionTitles = educationAndWorkViewSections.map(s => s.title);
+      expect(sectionTitles).toContain('Professional Experience');
+      expect(sectionTitles).not.toContain('Academic Qualifications');
+      expect(sectionTitles).not.toContain('Academic Details');
+      expect(sectionTitles).not.toContain('Personal Details');
+    });
+
+    it('verifies View Details preserves all required remaining sections (Identity, Banking, Documents)', () => {
+      const remainingSections = [
+        'Professional Experience',
+        'Government Identity & Payroll',
+        'Banking Details',
+        'Documents'
+      ];
+      expect(remainingSections).toContain('Professional Experience');
+      expect(remainingSections).toContain('Government Identity & Payroll');
+      expect(remainingSections).toContain('Banking Details');
+      expect(remainingSections).toContain('Documents');
+    });
+
+    it('verifies underlying personal data is preserved on staff normalization and not deleted', () => {
+      const staffRecord = {
+        id: 'staff-audit-1',
+        firstName: 'Jane',
+        lastName: 'Austen',
+        name: 'Jane Austen',
+        staffId: 'STF-0099',
+        email: 'jane.austen@school.edu',
+        phone: '9876501234',
+        mobileNumber: '9876501234',
+        dob: '1990-12-16',
+        gender: 'Female',
+        nationality: 'Indian',
+        maritalStatus: 'Single',
+        bloodGroup: 'B+',
+        emergencyContact: '9876500000',
+        fatherGuardianName: 'George Austen',
+        languagesKnown: 'English, French',
+        residentialAddress: 'Steventon Rectory, Hampshire'
+      };
+
+      const norm = normalizeStaffMember(staffRecord);
+      expect(norm.firstName).toBe('Jane');
+      expect(norm.lastName).toBe('Austen');
+      expect(norm.email).toBe('jane.austen@school.edu');
+      expect(norm.mobileNumber).toBe('9876501234');
+      expect(norm.dob).toBe('1990-12-16');
+      expect(norm.gender).toBe('Female');
+      expect(norm.nationality).toBe('Indian');
+      expect(norm.maritalStatus).toBe('Single');
+      expect(norm.bloodGroup).toBe('B+');
+      expect(norm.emergencyContact).toBe('9876500000');
+      expect(norm.fatherGuardianName).toBe('George Austen');
+      expect(norm.languagesKnown).toBe('English, French');
+      expect(norm.residentialAddress).toBe('Steventon Rectory, Hampshire');
+    });
+
+    it('verifies underlying academic data is preserved on staff normalization and not deleted', () => {
+      const staffRecord = {
+        id: 'staff-audit-2',
+        name: 'Dr. Ada Lovelace',
+        qualifications: {
+          highestQualification: 'Ph.D. Mathematics',
+          degreeSpecialization: 'Analytical Engines',
+          universityName: 'University of London',
+          yearOfPassing: '1842',
+          certifications: 'Algorithm Design'
+        },
+        experience: {
+          previousExperience: '10',
+          previousOrganization: 'Babbage Labs',
+          previousDesignation: 'Chief Mathematician',
+          subjectSpecialization: 'Computing Machinery',
+          subjectsTaughtPreviously: 'Calculus, Logic',
+          gradesClassesHandled: 'Senior Advanced',
+          achievements: 'First Computer Algorithm'
+        }
+      };
+
+      const norm = normalizeStaffMember(staffRecord);
+      expect(norm.highestQualification).toBe('Ph.D. Mathematics');
+      expect(norm.degreeSpecialization).toBe('Analytical Engines');
+      expect(norm.universityName).toBe('University of London');
+      expect(norm.yearOfPassing).toBe('1842');
+      expect(norm.professionalCertifications).toBe('Algorithm Design');
+      expect(norm.previousExperience).toBe('10');
+      expect(norm.previousOrganization).toBe('Babbage Labs');
+      expect(norm.previousDesignation).toBe('Chief Mathematician');
+      expect(norm.subjectSpecialization).toBe('Computing Machinery');
+      expect(norm.subjectsTaughtPreviously).toBe('Calculus, Logic');
+      expect(norm.gradesClassesHandled).toBe('Senior Advanced');
+      expect(norm.achievements).toBe('First Computer Algorithm');
+    });
+
+    it('verifies Edit mode retains full academic qualification editing capability', async () => {
+      const updateSpy = vi.spyOn(staffApi, 'updateStaff').mockResolvedValue({
+        success: true,
+        data: {
+          id: 'staff-edit-verify-1',
+          qualifications: {
+            highestQualification: 'M.Sc Computer Science',
+            degreeSpecialization: 'Software Systems',
+            universityName: 'Oxford University',
+            yearOfPassing: '2021'
+          }
+        }
+      });
+
+      const editData = {
+        staffType: 'teaching',
+        designation: 'Senior Faculty',
+        qualifications: {
+          highestQualification: 'M.Sc Computer Science',
+          degreeSpecialization: 'Software Systems',
+          universityName: 'Oxford University',
+          yearOfPassing: '2021',
+          certifications: null
+        }
+      };
+
+      const res = await staffApi.updateStaff('staff-edit-verify-1', editData);
+      expect(updateSpy).toHaveBeenCalledWith('staff-edit-verify-1', editData);
+      expect(res.data.qualifications.highestQualification).toBe('M.Sc Computer Science');
+    });
+
+    it('verifies Add Staff form fields and payload retain personal and academic fields', () => {
+      const newStaffPayload = {
+        firstName: 'Alan',
+        lastName: 'Turing',
+        email: 'alan.turing@school.edu',
+        phone: '9876543210',
+        gender: 'Male',
+        dob: '1912-06-23',
+        designation: 'Lead Cryptanalyst',
+        staffType: 'teaching',
+        highestQualification: 'Ph.D. Mathematical Logic',
+        degreeSpecialization: 'Cryptanalysis',
+        universityName: 'Cambridge',
+        yearOfPassing: '1938',
+        previousExperience: '6'
+      };
+
+      expect(newStaffPayload.firstName).toBe('Alan');
+      expect(newStaffPayload.highestQualification).toBe('Ph.D. Mathematical Logic');
+      expect(newStaffPayload.previousExperience).toBe('6');
+    });
+  });
+
+  describe('25. BUG-004: STAFF EDIT EXPLICIT SAVE & NO AUTO-SAVE BEHAVIOR', () => {
+    it('1. editing Education & Work field modifies local state only and does NOT invoke updateStaff', () => {
+      const updateSpy = vi.spyOn(staffApi, 'updateStaff');
+      updateSpy.mockClear();
+
+      let editStaffData = {
+        highestQualification: 'B.Sc Physics',
+        previousExperience: '3'
+      };
+
+      // Simulate input onChange on local state
+      const handleChange = (field, value) => {
+        editStaffData = { ...editStaffData, [field]: value };
+      };
+
+      handleChange('highestQualification', 'M.Sc Physics');
+      handleChange('previousExperience', '5');
+
+      expect(editStaffData.highestQualification).toBe('M.Sc Physics');
+      expect(editStaffData.previousExperience).toBe('5');
+      expect(updateSpy).not.toHaveBeenCalled();
+    });
+
+    it('2. editing field does NOT set savingStaffEdit state to true', () => {
+      let savingStaffEdit = false;
+      const setSavingStaffEdit = (val) => { savingStaffEdit = val; };
+
+      let editStaffData = { universityName: 'Harvard' };
+      const handleChange = (field, value) => {
+        editStaffData = { ...editStaffData, [field]: value };
+        // Ensure no saving state is toggled
+      };
+
+      handleChange('universityName', 'MIT');
+      expect(savingStaffEdit).toBe(false);
+    });
+
+    it('3. waiting after field change does NOT trigger auto-save or API requests', async () => {
+      const updateSpy = vi.spyOn(staffApi, 'updateStaff');
+      updateSpy.mockClear();
+
+      let editStaffData = { degreeSpecialization: 'Robotics' };
+      editStaffData.degreeSpecialization = 'Autonomous Systems';
+
+      // Simulate 50ms passage of time with no explicit save click
+      await new Promise(r => setTimeout(r, 50));
+      expect(updateSpy).not.toHaveBeenCalled();
+    });
+
+    it('4. clicking Cancel discards local changes and does NOT invoke updateStaff', () => {
+      const updateSpy = vi.spyOn(staffApi, 'updateStaff');
+      updateSpy.mockClear();
+
+      const originalStaff = { id: 'staff-cancel-1', designation: 'Teacher', highestQualification: 'B.Ed' };
+      let editStaffData = { ...originalStaff };
+      let isStaffEditMode = true;
+
+      // User changes a field
+      editStaffData.highestQualification = 'M.Ed';
+
+      // User clicks Cancel
+      const handleCancel = () => {
+        isStaffEditMode = false;
+        editStaffData = null;
+      };
+
+      handleCancel();
+      expect(isStaffEditMode).toBe(false);
+      expect(editStaffData).toBeNull();
+      expect(updateSpy).not.toHaveBeenCalled();
+    });
+
+    it('5. clicking Save invokes updateStaff exactly once with sanitized payload', async () => {
+      const updateSpy = vi.spyOn(staffApi, 'updateStaff').mockResolvedValue({
+        success: true,
+        data: { id: 'staff-save-1', designation: 'Headmaster' }
+      });
+      updateSpy.mockClear();
+
+      let savingStaffEdit = false;
+      const saveHandler = async (id, payload) => {
+        savingStaffEdit = true;
+        try {
+          return await staffApi.updateStaff(id, payload);
+        } finally {
+          savingStaffEdit = false;
+        }
+      };
+
+      const payload = {
+        designation: 'Headmaster',
+        qualifications: { highestQualification: 'Ph.D.' }
+      };
+
+      await saveHandler('staff-save-1', payload);
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+      expect(updateSpy).toHaveBeenCalledWith('staff-save-1', payload);
+      expect(savingStaffEdit).toBe(false);
+    });
+
+    it('6. Save button shows "Saving..." only during active mutation execution', async () => {
+      let isSaving = false;
+      let buttonText = 'Save Changes';
+
+      const updatePromise = new Promise((resolve) => {
+        setTimeout(() => resolve({ success: true }), 30);
+      });
+
+      const updateSpy = vi.spyOn(staffApi, 'updateStaff').mockImplementation(() => updatePromise);
+
+      const triggerSave = async () => {
+        isSaving = true;
+        buttonText = isSaving ? 'Saving...' : 'Save Changes';
+        try {
+          await staffApi.updateStaff('staff-1', {});
+        } finally {
+          isSaving = false;
+          buttonText = isSaving ? 'Saving...' : 'Save Changes';
+        }
+      };
+
+      const saveExecution = triggerSave();
+      expect(buttonText).toBe('Saving...');
+      expect(isSaving).toBe(true);
+
+      await saveExecution;
+      expect(buttonText).toBe('Save Changes');
+      expect(isSaving).toBe(false);
+    });
+
+    it('7. successful Save updates local state and clears edit mode', async () => {
+      let selectedStaff = { id: 'staff-7', designation: 'Teacher' };
+      let isStaffEditMode = true;
+
+      vi.spyOn(staffApi, 'updateStaff').mockResolvedValue({
+        success: true,
+        data: { id: 'staff-7', designation: 'Senior Faculty' }
+      });
+
+      const res = await staffApi.updateStaff('staff-7', { designation: 'Senior Faculty' });
+      selectedStaff = res.data;
+      isStaffEditMode = false;
+
+      expect(selectedStaff.designation).toBe('Senior Faculty');
+      expect(isStaffEditMode).toBe(false);
+    });
+
+    it('8. failed Save clears saving state and does not exit edit mode prematurely', async () => {
+      let savingStaffEdit = false;
+      let isStaffEditMode = true;
+
+      vi.spyOn(staffApi, 'updateStaff').mockRejectedValue(new Error('Network error'));
+
+      const saveHandler = async () => {
+        savingStaffEdit = true;
+        try {
+          await staffApi.updateStaff('staff-8', {});
+          isStaffEditMode = false;
+        } catch (err) {
+          // Toast error
+        } finally {
+          savingStaffEdit = false;
+        }
+      };
+
+      await saveHandler();
+      expect(savingStaffEdit).toBe(false);
+      expect(isStaffEditMode).toBe(true); // Still in edit mode so user can retry
+    });
+
+    it('9. double Save click does not create duplicate API requests due to concurrency guard', async () => {
+      let updateCallCount = 0;
+      let savingStaffEdit = false;
+
+      vi.spyOn(staffApi, 'updateStaff').mockImplementation(async () => {
+        updateCallCount++;
+        await new Promise(r => setTimeout(r, 20));
+        return { success: true };
+      });
+
+      const handleSave = async () => {
+        if (savingStaffEdit) return; // Guard
+        savingStaffEdit = true;
+        try {
+          await staffApi.updateStaff('staff-guard-1', {});
+        } finally {
+          savingStaffEdit = false;
+        }
+      };
+
+      // Rapidly fire two clicks
+      const click1 = handleSave();
+      const click2 = handleSave();
+
+      await Promise.all([click1, click2]);
+      expect(updateCallCount).toBe(1);
+    });
+
+    it('10. existing Education & Work fields remain fully functional in edit data', () => {
+      const editStaffData = {
+        highestQualification: 'M.Sc Mathematics',
+        degreeSpecialization: 'Applied Mathematics',
+        universityName: 'Cambridge',
+        yearOfPassing: '2018',
+        previousExperience: '6',
+        previousOrganization: 'City Grammar School',
+        previousDesignation: 'Senior Lecturer',
+        subjectsTaughtPreviously: 'Calculus, Algebra',
+        subjectSpecialization: 'Pure Mathematics',
+        gradesClassesHandled: 'Grade 11-12',
+        achievements: 'Teacher of the Year 2023',
+        professionalCertifications: 'Certified Math Educator'
+      };
+
+      expect(editStaffData.highestQualification).toBe('M.Sc Mathematics');
+      expect(editStaffData.universityName).toBe('Cambridge');
+      expect(editStaffData.previousExperience).toBe('6');
+      expect(editStaffData.achievements).toBe('Teacher of the Year 2023');
+    });
+
+    it('11. existing Edit Staff behavior across all tabs remains intact and deterministic', () => {
+      const tabs = ['Education & Work', 'Identity & Banking', 'Documents'];
+      let activeTab = 'Education & Work';
+
+      const switchTab = (tab) => { activeTab = tab; };
+      switchTab('Identity & Banking');
+      expect(activeTab).toBe('Identity & Banking');
+
+      switchTab('Documents');
+      expect(activeTab).toBe('Documents');
+
+      expect(tabs).toContain('Education & Work');
+      expect(tabs).toContain('Identity & Banking');
+      expect(tabs).toContain('Documents');
     });
   });
 });

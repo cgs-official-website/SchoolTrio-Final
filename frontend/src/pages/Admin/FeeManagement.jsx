@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
 import { uploadCustomDataFiles } from '../../utils/cloudinary';
 import usePermissions from '../../hooks/usePermissions';
-import { sortClassesAscending } from '../../utils/classSorting';
+import { sortClassesAscending, formatClassSection, getSectionName } from '../../utils/classSorting';
 import { notifyDataChanged } from '../../utils/liveData';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
@@ -870,9 +870,9 @@ export default function FeeManagement() {
                     {classes.map(c => {
                       const studentCount = c._count?.students ?? 0;
                       const countLabel = studentCount === 1 ? '1 student' : `${studentCount} students`;
-                      const sectionText = c.section ? ` - Section ${c.section}` : (Array.isArray(c.sections) && c.sections.length ? ` (${c.sections.map(s => s.name).join(', ')})` : '');
+                      const classLabel = formatClassSection(c);
                       return (
-                        <option key={c.id} value={c.id}>{c.name}{sectionText} • ({countLabel})</option>
+                        <option key={c.id} value={c.id}>{classLabel} • ({countLabel})</option>
                       );
                     })}
                   </select>
