@@ -276,7 +276,7 @@ export async function findHomeworkWithRoster(schoolId, homeworkId, tx = prisma) 
           name: true,
           students: {
             where: {
-              status: 'active'
+              status: { in: ['Active', 'active', 'ACTIVE'] }
             },
             select: {
               id: true,

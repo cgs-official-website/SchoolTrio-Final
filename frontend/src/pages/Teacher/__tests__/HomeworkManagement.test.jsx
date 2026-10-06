@@ -234,6 +234,72 @@ describe('Teacher HomeworkManagement Component (REST Migration & Metadata Remedi
     expect(res.data.status).toBe('Completed');
   });
 
+  it('verifies roster data contract handles multiple enrolled students with Completed, Submitted, and In Progress states', async () => {
+    const mockDetail = {
+      id: 'hw-detail-10a',
+      title: 'Chapter 3 – Tamil',
+      classId: '05120a32-8118-44b6-8010-b9ed2c5467c0',
+      className: 'Class 10-A',
+      subjectId: '743ce36e-cfe4-41bc-b6d7-08ee51ba7da6',
+      subjectName: 'Tamil',
+      dueDate: '2026-10-15',
+      totalStudents: 3,
+      submittedCount: 1,
+      completedCount: 1,
+      inProgressCount: 1,
+      notStartedCount: 0,
+      roster: [
+        {
+          studentId: 'student-a',
+          studentName: 'Student A',
+          admissionNumber: 'ADM-101',
+          rollNumber: '1',
+          status: 'Completed',
+          submittedAt: '2026-10-06T09:00:00.000Z',
+          grade: 'A',
+          feedback: 'Great job'
+        },
+        {
+          studentId: 'student-b',
+          studentName: 'Student B',
+          admissionNumber: 'ADM-102',
+          rollNumber: '2',
+          status: 'Submitted',
+          submittedAt: '2026-10-06T09:30:00.000Z',
+          grade: null,
+          feedback: null
+        },
+        {
+          studentId: 'student-c',
+          studentName: 'Student C',
+          admissionNumber: 'ADM-103',
+          rollNumber: '3',
+          status: 'In Progress',
+          submittedAt: null,
+          grade: null,
+          feedback: null
+        }
+      ]
+    };
+
+    const getSpy = vi.spyOn(homeworkApi, 'getHomework').mockResolvedValue({
+      success: true,
+      data: mockDetail
+    });
+
+    const res = await homeworkApi.getHomework('hw-detail-10a');
+
+    expect(getSpy).toHaveBeenCalledWith('hw-detail-10a');
+    expect(res.data.totalStudents).toBe(3);
+    expect(res.data.completedCount).toBe(1);
+    expect(res.data.submittedCount).toBe(1);
+    expect(res.data.inProgressCount).toBe(1);
+    expect(res.data.roster).toHaveLength(3);
+    expect(res.data.roster[0].status).toBe('Completed');
+    expect(res.data.roster[1].status).toBe('Submitted');
+    expect(res.data.roster[2].status).toBe('In Progress');
+  });
+
   // ============================================================
   // 6. ZERO FIRESTORE ACCESS
   // ============================================================

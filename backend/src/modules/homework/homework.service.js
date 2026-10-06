@@ -162,6 +162,26 @@ export function formatParentHomework(assignment, submission) {
  *
  * @param {Object} assignment - Raw HomeworkAssignment entity
  * @returns {Object} Formatted Homework Summary DTO
+/**
+ * Normalizes homework submission status string to canonical value.
+ *
+ * @param {string|null|undefined} rawStatus - Raw status string
+ * @returns {'Not Started' | 'In Progress' | 'Completed' | 'Submitted'}
+ */
+export function normalizeHomeworkStatus(rawStatus) {
+  if (!rawStatus) return 'Not Started';
+  const s = String(rawStatus).trim().toLowerCase();
+  if (s === 'submitted') return 'Submitted';
+  if (s === 'completed') return 'Completed';
+  if (s === 'in progress' || s === 'in_progress' || s === 'inprogress') return 'In Progress';
+  return 'Not Started';
+}
+
+/**
+ * Formats a single homework assignment summary entity.
+ *
+ * @param {Object} assignment - Raw HomeworkAssignment entity
+ * @returns {Object} Formatted Homework Summary DTO
  */
 export function formatHomeworkSummary(assignment) {
   const { files, remarks, maxMarks } = extractAttachmentDetails(assignment.attachments);
@@ -172,9 +192,10 @@ export function formatHomeworkSummary(assignment) {
   let inProgressCount = 0;
 
   for (const s of submissions) {
-    if (s.status === 'Submitted') submittedCount++;
-    else if (s.status === 'Completed') completedCount++;
-    else if (s.status === 'In Progress') inProgressCount++;
+    const status = normalizeHomeworkStatus(s.status);
+    if (status === 'Submitted') submittedCount++;
+    else if (status === 'Completed') completedCount++;
+    else if (status === 'In Progress') inProgressCount++;
   }
 
   return {
@@ -222,7 +243,7 @@ export function formatHomeworkDetailWithRoster(assignment) {
 
   const roster = students.map((student) => {
     const sub = submissionsMap.get(student.id);
-    const status = sub?.status || 'Not Started';
+    const status = normalizeHomeworkStatus(sub?.status);
 
     if (status === 'Submitted') submittedCount++;
     else if (status === 'Completed') completedCount++;
@@ -231,11 +252,11 @@ export function formatHomeworkDetailWithRoster(assignment) {
 
     return {
       studentId: student.id,
-      studentName: `${student.firstName} ${student.lastName}`.trim(),
+      studentName: `${student.firstName} ${student.lastName || ''}`.trim(),
       admissionNumber: student.admissionNumber || '',
       rollNumber: student.rollNumber || null,
       status,
-      submittedAt: status === 'Submitted' && sub?.submittedAt ? sub.submittedAt : null,
+      submittedAt: status === 'Submitted' && sub?.submittedAt ? sub.submittedAt : (sub?.submittedAt || null),
       grade: sub?.grade || null,
       feedback: sub?.feedback || null,
       updatedAt: sub?.updatedAt || null

@@ -53,7 +53,7 @@ describe('Unit: Homework Service Tests — Phase 4C.7-D.2-I-M.1', () => {
     description: 'Solve exercises 1 to 10',
     classId: CLASS_ID,
     subjectId: SUBJECT_ID,
-    dueDate: '2026-09-30',
+    dueDate: '2099-12-31',
     attachments: {
       files: [
         {
@@ -134,6 +134,51 @@ describe('Unit: Homework Service Tests — Phase 4C.7-D.2-I-M.1', () => {
         updatedAt: null
       });
       expect(formatted.isOverdue).toBe(false);
+    });
+
+    it('formats homework detail with complete student roster and aggregates Completed/Submitted/In Progress counts accurately', () => {
+      const assignmentWithRoster = {
+        ...MOCK_ASSIGNMENT,
+        class: {
+          id: CLASS_ID,
+          name: 'Grade 10-A',
+          students: [
+            { id: 'student-1', firstName: 'Alice', lastName: 'Smith', admissionNumber: 'ADM001', rollNumber: '1', status: 'Active' },
+            { id: 'student-2', firstName: 'Bob', lastName: 'Jones', admissionNumber: 'ADM002', rollNumber: '2', status: 'Active' },
+            { id: 'student-3', firstName: 'Charlie', lastName: 'Brown', admissionNumber: 'ADM003', rollNumber: '3', status: 'Active' },
+            { id: 'student-4', firstName: 'Diana', lastName: 'Prince', admissionNumber: 'ADM004', rollNumber: '4', status: 'Active' }
+          ]
+        },
+        submissions: [
+          { id: 'sub-1', studentId: 'student-1', status: 'Completed', grade: 'A', feedback: 'Excellent' },
+          { id: 'sub-2', studentId: 'student-2', status: 'Submitted', submittedAt: new Date('2026-09-15T10:00:00Z') },
+          { id: 'sub-3', studentId: 'student-3', status: 'In Progress' }
+        ]
+      };
+
+      const result = homeworkService.formatHomeworkDetailWithRoster(assignmentWithRoster);
+
+      expect(result.totalStudents).toBe(4);
+      expect(result.completedCount).toBe(1);
+      expect(result.submittedCount).toBe(1);
+      expect(result.inProgressCount).toBe(1);
+      expect(result.notStartedCount).toBe(1);
+      expect(result.roster).toHaveLength(4);
+
+      expect(result.roster[0]).toEqual({
+        studentId: 'student-1',
+        studentName: 'Alice Smith',
+        admissionNumber: 'ADM001',
+        rollNumber: '1',
+        status: 'Completed',
+        submittedAt: null,
+        grade: 'A',
+        feedback: 'Excellent',
+        updatedAt: null
+      });
+      expect(result.roster[1].status).toBe('Submitted');
+      expect(result.roster[2].status).toBe('In Progress');
+      expect(result.roster[3].status).toBe('Not Started');
     });
   });
 
