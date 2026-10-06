@@ -1,4 +1,4 @@
-import { prisma } from '../../database/prisma.client.js';
+import { prisma, runWithTenantContext } from '../../database/prisma.client.js';
 import * as reportCardRepository from './report-card.repository.js';
 import { getReportCardTemplate } from '../report-card-templates/report-card-template.service.js';
 import { findExamById } from '../exams/exam.repository.js';
@@ -148,6 +148,22 @@ async function authorizeStudentReportCardAccess(schoolId, student, actor) {
       throw new ForbiddenError('Access denied: Students can only view their own report cards');
     }
     return;
+  }
+}
+
+/**
+ * Asserts whether a report card is finalized and accessible to students/parents.
+ */
+async function assertReportCardFinalizedForStudents(schoolId, reportCard, actor) {
+  if (!actor) return;
+  const role = (actor.systemRole || actor.role || '').toUpperCase();
+  if (role === SYSTEM_ROLES.STUDENT || role === 'STUDENT' || role === SYSTEM_ROLES.PARENT || role === 'PARENT') {
+    if (reportCard.examId) {
+      const exam = await runWithTenantContext({ schoolId }, () => findExamById(schoolId, reportCard.examId));
+      if (exam && exam.status && exam.status !== 'FINALIZED') {
+        throw new ForbiddenError('Report card is not yet finalized. Please wait until results are released.');
+      }
+    }
   }
 }
 
@@ -562,6 +578,7 @@ export async function getReportCard(schoolId, id, actor = null) {
   // Authorize student-level access (for Parent / Student / Teacher)
   if (actor && reportCard.student) {
     await authorizeStudentReportCardAccess(schoolId, reportCard.student, actor);
+    await assertReportCardFinalizedForStudents(schoolId, reportCard, actor);
   }
 
   return serializeReportCard(reportCard);
@@ -622,10 +639,29 @@ export async function listStudentReportCards(schoolId, studentId, query = {}, ac
     paginationOptions
   );
 
-  const pagination = buildPaginationMetadata(result.total, paginationParams.page, paginationParams.limit);
+  const role = actor ? (actor.systemRole || actor.role || '').toUpperCase() : '';
+  const isStudentOrParent = role === SYSTEM_ROLES.STUDENT || role === 'STUDENT' || role === SYSTEM_ROLES.PARENT || role === 'PARENT';
+
+  let filteredItems = result.items;
+  if (isStudentOrParent) {
+    // Only return report cards where exam is null (continuous) OR exam status is FINALIZED
+    const examIds = result.items.map(r => r.examId).filter(Boolean);
+    const finalizedExams = await prisma.examination.findMany({
+      where: {
+        id: { in: examIds },
+        schoolId,
+        status: 'FINALIZED'
+      },
+      select: { id: true }
+    });
+    const finalizedExamIdSet = new Set(finalizedExams.map(e => e.id));
+    filteredItems = result.items.filter(r => !r.examId || finalizedExamIdSet.has(r.examId));
+  }
+
+  const pagination = buildPaginationMetadata(isStudentOrParent ? filteredItems.length : result.total, paginationParams.page, paginationParams.limit);
 
   return {
-    reportCards: result.items.map(r => serializeReportCard(r)),
+    reportCards: filteredItems.map(r => serializeReportCard(r)),
     pagination
   };
 }

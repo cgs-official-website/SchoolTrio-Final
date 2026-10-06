@@ -59,17 +59,35 @@ export async function listAssessments(schoolId, query = {}, actor = null) {
   if (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
     const userId = actor.id || actor.userId;
     const profile = await assessmentRepository.findStaffProfileByUserId(schoolId, userId);
-    if (!profile || !profile.assignedClassId) {
+    if (!profile) {
       return {
         assessments: [],
         pagination: buildPaginationMetadata(0, 1, 20)
       };
     }
-    // Restrict teacher querying to their assigned class
-    if (effectiveClassId && effectiveClassId !== profile.assignedClassId) {
-      throw new ForbiddenError('Teachers can only access assessments for their assigned class');
+
+    const custom = profile.customData || {};
+    const assignments = custom.assignments || {};
+    const subjectClassIds = assignments.subjectClassIds || [];
+    const teacherClasses = [profile.assignedClassId, ...subjectClassIds].filter(Boolean);
+
+    if (teacherClasses.length === 0) {
+      return {
+        assessments: [],
+        pagination: buildPaginationMetadata(0, 1, 20)
+      };
     }
-    effectiveClassId = profile.assignedClassId;
+
+    // Restrict teacher querying to their assigned classes
+    if (effectiveClassId) {
+      if (!teacherClasses.includes(effectiveClassId)) {
+        throw new ForbiddenError('Teachers can only access assessments for classes assigned to them');
+      }
+    } else if (teacherClasses.length === 1) {
+      effectiveClassId = teacherClasses[0];
+    } else {
+      effectiveClassId = { in: teacherClasses };
+    }
   }
 
   // If parent, restrict to classes where parent has an active linked child

@@ -83,9 +83,29 @@ export async function updateExam(id, payload = {}) {
  * @param {string} id - PostgreSQL Examination UUID
  * @returns {Promise<{ success: boolean, data: { message: string, id: string }, message?: string }>}
  */
-export async function deleteExam(id) {
-  return apiClient(`/api/v1/exams/${encodeURIComponent(id)}`, {
-    method: 'DELETE'
+/**
+ * Updates examination status (DRAFT, PUBLISHED, FINALIZED).
+ *
+ * @param {string} id - PostgreSQL Examination UUID
+ * @param {string} status - Target status ('DRAFT' | 'PUBLISHED' | 'FINALIZED')
+ * @returns {Promise<{ success: boolean, data: Object, message?: string }>}
+ */
+export async function updateExamStatus(id, status) {
+  return apiClient(`/api/v1/exams/${encodeURIComponent(id)}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status })
+  });
+}
+
+/**
+ * Retrieves mark-entry progress across all subjects and sections for an exam.
+ *
+ * @param {string} id - PostgreSQL Examination UUID
+ * @returns {Promise<{ success: boolean, data: Object, message?: string }>}
+ */
+export async function getExamProgress(id) {
+  return apiClient(`/api/v1/exams/${encodeURIComponent(id)}/progress`, {
+    method: 'GET'
   });
 }
 
@@ -94,6 +114,8 @@ export const examsApi = {
   getExam,
   createExam,
   updateExam,
+  updateExamStatus,
+  getExamProgress,
   deleteExam
 };
 

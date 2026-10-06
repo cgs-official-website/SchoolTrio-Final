@@ -27,6 +27,18 @@ export const examParamsSchema = {
   })
 };
 
+const subjectConfigItemSchema = z.object({
+  subjectId: z.string().regex(REGEX.UUID, 'Invalid subject ID format'),
+  subjectName: z.string().trim().optional(),
+  maxMarks: z.coerce.number().positive('Max marks must be greater than 0').max(999.99, 'Max marks cannot exceed 999.99'),
+  passMarks: z.coerce.number().min(0, 'Pass marks cannot be negative').max(999.99, 'Pass marks cannot exceed 999.99'),
+  weightage: z.coerce.number().min(0).max(100).optional().default(100),
+  examDate: z.string().regex(REGEX.DATE_ISO, 'Exam date must be YYYY-MM-DD').optional().nullable()
+}).refine(data => data.passMarks <= data.maxMarks, {
+  message: 'Pass marks must be less than or equal to max marks',
+  path: ['passMarks']
+});
+
 export const createExamSchema = {
   body: z
     .object({
@@ -35,6 +47,10 @@ export const createExamSchema = {
         .trim()
         .min(1, 'Exam name is required')
         .max(150, 'Exam name must not exceed 150 characters'),
+      examType: z
+        .enum(['Unit Test', 'Mid-term', 'Semester', 'Model', 'Final', 'Custom Exam'])
+        .optional()
+        .default('Final'),
       term: z
         .string()
         .trim()
@@ -45,6 +61,20 @@ export const createExamSchema = {
         .trim()
         .max(20, 'Academic year must not exceed 20 characters')
         .optional(),
+      classId: z
+        .string()
+        .regex(REGEX.UUID, 'Invalid class ID format')
+        .optional()
+        .nullable(),
+      sectionId: z
+        .string()
+        .regex(REGEX.UUID, 'Invalid section ID format')
+        .optional()
+        .nullable(),
+      subjectsConfig: z
+        .array(subjectConfigItemSchema)
+        .optional()
+        .nullable(),
       startDate: z
         .string()
         .regex(REGEX.DATE_ISO, 'Start date must be in YYYY-MM-DD format')
@@ -82,6 +112,12 @@ export const updateExamSchema = {
         .min(1, 'Exam name cannot be empty')
         .max(150, 'Exam name must not exceed 150 characters')
         .optional(),
+      examType: z
+        .enum(['Unit Test', 'Mid-term', 'Semester', 'Model', 'Final', 'Custom Exam'])
+        .optional(),
+      status: z
+        .enum(['DRAFT', 'PUBLISHED', 'FINALIZED'])
+        .optional(),
       term: z
         .string()
         .trim()
@@ -94,6 +130,20 @@ export const updateExamSchema = {
         .min(1, 'Academic year cannot be empty')
         .max(20, 'Academic year must not exceed 20 characters')
         .optional(),
+      classId: z
+        .string()
+        .regex(REGEX.UUID, 'Invalid class ID format')
+        .optional()
+        .nullable(),
+      sectionId: z
+        .string()
+        .regex(REGEX.UUID, 'Invalid section ID format')
+        .optional()
+        .nullable(),
+      subjectsConfig: z
+        .array(subjectConfigItemSchema)
+        .optional()
+        .nullable(),
       startDate: z
         .string()
         .regex(REGEX.DATE_ISO, 'Start date must be in YYYY-MM-DD format')

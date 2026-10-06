@@ -186,15 +186,20 @@ export async function upsertGrade(schoolId, assessmentId, studentId, data, tx = 
     },
     update: {
       marksObtained: data.marksObtained,
-      remarks: data.remarks !== undefined ? data.remarks : undefined
+      isAbsent: data.isAbsent !== undefined ? data.isAbsent : false,
+      isExempt: data.isExempt !== undefined ? data.isExempt : false,
+      remarks: data.remarks !== undefined ? data.remarks : undefined,
+      grade: data.grade !== undefined ? data.grade : undefined
     },
     create: {
       schoolId,
       assessmentId,
       studentId,
       marksObtained: data.marksObtained,
+      isAbsent: data.isAbsent || false,
+      isExempt: data.isExempt || false,
       remarks: data.remarks || null,
-      grade: null
+      grade: data.grade || null
     },
     include: {
       student: {
@@ -249,6 +254,18 @@ export async function findStaffProfileByUserId(schoolId, userId, tx = prisma) {
       id: true,
       assignedClassId: true,
       name: true
+    }
+  });
+}
+
+export async function updateAssessmentStatus(schoolId, assessmentId, status, tx = prisma) {
+  return tx.assessment.update({
+    where: {
+      id: assessmentId,
+      schoolId
+    },
+    data: {
+      status
     }
   });
 }

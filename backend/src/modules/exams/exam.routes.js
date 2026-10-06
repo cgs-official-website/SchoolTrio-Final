@@ -53,6 +53,26 @@ router.patch(
   examController.updateExam
 );
 
+// Get exam progress
+router.get(
+  '/:id/progress',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('exams', 'read'),
+  validate(examSchemas.examParamsSchema),
+  examController.getExamProgress
+);
+
+// Update exam status (Draft / Published / Finalized)
+router.post(
+  '/:id/status',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('exams', 'edit'),
+  validate(examSchemas.examParamsSchema),
+  examController.updateExamStatus
+);
+
 // Delete examination
 router.delete(
   '/:id',

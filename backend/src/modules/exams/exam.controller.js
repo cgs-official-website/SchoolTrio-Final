@@ -64,10 +64,6 @@ export async function updateExam(req, res, next) {
   }
 }
 
-/**
- * Deletes an examination.
- * DELETE /api/v1/exams/:id
- */
 export async function deleteExam(req, res, next) {
   try {
     const schoolId = req.tenant.schoolId;
@@ -78,3 +74,33 @@ export async function deleteExam(req, res, next) {
     return next(error);
   }
 }
+
+/**
+ * Changes examination status: DRAFT -> PUBLISHED -> FINALIZED
+ * POST /api/v1/exams/:id/status
+ */
+export async function updateExamStatus(req, res, next) {
+  try {
+    const schoolId = req.tenant.schoolId;
+    const userId = req.auth?.userId || req.user?.id || null;
+    const result = await examService.updateExamStatus(schoolId, req.params.id, req.body.status, userId);
+    return ApiResponse.success(res, result, `Exam status updated to ${req.body.status} successfully`);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+/**
+ * Gets exam mark-entry progress across all subjects and sections
+ * GET /api/v1/exams/:id/progress
+ */
+export async function getExamProgress(req, res, next) {
+  try {
+    const schoolId = req.tenant.schoolId;
+    const result = await examService.getExamProgress(schoolId, req.params.id);
+    return ApiResponse.success(res, result, 'Exam progress retrieved successfully');
+  } catch (error) {
+    return next(error);
+  }
+}
+

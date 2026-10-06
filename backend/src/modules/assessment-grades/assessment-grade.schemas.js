@@ -49,8 +49,11 @@ export const listGradesSchema = {
 
 export const singleGradeItemSchema = z.object({
   studentId: z.string({ required_error: 'Student ID is required' }).regex(REGEX.UUID, 'Invalid student ID format'),
-  marksObtained: marksObtainedSchema,
-  remarks: z.string().trim().max(1000, 'Remarks cannot exceed 1000 characters').optional().nullable()
+  marksObtained: marksObtainedSchema.optional().nullable(),
+  isAbsent: z.boolean().optional().default(false),
+  isExempt: z.boolean().optional().default(false),
+  remarks: z.string().trim().max(1000, 'Remarks cannot exceed 1000 characters').optional().nullable(),
+  overrideReason: z.string().trim().max(500).optional().nullable()
 });
 
 export const upsertSingleGradeSchema = {
@@ -59,8 +62,11 @@ export const upsertSingleGradeSchema = {
     studentId: z.string({ required_error: 'Student ID is required' }).regex(REGEX.UUID, 'Invalid student ID format')
   }),
   body: z.object({
-    marksObtained: marksObtainedSchema,
-    remarks: z.string().trim().max(1000, 'Remarks cannot exceed 1000 characters').optional().nullable()
+    marksObtained: marksObtainedSchema.optional().nullable(),
+    isAbsent: z.boolean().optional().default(false),
+    isExempt: z.boolean().optional().default(false),
+    remarks: z.string().trim().max(1000, 'Remarks cannot exceed 1000 characters').optional().nullable(),
+    overrideReason: z.string().trim().max(500).optional().nullable()
   })
 };
 
@@ -72,6 +78,8 @@ export const bulkUpsertGradesSchema = {
     grades: z
       .array(singleGradeItemSchema, { required_error: 'Grades array is required' })
       .min(1, 'Grades array must contain at least one item')
-      .max(200, 'Cannot submit more than 200 grades in a single batch')
+      .max(200, 'Cannot submit more than 200 grades in a single batch'),
+    isDraft: z.boolean().optional().default(false),
+    overrideReason: z.string().trim().max(500).optional().nullable()
   })
 };

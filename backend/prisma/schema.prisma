@@ -671,15 +671,20 @@ model AbsenteeFlag {
 }
 
 model Examination {
-  id           String   @id @default(uuid()) @db.Uuid
-  schoolId     String   @map("school_id") @db.Uuid
-  name         String   @db.VarChar(150)
-  term         String?  @db.VarChar(50)
-  academicYear String   @map("academic_year") @db.VarChar(20)
-  startDate    String?  @map("start_date") @db.VarChar(10)
-  endDate      String?  @map("end_date") @db.VarChar(10)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  schoolId       String   @map("school_id") @db.Uuid
+  name           String   @db.VarChar(150)
+  term           String?  @db.VarChar(50)
+  academicYear   String   @map("academic_year") @db.VarChar(20)
+  examType       String?  @default("Final") @map("exam_type") @db.VarChar(50)
+  status         String   @default("DRAFT") @db.VarChar(30)
+  classId        String?  @map("class_id") @db.Uuid
+  sectionId      String?  @map("section_id") @db.Uuid
+  subjectsConfig Json?    @map("subjects_config")
+  startDate      String?  @map("start_date") @db.VarChar(10)
+  endDate        String?  @map("end_date") @db.VarChar(10)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   school      School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   assessments Assessment[]
@@ -694,9 +699,12 @@ model Assessment {
   title        String   @db.VarChar(150)
   examId       String?  @map("exam_id") @db.Uuid
   classId      String   @map("class_id") @db.Uuid
+  sectionId    String?  @map("section_id") @db.Uuid
   subjectId    String?  @map("subject_id") @db.Uuid
+  status       String   @default("PENDING") @db.VarChar(30)
   totalMarks   Decimal  @map("total_marks") @db.Decimal(5, 2)
   passingMarks Decimal? @map("passing_marks") @db.Decimal(5, 2)
+  weightage    Decimal? @default(100.0) @db.Decimal(5, 2)
   date         String?  @db.VarChar(10)
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
@@ -717,6 +725,8 @@ model AssessmentGrade {
   assessmentId  String   @map("assessment_id") @db.Uuid
   studentId     String   @map("student_id") @db.Uuid
   marksObtained Decimal  @map("marks_obtained") @db.Decimal(5, 2)
+  isAbsent      Boolean  @default(false) @map("is_absent")
+  isExempt      Boolean  @default(false) @map("is_exempt")
   grade         String?  @db.VarChar(10)
   remarks       String?  @db.Text
   createdAt     DateTime @default(now()) @map("created_at")

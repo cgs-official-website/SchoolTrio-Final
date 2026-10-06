@@ -1,4 +1,6 @@
 import * as assessmentGradeRepository from './assessment-grade.repository.js';
+import { prisma } from '../../database/prisma.client.js';
+import { realtimeService } from '../../services/realtime.service.js';
 import { findParentByUserId, findParentStudentLink } from '../parents/parent.repository.js';
 import { createAuditLog } from '../audit/audit.repository.js';
 import { SYSTEM_ROLES } from '../../config/constants.js';
@@ -30,7 +32,9 @@ export function serializeGrade(grade) {
     schoolId: grade.schoolId,
     assessmentId: grade.assessmentId,
     studentId: grade.studentId,
-    marksObtained: Number(grade.marksObtained),
+    marksObtained: grade.marksObtained !== null && grade.marksObtained !== undefined ? Number(grade.marksObtained) : 0,
+    isAbsent: Boolean(grade.isAbsent),
+    isExempt: Boolean(grade.isExempt),
     grade: grade.grade || null,
     remarks: grade.remarks || null,
     createdAt: grade.createdAt,
@@ -48,14 +52,28 @@ export function serializeGrade(grade) {
 }
 
 /**
- * Verifies that the authenticated teacher is assigned to the assessment's class.
+ * Verifies that the authenticated teacher is assigned to the assessment's subject and class/section.
  * Administrative roles bypass this check.
  *
  * @param {string} schoolId - Tenant school UUID
  * @param {string} assessmentClassId - Class UUID associated with the assessment
+ * @param {string|null} [assessmentSubjectId=null] - Subject UUID
+ * @param {string|null} [assessmentSectionId=null] - Section UUID
  * @param {Object} actor - Authenticated user identity ({ id, userId, systemRole, role })
  */
-async function authorizeTeacherClassAccess(schoolId, assessmentClassId, actor) {
+async function authorizeTeacherClassAccess(schoolId, assessmentClassId, subjectIdOrActor = null, sectionId = null, actorObj = null) {
+  let assessmentSubjectId = null;
+  let assessmentSectionId = null;
+  let actor = null;
+
+  if (subjectIdOrActor && typeof subjectIdOrActor === 'object' && ('role' in subjectIdOrActor || 'systemRole' in subjectIdOrActor || 'id' in subjectIdOrActor || 'userId' in subjectIdOrActor)) {
+    actor = subjectIdOrActor;
+  } else {
+    assessmentSubjectId = subjectIdOrActor;
+    assessmentSectionId = sectionId;
+    actor = actorObj;
+  }
+
   if (!actor) return;
 
   const role = (actor.systemRole || actor.role || '').toUpperCase();
@@ -63,9 +81,30 @@ async function authorizeTeacherClassAccess(schoolId, assessmentClassId, actor) {
     const userId = actor.id || actor.userId;
     const profile = await assessmentGradeRepository.findStaffProfileByUserId(schoolId, userId);
 
-    if (!profile || profile.assignedClassId !== assessmentClassId) {
-      throw new ForbiddenError('Teachers are only authorized to manage marks for their assigned class');
+    if (!profile) {
+      throw new ForbiddenError('Staff profile not found for authenticated teacher');
     }
+
+    // Direct Class Teacher match
+    if (profile.assignedClassId === assessmentClassId) {
+      return;
+    }
+
+    // Check Subject + Section / Class assignments in customData
+    const custom = profile.customData || {};
+    const assignments = custom.assignments || {};
+    const assignedSubjectIds = assignments.assignedSubjectIds || [];
+    const subjectClassIds = assignments.subjectClassIds || [];
+
+    const matchesSubject = !assessmentSubjectId || assignedSubjectIds.includes(assessmentSubjectId);
+    const matchesClassOrSection = subjectClassIds.includes(assessmentClassId) || 
+      (assessmentSectionId && subjectClassIds.includes(assessmentSectionId));
+
+    if (matchesSubject && matchesClassOrSection) {
+      return;
+    }
+
+    throw new ForbiddenError('You are only authorized to enter marks for subjects and classes assigned to you');
   }
 }
 
@@ -88,7 +127,7 @@ export async function listAssessmentGrades(schoolId, assessmentId, query = {}, a
     throw new NotFoundError(`Assessment with ID '${assessmentId}' not found`);
   }
 
-  await authorizeTeacherClassAccess(schoolId, assessment.classId, actor);
+  await authorizeTeacherClassAccess(schoolId, assessment.classId, assessment.subjectId, assessment.sectionId, actor);
 
   const paginationParams = parsePagination(query, {
     defaultSort: 'createdAt',
@@ -135,9 +174,9 @@ export async function getAssessmentGrade(schoolId, assessmentId, studentId, acto
   if (actor) {
     const role = (actor.systemRole || actor.role || '').toUpperCase();
 
-    // Teacher authorization: Must be assigned to assessment class
+    // Teacher authorization: Must be assigned to assessment subject & class/section
     if (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
-      await authorizeTeacherClassAccess(schoolId, assessment.classId, actor);
+      await authorizeTeacherClassAccess(schoolId, assessment.classId, assessment.subjectId, assessment.sectionId, actor);
     }
 
     // Parent authorization: Must have active ParentStudentLink to student, and student must be in assessment class
@@ -197,8 +236,25 @@ export async function upsertSingleGrade(schoolId, assessmentId, studentId, data,
     throw new NotFoundError(`Assessment with ID '${assessmentId}' not found`);
   }
 
-  // 2. Authorize Teacher class access
-  await authorizeTeacherClassAccess(schoolId, assessment.classId, actor);
+  // Check lock status
+  const exam = assessment.examId ? await prisma.examination.findFirst({
+    where: { id: assessment.examId, schoolId }
+  }) : null;
+
+  const isLocked = assessment.status === 'LOCKED' || exam?.status === 'FINALIZED';
+  const role = actor ? (actor.systemRole || actor.role || '').toUpperCase() : '';
+  const isAdmin = role === SYSTEM_ROLES.SUPER_ADMIN || role === SYSTEM_ROLES.SCHOOL_ADMIN || role === 'SUPER_ADMIN' || role === 'SCHOOL_ADMIN' || role === 'ADMIN';
+
+  if (isLocked && !isAdmin) {
+    throw new ForbiddenError('Marks for this assessment/exam are locked and finalized. Only an administrator can override marks.');
+  }
+
+  if (isLocked && isAdmin && (!data.overrideReason || !data.overrideReason.trim())) {
+    throw new ValidationError('An override reason is required to modify marks for a finalized/locked assessment or exam.');
+  }
+
+  // 2. Authorize Teacher class/subject access
+  await authorizeTeacherClassAccess(schoolId, assessment.classId, assessment.subjectId, assessment.sectionId, actor);
 
   // 3. Resolve Student and verify class membership
   const student = await assessmentGradeRepository.findStudentForGradeOperation(schoolId, studentId);
@@ -214,7 +270,9 @@ export async function upsertSingleGrade(schoolId, assessmentId, studentId, data,
   }
 
   // 4. Validate marks against assessment totalMarks using integer cents comparison for Decimal safety
-  const numericMarks = Number(data.marksObtained);
+  const isAbsent = Boolean(data.isAbsent);
+  const isExempt = Boolean(data.isExempt);
+  const numericMarks = isAbsent || isExempt ? 0 : Number(data.marksObtained || 0);
   const maxMarks = Number(assessment.totalMarks);
 
   if (numericMarks < 0) {
@@ -230,23 +288,49 @@ export async function upsertSingleGrade(schoolId, assessmentId, studentId, data,
   // 5. Execute atomic upsert
   const savedGrade = await assessmentGradeRepository.upsertGrade(schoolId, assessmentId, studentId, {
     marksObtained: numericMarks,
+    isAbsent,
+    isExempt,
     remarks: data.remarks !== undefined ? (data.remarks && data.remarks.trim() ? data.remarks.trim() : null) : undefined
   });
 
-  // 6. Non-blocking Audit Logging
+  // 6. Update assessment status if needed
+  if (assessment.status === 'PENDING') {
+    await prisma.assessment.update({
+      where: { id: assessmentId },
+      data: { status: 'IN_PROGRESS' }
+    });
+  }
+
+  // 7. Emit real-time update to tenant school
+  try {
+    realtimeService.emitToSchool(schoolId, 'marks:updated', {
+      assessmentId,
+      examId: assessment.examId,
+      classId: assessment.classId,
+      studentId,
+      marksObtained: numericMarks
+    });
+  } catch (err) {
+    logger.warn({ msg: '[REALTIME EVENT WARNING] Failed to emit marks:updated', error: err.message });
+  }
+
+  // 8. Non-blocking Audit Logging
   try {
     const userId = actor ? (actor.id || actor.userId) : null;
     if (userId) {
       await createAuditLog({
         schoolId,
         userId,
-        action: 'UPDATE_ASSESSMENT_GRADE',
+        action: isLocked ? 'OVERRIDE_ASSESSMENT_GRADE' : 'UPDATE_ASSESSMENT_GRADE',
         resource: 'AssessmentGrade',
         resourceId: savedGrade.id,
         details: {
           assessmentId,
           studentId,
           marksObtained: numericMarks,
+          isAbsent,
+          isExempt,
+          overrideReason: data.overrideReason || null,
           totalMarks: maxMarks
         }
       });
@@ -265,7 +349,7 @@ export async function upsertSingleGrade(schoolId, assessmentId, studentId, data,
  *
  * @param {string} schoolId - Tenant school UUID
  * @param {string} assessmentId - Assessment UUID
- * @param {Object} data - Bulk payload ({ grades: Array<{ studentId, marksObtained, remarks }> })
+ * @param {Object} data - Bulk payload ({ grades: Array<{ studentId, marksObtained, remarks }>, isDraft, overrideReason })
  * @param {Object} [actor=null] - Authenticated user identity
  * @returns {Promise<{ count: number, grades: Array<Object> }>}
  */
@@ -284,8 +368,25 @@ export async function bulkUpsertGrades(schoolId, assessmentId, data, actor = nul
     throw new NotFoundError(`Assessment with ID '${assessmentId}' not found`);
   }
 
-  // 2. Authorize Teacher class access
-  await authorizeTeacherClassAccess(schoolId, assessment.classId, actor);
+  // Check lock status
+  const exam = assessment.examId ? await prisma.examination.findFirst({
+    where: { id: assessment.examId, schoolId }
+  }) : null;
+
+  const isLocked = assessment.status === 'LOCKED' || exam?.status === 'FINALIZED';
+  const role = actor ? (actor.systemRole || actor.role || '').toUpperCase() : '';
+  const isAdmin = role === SYSTEM_ROLES.SUPER_ADMIN || role === SYSTEM_ROLES.SCHOOL_ADMIN || role === 'SUPER_ADMIN' || role === 'SCHOOL_ADMIN' || role === 'ADMIN';
+
+  if (isLocked && !isAdmin) {
+    throw new ForbiddenError('Marks for this assessment/exam are locked and finalized. Only an administrator can override marks.');
+  }
+
+  if (isLocked && isAdmin && (!data.overrideReason || !data.overrideReason.trim())) {
+    throw new ValidationError('An override reason is required to modify marks for a finalized/locked assessment or exam.');
+  }
+
+  // 2. Authorize Teacher class/subject access
+  await authorizeTeacherClassAccess(schoolId, assessment.classId, assessment.subjectId, assessment.sectionId, actor);
 
   const maxMarks = Number(assessment.totalMarks);
 
@@ -319,7 +420,10 @@ export async function bulkUpsertGrades(schoolId, assessmentId, data, actor = nul
         );
       }
 
-      const numericMarks = Number(item.marksObtained);
+      const isAbsent = Boolean(item.isAbsent);
+      const isExempt = Boolean(item.isExempt);
+      const numericMarks = isAbsent || isExempt ? 0 : Number(item.marksObtained || 0);
+
       if (numericMarks < 0) {
         throw new ValidationError(`Marks obtained for student '${item.studentId}' cannot be negative`);
       }
@@ -334,12 +438,18 @@ export async function bulkUpsertGrades(schoolId, assessmentId, data, actor = nul
     // 3c. Perform atomic upserts
     const results = [];
     for (const item of data.grades) {
+      const isAbsent = Boolean(item.isAbsent);
+      const isExempt = Boolean(item.isExempt);
+      const numericMarks = isAbsent || isExempt ? 0 : Number(item.marksObtained || 0);
+
       const saved = await assessmentGradeRepository.upsertGrade(
         schoolId,
         assessmentId,
         item.studentId,
         {
-          marksObtained: Number(item.marksObtained),
+          marksObtained: numericMarks,
+          isAbsent,
+          isExempt,
           remarks: item.remarks !== undefined ? (item.remarks && item.remarks.trim() ? item.remarks.trim() : null) : undefined
         },
         tx
@@ -350,20 +460,44 @@ export async function bulkUpsertGrades(schoolId, assessmentId, data, actor = nul
     return results;
   });
 
-  // 4. Non-blocking Audit Logging
+  // 4. Update assessment task status based on draft vs submit
+  const newAssessmentStatus = isLocked 
+    ? 'LOCKED' 
+    : (data.isDraft ? 'IN_PROGRESS' : 'SUBMITTED');
+
+  if (assessmentGradeRepository.updateAssessmentStatus) {
+    await assessmentGradeRepository.updateAssessmentStatus(schoolId, assessmentId, newAssessmentStatus);
+  }
+
+  // 5. Emit real-time event to school
+  try {
+    realtimeService.emitToSchool(schoolId, 'marks:updated', {
+      assessmentId,
+      examId: assessment.examId,
+      classId: assessment.classId,
+      count: savedRecords.length,
+      status: newAssessmentStatus
+    });
+  } catch (err) {
+    logger.warn({ msg: '[REALTIME EVENT WARNING] Failed to emit marks:updated', error: err.message });
+  }
+
+  // 6. Non-blocking Audit Logging
   try {
     const userId = actor ? (actor.id || actor.userId) : null;
     if (userId) {
       await createAuditLog({
         schoolId,
         userId,
-        action: 'RECORD_ASSESSMENT_GRADES_BULK',
+        action: isLocked ? 'OVERRIDE_ASSESSMENT_GRADES_BULK' : 'RECORD_ASSESSMENT_GRADES_BULK',
         resource: 'AssessmentGrade',
         resourceId: assessmentId,
         details: {
           assessmentId,
           gradesCount: savedRecords.length,
-          totalMarks: maxMarks
+          totalMarks: maxMarks,
+          isDraft: Boolean(data.isDraft),
+          overrideReason: data.overrideReason || null
         }
       });
     }
@@ -396,7 +530,7 @@ export async function deleteAssessmentGrade(schoolId, assessmentId, studentId, a
     throw new NotFoundError(`Assessment with ID '${assessmentId}' not found`);
   }
 
-  await authorizeTeacherClassAccess(schoolId, assessment.classId, actor);
+  await authorizeTeacherClassAccess(schoolId, assessment.classId, assessment.subjectId, assessment.sectionId, actor);
 
   const existingGrade = await assessmentGradeRepository.findGrade(schoolId, assessmentId, studentId);
   if (!existingGrade) {

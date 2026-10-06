@@ -185,4 +185,26 @@ describe('Examination Service Unit Tests', () => {
       await expect(examService.deleteExam(schoolId, examId, userId)).rejects.toThrow(NotFoundError);
     });
   });
+
+  describe('updateExamStatus', () => {
+    it('updates status to PUBLISHED and updates linked assessments to IN_PROGRESS', async () => {
+      const existingExam = { id: examId, schoolId, name: 'Term Exam', status: 'DRAFT' };
+      examRepository.findExamById.mockResolvedValue(existingExam);
+      examRepository.updateExam.mockResolvedValue({ ...existingExam, status: 'PUBLISHED' });
+
+      const result = await examService.updateExamStatus(schoolId, examId, 'PUBLISHED', userId);
+      expect(result.status).toBe('PUBLISHED');
+      expect(examRepository.updateExam).toHaveBeenCalledWith(schoolId, examId, { status: 'PUBLISHED' });
+    });
+
+    it('rejects invalid status', async () => {
+      const existingExam = { id: examId, schoolId, name: 'Term Exam', status: 'DRAFT' };
+      examRepository.findExamById.mockResolvedValue(existingExam);
+
+      await expect(
+        examService.updateExamStatus(schoolId, examId, 'INVALID_STATUS', userId)
+      ).rejects.toThrow();
+    });
+  });
 });
+

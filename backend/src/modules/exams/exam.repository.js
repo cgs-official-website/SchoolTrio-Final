@@ -117,6 +117,11 @@ export async function createExam(schoolId, data, tx = prisma) {
       name: data.name,
       term: data.term,
       academicYear: data.academicYear,
+      examType: data.examType || 'Final',
+      status: data.status || 'DRAFT',
+      classId: data.classId || null,
+      sectionId: data.sectionId || null,
+      subjectsConfig: data.subjectsConfig || null,
       startDate: data.startDate || null,
       endDate: data.endDate || null
     }
@@ -142,6 +147,11 @@ export async function updateExam(schoolId, id, data, tx = prisma) {
       ...(data.name !== undefined && { name: data.name }),
       ...(data.term !== undefined && { term: data.term }),
       ...(data.academicYear !== undefined && { academicYear: data.academicYear }),
+      ...(data.examType !== undefined && { examType: data.examType }),
+      ...(data.status !== undefined && { status: data.status }),
+      ...(data.classId !== undefined && { classId: data.classId }),
+      ...(data.sectionId !== undefined && { sectionId: data.sectionId }),
+      ...(data.subjectsConfig !== undefined && { subjectsConfig: data.subjectsConfig }),
       ...(data.startDate !== undefined && { startDate: data.startDate }),
       ...(data.endDate !== undefined && { endDate: data.endDate })
     }
@@ -178,6 +188,38 @@ export async function countDependentAssessments(schoolId, examId, tx = prisma) {
     where: {
       schoolId,
       examId
+    }
+  });
+}
+
+/**
+ * Finds an exam with matching duplicate attributes.
+ */
+export async function findDuplicateExam(schoolId, academicYear, name, classId = null, sectionId = null, tx = prisma) {
+  return tx.examination.findFirst({
+    where: {
+      schoolId,
+      academicYear,
+      name: {
+        equals: name,
+        mode: 'insensitive'
+      },
+      classId,
+      sectionId
+    }
+  });
+}
+
+/**
+ * Counts student grades linked to an examination.
+ */
+export async function countDependentGrades(schoolId, examId, tx = prisma) {
+  return tx.assessmentGrade.count({
+    where: {
+      schoolId,
+      assessment: {
+        examId
+      }
     }
   });
 }
