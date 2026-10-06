@@ -18,30 +18,36 @@ import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export function normalizeStaffMember(s) {
   if (!s) return null;
-  const custom = s.customData || {};
-  const qual = (typeof s.qualifications === 'object' && s.qualifications !== null)
-    ? s.qualifications
-    : ((typeof custom.qualifications === 'object' && custom.qualifications !== null)
-      ? custom.qualifications
-      : ((typeof custom.qualification === 'object' && custom.qualification !== null) ? custom.qualification : {}));
+  const custom = (typeof s.customData === 'object' && s.customData !== null)
+    ? s.customData
+    : (typeof s.customData === 'string'
+      ? (() => { try { return JSON.parse(s.customData); } catch (e) { return {}; } })()
+      : {});
 
-  const exp = (typeof s.experience === 'object' && s.experience !== null)
-    ? s.experience
-    : ((typeof custom.experience === 'object' && custom.experience !== null)
-      ? custom.experience
-      : ((typeof custom.previousExperience === 'object' && custom.previousExperience !== null) ? custom.previousExperience : {}));
+  const parseJsonIfString = (val) => {
+    if (typeof val === 'string') {
+      try {
+        const parsed = JSON.parse(val);
+        if (typeof parsed === 'object' && parsed !== null) return parsed;
+      } catch (e) {}
+    }
+    return val;
+  };
 
-  const fin = (typeof s.financial === 'object' && s.financial !== null)
-    ? s.financial
-    : ((typeof custom.financial === 'object' && custom.financial !== null) ? custom.financial : {});
+  const qualRaw = s.qualifications ?? custom.qualifications ?? custom.qualification ?? {};
+  const qual = typeof qualRaw === 'string' ? parseJsonIfString(qualRaw) : (qualRaw || {});
 
-  const docs = (typeof s.documents === 'object' && s.documents !== null)
-    ? s.documents
-    : ((typeof custom.documents === 'object' && custom.documents !== null) ? custom.documents : {});
+  const expRaw = s.experience ?? custom.experience ?? custom.previousExperience ?? {};
+  const exp = typeof expRaw === 'string' ? parseJsonIfString(expRaw) : (expRaw || {});
 
-  const assign = (typeof s.assignments === 'object' && s.assignments !== null)
-    ? s.assignments
-    : ((typeof custom.assignments === 'object' && custom.assignments !== null) ? custom.assignments : {});
+  const finRaw = s.financial ?? custom.financial ?? {};
+  const fin = typeof finRaw === 'string' ? parseJsonIfString(finRaw) : (finRaw || {});
+
+  const docsRaw = s.documents ?? custom.documents ?? {};
+  const docs = typeof docsRaw === 'string' ? parseJsonIfString(docsRaw) : (docsRaw || {});
+
+  const assignRaw = s.assignments ?? custom.assignments ?? {};
+  const assign = typeof assignRaw === 'string' ? parseJsonIfString(assignRaw) : (assignRaw || {});
 
   const firstName = s.firstName || custom.firstName || s.name?.split(' ')[0] || '';
   const lastName = s.lastName || custom.lastName || (s.name?.split(' ').length > 1 ? s.name.split(' ').slice(1).join(' ') : '');
@@ -52,48 +58,65 @@ export function normalizeStaffMember(s) {
 
   // Educational
   const highestQualification =
-    (typeof qual === 'string' ? qual : qual.highestQualification) ||
-    (typeof s.qualifications === 'string' ? s.qualifications : s.highestQualification) ||
+    (typeof qual === 'string' ? qual : (qual.highestQualification || qual.qualification || qual.highest_qualification)) ||
+    (typeof s.qualifications === 'string' ? s.qualifications : (s.highestQualification || s.qualification)) ||
     custom.highestQualification ||
+    (typeof custom.qualifications === 'string' ? custom.qualifications : '') ||
     (typeof custom.qualification === 'string' ? custom.qualification : '') ||
+    custom.highest_qualification ||
     '';
 
   const degreeSpecialization =
-    qual.degreeSpecialization ||
+    (typeof qual === 'object' && qual !== null ? (qual.degreeSpecialization || qual.degree || qual.degree_specialization || qual.specialization) : '') ||
     s.degreeSpecialization ||
+    s.degree ||
     custom.degreeSpecialization ||
+    custom.degree ||
+    custom.degree_specialization ||
     '';
 
   const universityName =
-    qual.universityName ||
+    (typeof qual === 'object' && qual !== null ? (qual.universityName || qual.university || qual.college || qual.university_name || qual.universityCollege) : '') ||
     s.universityName ||
+    s.university ||
+    s.college ||
     custom.universityName ||
+    custom.university ||
+    custom.college ||
+    custom.university_name ||
     '';
 
   const yearOfPassing =
-    qual.yearOfPassing ||
+    (typeof qual === 'object' && qual !== null ? (qual.yearOfPassing || qual.passingYear || qual.year_of_passing || qual.graduationYear) : '') ||
     s.yearOfPassing ||
+    s.passingYear ||
+    s.year_of_passing ||
     custom.yearOfPassing ||
+    custom.passingYear ||
+    custom.year_of_passing ||
     '';
 
   const professionalCertifications =
-    qual.certifications ||
-    qual.professionalCertifications ||
+    (typeof qual === 'object' && qual !== null ? (qual.certifications || qual.professionalCertifications || qual.professional_certifications || qual.achievements) : '') ||
+    (typeof exp === 'object' && exp !== null ? (exp.certifications || exp.professionalCertifications || exp.achievements) : '') ||
     s.professionalCertifications ||
+    s.certifications ||
+    s.achievements ||
     custom.professionalCertifications ||
     custom.certifications ||
+    custom.achievements ||
     '';
 
   // Professional Experience
   const rawExperience =
-    (typeof exp === 'number' || typeof exp === 'string' ? exp : exp.previousExperience) ??
-    exp.experienceYears ??
-    exp.years ??
+    (typeof exp === 'number' || typeof exp === 'string' ? exp : (exp.previousExperience ?? exp.experienceYears ?? exp.experience_years ?? exp.totalExperience ?? exp.years ?? exp.experience)) ??
     s.previousExperience ??
     s.experienceYears ??
+    s.experience_years ??
     (typeof s.experience === 'number' || typeof s.experience === 'string' ? s.experience : undefined) ??
     custom.previousExperience ??
     custom.experienceYears ??
+    custom.experience_years ??
     (typeof custom.experience === 'number' || typeof custom.experience === 'string' ? custom.experience : undefined);
 
   const previousExperience = (rawExperience !== undefined && rawExperience !== null && String(rawExperience).trim() !== '')
@@ -101,21 +124,58 @@ export function normalizeStaffMember(s) {
     : '0';
 
   const previousOrganization =
-    exp.previousOrganization ||
+    (typeof exp === 'object' && exp !== null ? (exp.previousOrganization || exp.previousSchool || exp.previous_organization || exp.previous_school || exp.organization || exp.school) : '') ||
     s.previousOrganization ||
+    s.previousSchool ||
     custom.previousOrganization ||
+    custom.previousSchool ||
+    custom.previous_organization ||
+    custom.previous_school ||
+    '';
+
+  const previousDesignation =
+    (typeof exp === 'object' && exp !== null ? (exp.previousDesignation || exp.previous_designation || exp.designation) : '') ||
+    s.previousDesignation ||
+    custom.previousDesignation ||
+    custom.previous_designation ||
     '';
 
   const subjectSpecialization =
-    exp.subjectSpecialization ||
+    (typeof exp === 'object' && exp !== null ? (exp.subjectSpecialization || exp.subjectsTaughtPreviously || exp.subjects_taught_previously || exp.subjectsTaught || exp.subjects_taught || exp.subject_specialization) : '') ||
     s.subjectSpecialization ||
+    s.subjectsTaughtPreviously ||
+    s.subjectsTaught ||
+    custom.subjectSpecialization ||
+    custom.subjectsTaughtPreviously ||
+    custom.subjects_taught_previously ||
+    custom.subjectsTaught ||
+    custom.subjects_taught ||
+    '';
+
+  const subjectsTaughtPreviously =
+    (typeof exp === 'object' && exp !== null ? (exp.subjectsTaughtPreviously || exp.subjects_taught_previously || exp.subjectsTaught || exp.subjects_taught || exp.subjectSpecialization || exp.subject_specialization) : '') ||
+    s.subjectsTaughtPreviously ||
+    s.subjectsTaught ||
+    s.subjectSpecialization ||
+    custom.subjectsTaughtPreviously ||
+    custom.subjects_taught_previously ||
+    custom.subjectsTaught ||
+    custom.subjects_taught ||
     custom.subjectSpecialization ||
     '';
 
   const gradesClassesHandled =
-    exp.gradesClassesHandled ||
+    (typeof exp === 'object' && exp !== null ? (exp.gradesClassesHandled || exp.grades_classes_handled || exp.classesHandled) : '') ||
     s.gradesClassesHandled ||
     custom.gradesClassesHandled ||
+    custom.grades_classes_handled ||
+    '';
+
+  const achievements =
+    (typeof exp === 'object' && exp !== null ? (exp.achievements || exp.awards) : '') ||
+    (typeof qual === 'object' && qual !== null ? (qual.achievements || qual.awards || qual.certifications) : '') ||
+    s.achievements ||
+    custom.achievements ||
     '';
 
   return {
@@ -184,15 +244,24 @@ export function normalizeStaffMember(s) {
     languagesKnown: s.languagesKnown || custom.languagesKnown || '',
     // Educational
     highestQualification,
+    qualification: highestQualification,
     degreeSpecialization,
+    degree: degreeSpecialization,
     universityName,
+    university: universityName,
     yearOfPassing,
     professionalCertifications,
     // Professional
     previousExperience,
+    experience: previousExperience,
+    experienceYears: previousExperience,
     previousOrganization,
+    previousSchool: previousOrganization,
+    previousDesignation,
     subjectSpecialization,
+    subjectsTaughtPreviously,
     gradesClassesHandled,
+    achievements,
     // Financial
     panNumber: fin.panNumber || custom.panNumber || '',
     pfNumber: fin.pfNumber || custom.pfNumber || '',
@@ -326,9 +395,12 @@ export default function StaffAssignment() {
     // Professional Information
     previousExperience: '0',
     previousOrganization: '',
+    previousDesignation: '',
     subjectSpecialization: '',
+    subjectsTaughtPreviously: '',
     gradesClassesHandled: '',
     professionalCertifications: '',
+    achievements: '',
 
     // Government & Identity
     govtIdType: 'Aadhaar',
@@ -923,8 +995,11 @@ export default function StaffAssignment() {
           ...(selectedStaffToView.experience || selectedStaffToView.customData?.experience || {}),
           previousExperience: (editStaffData.previousExperience || '').trim() || null,
           previousOrganization: (editStaffData.previousOrganization || '').trim() || null,
+          previousDesignation: (editStaffData.previousDesignation || '').trim() || null,
           subjectSpecialization: (editStaffData.subjectSpecialization || '').trim() || null,
-          gradesClassesHandled: (editStaffData.gradesClassesHandled || '').trim() || null
+          subjectsTaughtPreviously: (editStaffData.subjectsTaughtPreviously || '').trim() || null,
+          gradesClassesHandled: (editStaffData.gradesClassesHandled || '').trim() || null,
+          achievements: (editStaffData.achievements || '').trim() || null
         },
         financial: {
           ...(selectedStaffToView.financial || selectedStaffToView.customData?.financial || {}),
@@ -1141,8 +1216,11 @@ export default function StaffAssignment() {
         experience: {
           previousExperience: activeStaffData.previousExperience || null,
           previousOrganization: activeStaffData.previousOrganization || null,
+          previousDesignation: activeStaffData.previousDesignation || null,
           subjectSpecialization: activeStaffData.subjectSpecialization || null,
-          gradesClassesHandled: activeStaffData.gradesClassesHandled || null
+          subjectsTaughtPreviously: activeStaffData.subjectsTaughtPreviously || null,
+          gradesClassesHandled: activeStaffData.gradesClassesHandled || null,
+          achievements: activeStaffData.achievements || null
         },
         financial: {
           panNumber: activeStaffData.panNumber || null,
@@ -2793,8 +2871,11 @@ export default function StaffAssignment() {
                           ['yearOfPassing', 'Year of Passing'],
                           ['previousExperience', 'Previous Experience (Years)'],
                           ['previousOrganization', 'Previous School / Organization'],
+                          ['previousDesignation', 'Previous Designation'],
+                          ['subjectsTaughtPreviously', 'Subjects Taught Previously'],
                           ['subjectSpecialization', 'Subject Specialization'],
                           ['gradesClassesHandled', 'Grades / Classes Handled'],
+                          ['achievements', 'Achievements'],
                           ['professionalCertifications', 'Professional Certifications']
                         ].map(([field, label]) => (
                           <div key={field}>
@@ -3145,8 +3226,16 @@ export default function StaffAssignment() {
                             <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.previousExperience || '0'}</p>
                           </div>
                           <div>
-                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Previous Organization</label>
-                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.previousOrganization || '—'}</p>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Previous School / Organization</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.previousOrganization || selectedStaffToView.previousSchool || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Previous Designation</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.previousDesignation || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Subjects Taught Previously</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.subjectsTaughtPreviously || selectedStaffToView.subjectSpecialization || '—'}</p>
                           </div>
                           <div>
                             <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Subject Specialization</label>
@@ -3156,7 +3245,11 @@ export default function StaffAssignment() {
                             <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Grades/Classes Handled</label>
                             <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.gradesClassesHandled || '—'}</p>
                           </div>
-                          <div className="col-span-1 sm:col-span-2">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Achievements</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.achievements || '—'}</p>
+                          </div>
+                          <div>
                             <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Professional Certifications</label>
                             <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.professionalCertifications || '—'}</p>
                           </div>

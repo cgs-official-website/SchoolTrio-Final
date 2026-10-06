@@ -769,6 +769,181 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
       expect(updateSpy.mock.calls[0][1].documents.academicCertificates).toHaveLength(1);
     });
   });
+
+  describe('23. STAFF DETAILS ACADEMIC DETAILS "N/A" DISPLAY FIX (BUG-06)', () => {
+    it('normalizes full academic details from structured qualifications and experience objects', () => {
+      const rawStaff = {
+        id: 'staff-academic-1',
+        name: 'Dr. Jane Smith',
+        qualifications: {
+          highestQualification: 'Ph.D. Computer Science',
+          degreeSpecialization: 'Artificial Intelligence',
+          universityName: 'MIT',
+          yearOfPassing: '2020',
+          certifications: 'AWS Certified Solutions Architect'
+        },
+        experience: {
+          previousExperience: '8',
+          previousOrganization: 'National Institute of Tech',
+          previousDesignation: 'Associate Professor',
+          subjectSpecialization: 'Machine Learning',
+          subjectsTaughtPreviously: 'Data Structures, AI',
+          gradesClassesHandled: 'Undergraduate, Postgraduate',
+          achievements: 'Best Researcher Award 2022'
+        }
+      };
+
+      const norm = normalizeStaffMember(rawStaff);
+      expect(norm.highestQualification).toBe('Ph.D. Computer Science');
+      expect(norm.qualification).toBe('Ph.D. Computer Science');
+      expect(norm.degreeSpecialization).toBe('Artificial Intelligence');
+      expect(norm.degree).toBe('Artificial Intelligence');
+      expect(norm.universityName).toBe('MIT');
+      expect(norm.university).toBe('MIT');
+      expect(norm.yearOfPassing).toBe('2020');
+      expect(norm.professionalCertifications).toBe('AWS Certified Solutions Architect');
+      expect(norm.previousExperience).toBe('8');
+      expect(norm.experience).toBe('8');
+      expect(norm.previousOrganization).toBe('National Institute of Tech');
+      expect(norm.previousSchool).toBe('National Institute of Tech');
+      expect(norm.previousDesignation).toBe('Associate Professor');
+      expect(norm.subjectSpecialization).toBe('Machine Learning');
+      expect(norm.subjectsTaughtPreviously).toBe('Data Structures, AI');
+      expect(norm.gradesClassesHandled).toBe('Undergraduate, Postgraduate');
+      expect(norm.achievements).toBe('Best Researcher Award 2022');
+    });
+
+    it('normalizes academic details from customData aliases and legacy formats', () => {
+      const rawStaff = {
+        id: 'staff-academic-2',
+        name: 'Prof. Alan Turing',
+        customData: {
+          qualification: 'M.E Computer Science',
+          degree: 'M.E',
+          university: 'Anna University',
+          passingYear: '2024',
+          experienceYears: 5,
+          previousSchool: 'ABC Matriculation School',
+          previousDesignation: 'Assistant Teacher',
+          subjectsTaught: 'Computer Science, Mathematics',
+          achievements: 'Best Faculty Award'
+        }
+      };
+
+      const norm = normalizeStaffMember(rawStaff);
+      expect(norm.highestQualification).toBe('M.E Computer Science');
+      expect(norm.degreeSpecialization).toBe('M.E');
+      expect(norm.universityName).toBe('Anna University');
+      expect(norm.yearOfPassing).toBe('2024');
+      expect(norm.previousExperience).toBe('5');
+      expect(norm.previousOrganization).toBe('ABC Matriculation School');
+      expect(norm.previousDesignation).toBe('Assistant Teacher');
+      expect(norm.subjectsTaughtPreviously).toBe('Computer Science, Mathematics');
+      expect(norm.achievements).toBe('Best Faculty Award');
+    });
+
+    it('handles JSON stringified customData and qualification objects without dropping values', () => {
+      const rawStaff = {
+        id: 'staff-academic-3',
+        name: 'Sarah Connor',
+        customData: JSON.stringify({
+          qualifications: {
+            highestQualification: 'M.Sc Physics',
+            degreeSpecialization: 'Nuclear Physics',
+            universityName: 'Cambridge University',
+            yearOfPassing: '2019'
+          },
+          experience: {
+            previousExperience: '4',
+            previousOrganization: 'City High School',
+            previousDesignation: 'Senior Teacher',
+            subjectsTaughtPreviously: 'Physics, Chemistry',
+            achievements: 'State Science Fair Mentor'
+          }
+        })
+      };
+
+      const norm = normalizeStaffMember(rawStaff);
+      expect(norm.highestQualification).toBe('M.Sc Physics');
+      expect(norm.degreeSpecialization).toBe('Nuclear Physics');
+      expect(norm.universityName).toBe('Cambridge University');
+      expect(norm.yearOfPassing).toBe('2019');
+      expect(norm.previousExperience).toBe('4');
+      expect(norm.previousOrganization).toBe('City High School');
+      expect(norm.previousDesignation).toBe('Senior Teacher');
+      expect(norm.subjectsTaughtPreviously).toBe('Physics, Chemistry');
+      expect(norm.achievements).toBe('State Science Fair Mentor');
+    });
+
+    it('handles plain string qualifications and missing experience gracefully', () => {
+      const rawStaff = {
+        id: 'staff-academic-4',
+        name: 'John Wick',
+        qualifications: 'B.Sc Mathematics'
+      };
+
+      const norm = normalizeStaffMember(rawStaff);
+      expect(norm.highestQualification).toBe('B.Sc Mathematics');
+      expect(norm.degreeSpecialization).toBe('');
+      expect(norm.universityName).toBe('');
+      expect(norm.yearOfPassing).toBe('');
+      expect(norm.previousExperience).toBe('0');
+      expect(norm.previousOrganization).toBe('');
+      expect(norm.achievements).toBe('');
+    });
+
+    it('verifies academic updates are persisted and not wiped when editing other fields', async () => {
+      const updateSpy = vi.spyOn(staffApi, 'updateStaff').mockResolvedValue({
+        success: true,
+        data: {
+          id: 'staff-academic-5',
+          qualifications: {
+            highestQualification: 'M.E Computer Science',
+            degreeSpecialization: 'M.E',
+            universityName: 'Anna University',
+            yearOfPassing: '2024'
+          },
+          experience: {
+            previousExperience: '5',
+            previousOrganization: 'ABC Matriculation School',
+            previousDesignation: 'Assistant Teacher',
+            subjectsTaughtPreviously: 'Computer Science',
+            achievements: 'Best Faculty Award'
+          }
+        }
+      });
+
+      const editPayload = {
+        staffType: 'teaching',
+        designation: 'Senior Computer Faculty',
+        qualifications: {
+          highestQualification: 'M.E Computer Science',
+          degreeSpecialization: 'M.E',
+          universityName: 'Anna University',
+          yearOfPassing: '2024',
+          certifications: null
+        },
+        experience: {
+          previousExperience: '5',
+          previousOrganization: 'ABC Matriculation School',
+          previousDesignation: 'Assistant Teacher',
+          subjectSpecialization: 'Computer Science',
+          subjectsTaughtPreviously: 'Computer Science',
+          gradesClassesHandled: 'Grade 10-12',
+          achievements: 'Best Faculty Award'
+        }
+      };
+
+      const res = await staffApi.updateStaff('staff-academic-5', editPayload);
+      expect(updateSpy).toHaveBeenCalledWith('staff-academic-5', editPayload);
+      const normalized = normalizeStaffMember(res.data);
+      expect(normalized.highestQualification).toBe('M.E Computer Science');
+      expect(normalized.previousExperience).toBe('5');
+      expect(normalized.previousOrganization).toBe('ABC Matriculation School');
+      expect(normalized.previousDesignation).toBe('Assistant Teacher');
+      expect(normalized.achievements).toBe('Best Faculty Award');
+    });
+  });
 });
 
 
