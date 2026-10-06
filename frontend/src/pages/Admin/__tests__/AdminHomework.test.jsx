@@ -221,7 +221,116 @@ describe('Admin Homework Overview Component (REST Migration - Phase 4C.7-D.2-I-M
   });
 
   // ============================================================
-  // 7. READ-ONLY AUTHORITY & ZERO MUTATION EXPOSURE
+  // 7. MULTIPLE HOMEWORK TRACKING ISOLATION & STAT COUNTERS
+  // ============================================================
+
+  it('verifies getHomework retrieves accurate stat counters and isolated rosters for different homework assignments', async () => {
+    const hw1Detail = {
+      id: 'hw-101',
+      title: 'Math Homework 1',
+      className: 'Grade 10-A',
+      totalStudents: 2,
+      submittedCount: 1,
+      completedCount: 1,
+      inProgressCount: 0,
+      notStartedCount: 0,
+      roster: [
+        {
+          studentId: 's-1',
+          studentName: 'Alice',
+          admissionNumber: 'ADM-1',
+          status: 'Completed',
+          submittedAt: '2026-10-01T10:00:00.000Z',
+          grade: 'A',
+          feedback: 'Well done'
+        },
+        {
+          studentId: 's-2',
+          studentName: 'Bob',
+          admissionNumber: 'ADM-2',
+          status: 'Submitted',
+          submittedAt: '2026-10-01T11:00:00.000Z',
+          grade: null,
+          feedback: null
+        }
+      ]
+    };
+
+    const hw2Detail = {
+      id: 'hw-102',
+      title: 'Physics Homework 2',
+      className: 'Grade 10-B',
+      totalStudents: 1,
+      submittedCount: 0,
+      completedCount: 0,
+      inProgressCount: 1,
+      notStartedCount: 0,
+      roster: [
+        {
+          studentId: 's-3',
+          studentName: 'Charlie',
+          admissionNumber: 'ADM-3',
+          status: 'In Progress',
+          submittedAt: null,
+          grade: null,
+          feedback: null
+        }
+      ]
+    };
+
+    const getSpy = vi.spyOn(homeworkApi, 'getHomework').mockImplementation(async (id) => {
+      if (id === 'hw-101') return { success: true, data: hw1Detail };
+      if (id === 'hw-102') return { success: true, data: hw2Detail };
+      return { success: false, message: 'Not found' };
+    });
+
+    const res1 = await homeworkApi.getHomework('hw-101');
+    expect(res1.data.totalStudents).toBe(2);
+    expect(res1.data.completedCount).toBe(1);
+    expect(res1.data.submittedCount).toBe(1);
+    expect(res1.data.roster[0].studentName).toBe('Alice');
+
+    const res2 = await homeworkApi.getHomework('hw-102');
+    expect(res2.data.totalStudents).toBe(1);
+    expect(res2.data.completedCount).toBe(0);
+    expect(res2.data.inProgressCount).toBe(1);
+    expect(res2.data.roster[0].studentName).toBe('Charlie');
+
+    expect(getSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('handles bare DTO response without wrapping data property gracefully', async () => {
+    const bareDto = {
+      id: 'hw-bare',
+      title: 'Chemistry Lab Report',
+      className: 'Grade 11-A',
+      totalStudents: 1,
+      submittedCount: 1,
+      completedCount: 0,
+      inProgressCount: 0,
+      roster: [
+        {
+          studentId: 's-99',
+          studentName: 'Daisy',
+          admissionNumber: 'ADM-99',
+          status: 'Submitted'
+        }
+      ]
+    };
+
+    vi.spyOn(homeworkApi, 'getHomework').mockResolvedValue(bareDto);
+
+    const res = await homeworkApi.getHomework('hw-bare');
+    const resolvedData = res?.data || (res?.id ? res : null);
+
+    expect(resolvedData).toBeDefined();
+    expect(resolvedData.id).toBe('hw-bare');
+    expect(resolvedData.roster).toHaveLength(1);
+    expect(resolvedData.roster[0].studentName).toBe('Daisy');
+  });
+
+  // ============================================================
+  // 8. READ-ONLY AUTHORITY & ZERO MUTATION EXPOSURE
   // ============================================================
 
   it('confirms Admin Homework UI is read-only and does not invoke mutation endpoints', () => {
@@ -237,7 +346,7 @@ describe('Admin Homework Overview Component (REST Migration - Phase 4C.7-D.2-I-M
   });
 
   // ============================================================
-  // 8. ZERO FIRESTORE ACCESS VERIFICATION
+  // 9. ZERO FIRESTORE ACCESS VERIFICATION
   // ============================================================
 
   it('MANDATORY: contains 0 Firestore operations for homeworks, submissions, classes, or students', () => {

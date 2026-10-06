@@ -103,8 +103,8 @@ export default function AdminHomework() {
 
     try {
       const res = await getHomework(hw.id);
-      if (mountedRef.current && res?.data) {
-        setSelectedHomework(res.data);
+      if (mountedRef.current && (res?.data || res?.id)) {
+        setSelectedHomework(res?.data || res);
       }
     } catch (error) {
       console.error('[AdminHomework] Error loading homework details and roster:', error);
@@ -240,6 +240,11 @@ export default function AdminHomework() {
                         {hw.submittedCount} Submitted
                       </span>
                     )}
+                    {hw.completedCount !== undefined && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                        {hw.completedCount} Completed
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
@@ -281,13 +286,41 @@ export default function AdminHomework() {
 
             {/* Modal Content / Student Roster */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+              {/* Stat Counters */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 text-center">
+                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 block">Total Students</span>
+                  <span className="text-lg font-extrabold text-slate-900 dark:text-white">
+                    {selectedHomework.totalStudents || selectedHomework.roster?.length || 0}
+                  </span>
+                </div>
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-100 dark:border-emerald-800 text-center">
+                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 block">Submitted</span>
+                  <span className="text-lg font-extrabold text-emerald-700 dark:text-emerald-300">
+                    {selectedHomework.submittedCount || 0}
+                  </span>
+                </div>
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/40 rounded-2xl border border-blue-100 dark:border-blue-800 text-center">
+                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400 block">Completed</span>
+                  <span className="text-lg font-extrabold text-blue-700 dark:text-blue-300">
+                    {selectedHomework.completedCount || 0}
+                  </span>
+                </div>
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-2xl border border-amber-100 dark:border-amber-800 text-center">
+                  <span className="text-xs font-bold text-amber-600 dark:text-amber-400 block">In Progress</span>
+                  <span className="text-lg font-extrabold text-amber-700 dark:text-amber-300">
+                    {selectedHomework.inProgressCount || 0}
+                  </span>
+                </div>
+              </div>
+
               {trackingLoading ? (
                 <div className="p-8 text-center text-slate-500 dark:text-slate-400 font-semibold">
                   <TableSkeleton rows={4} columns={3} />
                 </div>
               ) : !selectedHomework.roster || selectedHomework.roster.length === 0 ? (
                 <p className="text-center text-slate-500 dark:text-slate-400 italic py-8">
-                  No students found in this class.
+                  No enrolled students found for this class.
                 </p>
               ) : (
                 <div className="space-y-3">
