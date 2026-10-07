@@ -441,6 +441,7 @@ export default function ClassManagement() {
         const categoryCreationCount = result.categoryCreationCount || 0;
         const skippedCount = result.skippedCount || 0;
 
+        notifyDataChanged('classes');
         await fetchData();
 
         toast.success(`Imported ${addedCount} classes/sections. Created ${categoryCreationCount} new categories. (Skipped: ${skippedCount})`);

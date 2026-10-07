@@ -5,6 +5,8 @@ import { ptmApi } from '../../api/ptm';
 import { LuCalendarClock, LuCalendarCheck, LuCircleCheck, LuClock, LuVideo, LuMapPin, LuCircleX, LuUsers } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function PTM() {
   const { userProfile } = useAuth();
@@ -58,6 +60,13 @@ export default function PTM() {
     };
   }, [studentId, fetchMeetings]);
 
+  // Event-driven live synchronization for PTM appointments across parent/teacher portals
+  useLiveDataRefresh(() => {
+    if (studentId) {
+      fetchMeetings(studentId);
+    }
+  }, [studentId, fetchMeetings], 'ptm');
+
   const getStatusBadge = (status) => {
     const s = status?.toLowerCase();
     switch(s) {
@@ -84,6 +93,7 @@ export default function PTM() {
     try {
       await ptmApi.updateAppointmentStatus(meetingId, { status: 'Cancelled' });
       toast.success('Meeting cancelled');
+      notifyDataChanged('ptm');
       if (studentId) {
         await fetchMeetings(studentId);
       }

@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { LuSave, LuRefreshCw, LuMail, LuCode } from 'react-icons/lu';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { listEmailTemplates, updateEmailTemplates } from '../../api/emailTemplates';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 import toast from 'react-hot-toast';
 
 const TEMPLATES = [
@@ -53,11 +55,7 @@ export default function EmailTemplates() {
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState(DEFAULT_TEMPLATES);
 
-  useEffect(() => {
-    fetchTemplates();
-  }, []);
-
-  const fetchTemplates = async () => {
+  const fetchTemplates = useCallback(async () => {
     try {
       const res = await listEmailTemplates();
       if (res?.data?.raw) {
@@ -71,7 +69,14 @@ export default function EmailTemplates() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchTemplates();
+  }, [fetchTemplates]);
+
+  // Live Data Event Subscription: auto refresh email templates
+  useLiveDataRefresh(fetchTemplates, [fetchTemplates], ['email-templates', 'templates']);
 
   const handleSave = async () => {
     setSaving(true);
@@ -81,6 +86,7 @@ export default function EmailTemplates() {
         setFormData(res.data.raw);
       }
       toast.success("Templates saved successfully!");
+      notifyDataChanged('email-templates');
     } catch (error) {
       console.error("Error saving templates:", error);
       toast.error(error.message || "Failed to save templates.");

@@ -20,6 +20,8 @@ import {
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import ConfirmModal from '../../components/ConfirmModal';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function LeadsManagement() {
   const { userProfile } = useAuth();
@@ -106,12 +108,16 @@ export default function LeadsManagement() {
     fetchData();
   }, [fetchData]);
 
+  // Event-driven live synchronization for leads and lead forms across tabs and views
+  useLiveDataRefresh(fetchData, [fetchData], ['leads', 'forms']);
+
   // Lead status update
   const handleUpdateStatus = async (leadId, newStatus) => {
     try {
       await admissionsApi.updateLeadStatus(leadId, { status: newStatus });
       setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: newStatus } : l));
       toast.success(`Status updated to ${newStatus}`);
+      notifyDataChanged('leads');
     } catch (err) {
       console.error(err);
       toast.error('Failed to update status.');
@@ -182,6 +188,7 @@ export default function LeadsManagement() {
         await admissionsApi.updateLeadForm(editingForm.id, payload);
         toast.success('Form updated successfully!');
       }
+      notifyDataChanged('forms');
       setEditingForm(null);
       fetchData();
     } catch (err) {
@@ -217,6 +224,7 @@ export default function LeadsManagement() {
     try {
       await admissionsApi.deleteLeadForm(formId);
       toast.success('Form deleted.');
+      notifyDataChanged('forms');
       fetchData();
     } catch (err) {
       console.error(err);

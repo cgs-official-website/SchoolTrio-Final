@@ -118,4 +118,66 @@ describe('Unit: Homework Schemas Tests — Phase 4C.7-D.2-I-M.1', () => {
       expect(result.success).toBe(false);
     });
   });
+
+  describe('4. bulkUpdateSubmissionsSchema', () => {
+    it('validates a valid batch of student submissions', () => {
+      const validPayload = {
+        submissions: [
+          {
+            studentId: VALID_UUID,
+            status: 'Completed',
+            grade: 'A+',
+            feedback: 'Great performance'
+          },
+          {
+            studentId: VALID_UUID_2,
+            status: 'Submitted',
+            grade: 'B'
+          }
+        ]
+      };
+
+      const result = schemas.bulkUpdateSubmissionsSchema.body.safeParse(validPayload);
+      expect(result.success).toBe(true);
+      expect(result.data.submissions).toHaveLength(2);
+    });
+
+    it('rejects empty submissions array', () => {
+      const result = schemas.bulkUpdateSubmissionsSchema.body.safeParse({ submissions: [] });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects submission with invalid studentId UUID', () => {
+      const invalidPayload = {
+        submissions: [
+          {
+            studentId: 'not-a-uuid',
+            status: 'Completed'
+          }
+        ]
+      };
+      const result = schemas.bulkUpdateSubmissionsSchema.body.safeParse(invalidPayload);
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects submission row with no status, grade, or feedback', () => {
+      const invalidPayload = {
+        submissions: [
+          {
+            studentId: VALID_UUID
+          }
+        ]
+      };
+      const result = schemas.bulkUpdateSubmissionsSchema.body.safeParse(invalidPayload);
+      expect(result.success).toBe(false);
+    });
+
+    it('validates params homeworkId format', () => {
+      const validParams = { id: VALID_UUID };
+      const invalidParams = { id: 'invalid-id' };
+
+      expect(schemas.bulkUpdateSubmissionsSchema.params.safeParse(validParams).success).toBe(true);
+      expect(schemas.bulkUpdateSubmissionsSchema.params.safeParse(invalidParams).success).toBe(false);
+    });
+  });
 });

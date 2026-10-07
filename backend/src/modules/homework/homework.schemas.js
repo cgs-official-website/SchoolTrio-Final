@@ -133,6 +133,28 @@ export const updateSubmissionSchema = {
   })
 };
 
+export const bulkUpdateSubmissionsSchema = {
+  params: z.object({
+    id: z.string({ required_error: 'Homework ID is required' }).regex(REGEX.UUID, 'Invalid homework ID format')
+  }),
+  body: z.object({
+    submissions: z
+      .array(
+        z.object({
+          studentId: z.string({ required_error: 'Student ID is required' }).regex(REGEX.UUID, 'Invalid student ID format'),
+          status: z.enum(HOMEWORK_STATUSES, { errorMap: () => ({ message: 'Invalid status' }) }).optional(),
+          grade: z.string().trim().max(10, 'Grade cannot exceed 10 characters').nullable().optional(),
+          feedback: z.string().trim().max(2000, 'Feedback cannot exceed 2000 characters').nullable().optional()
+        }).refine(
+          (data) => data.status !== undefined || data.grade !== undefined || data.feedback !== undefined,
+          { message: 'At least one field (status, grade, feedback) must be provided per submission' }
+        )
+      )
+      .min(1, 'Submissions array cannot be empty')
+      .max(500, 'Cannot update more than 500 submissions in a single batch')
+  })
+};
+
 // ============================================================
 // PARENT / STUDENT HOMEWORK SCHEMAS
 // ============================================================

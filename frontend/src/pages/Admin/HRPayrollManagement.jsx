@@ -22,6 +22,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import usePermissions from '../../hooks/usePermissions';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function HRPayrollManagement() {
   const { userProfile } = useAuth();
@@ -214,6 +216,9 @@ export default function HRPayrollManagement() {
     fetchPayrollList();
   }, [fetchHRConfig, fetchStaffList, fetchPayrollList]);
 
+  // Event-driven live synchronization for payroll records across tabs and views
+  useLiveDataRefresh(fetchPayrollList, [fetchPayrollList], 'payroll');
+
   const calculateDeductions = (salary) => {
     const pfCeiling = 15000;
     const pfApplicable = Math.min(salary, pfCeiling);
@@ -306,6 +311,7 @@ export default function HRPayrollManagement() {
           customData: formData.customData || {}
         });
         toast.success("Payroll updated successfully");
+        notifyDataChanged('payroll');
       } else {
         // Generate new record via REST
         await generatePayroll({
@@ -323,6 +329,7 @@ export default function HRPayrollManagement() {
           ]
         });
         toast.success("Payroll record added");
+        notifyDataChanged('payroll');
       }
       setShowModal(false);
       setFormData({ teacherId: '', name: '', role: '', baseSalary: 0, deductions: 0, status: 'Pending', pfCalculated: 0, esiCalculated: 0, customData: {} });
@@ -350,6 +357,7 @@ export default function HRPayrollManagement() {
     try {
       await deletePayroll(id);
       toast.success("Record deleted");
+      notifyDataChanged('payroll');
       await fetchPayrollList();
     } catch (err) {
       toast.error(err.message || "Failed to delete record");
@@ -371,6 +379,7 @@ export default function HRPayrollManagement() {
       setHrConfig(res?.data || { authorizedSignature: downloadURL });
       
       toast.success("Signature uploaded successfully!");
+      notifyDataChanged('payroll');
       setSignatureFile(null);
       setUploadingSig(false);
     } catch (err) {
@@ -385,6 +394,7 @@ export default function HRPayrollManagement() {
       await updateConfig({ authorizedSignature: null });
       setHrConfig({ authorizedSignature: null });
       toast.success("Signature removed successfully!");
+      notifyDataChanged('payroll');
     } catch (err) {
       toast.error(err.message || "Failed to remove signature.");
     }

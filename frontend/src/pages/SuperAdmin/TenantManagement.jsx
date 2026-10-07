@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { listTenants, updateTenantStatus, updateTenantConfig } from '../../api/superadmin';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 import { LuBuilding2 as Building2, LuSearch as Search, LuCircleCheck as CheckCircle2, LuCircleAlert as AlertCircle, LuBan as Ban, LuMail as Mail, LuPhone as Phone, LuCalendar as Calendar, LuSettings as Settings, LuX as X, LuShieldCheck as ShieldCheck, LuExternalLink as ExternalLink, LuFileText as FileText, LuDownload as Download } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -80,6 +82,9 @@ export default function TenantManagement() {
     fetchTenants();
   }, [fetchTenants]);
 
+  // Live Data Event Subscription: auto refresh when tenants or schools mutate
+  useLiveDataRefresh(fetchTenants, [fetchTenants], ['tenants', 'schools']);
+
   const openApprovalModal = (school) => {
     setSelectedSchool(school);
     setModalAction('approve');
@@ -129,6 +134,8 @@ export default function TenantManagement() {
       toast.success(modalAction === 'approve' ? "School approved with limits successfully!" : "School limits and permissions updated successfully.");
       setShowModal(false);
       await fetchTenants();
+      notifyDataChanged('tenants');
+      notifyDataChanged('schools');
     } catch (error) {
       console.error("Failed to save:", error);
       toast.error("Failed to save permissions.");
@@ -148,6 +155,8 @@ export default function TenantManagement() {
       await updateTenantStatus(schoolId, { status: 'suspended', reason: 'Administrative suspension' });
       toast.success("Tenant suspended successfully");
       await fetchTenants();
+      notifyDataChanged('tenants');
+      notifyDataChanged('schools');
     } catch (error) {
       console.error("Failed to suspend:", error);
       toast.error("Failed to suspend");

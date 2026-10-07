@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { LuPalette, LuImagePlus, LuSave, LuRefreshCw, LuRotateCcw } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 import {
@@ -7,6 +7,8 @@ import {
   resetPlatformBranding,
   DEFAULT_PLATFORM_BRANDING
 } from '../../api/platformBranding';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 
 export default function BrandingSettings() {
   const [settings, setSettings] = useState({
@@ -20,36 +22,33 @@ export default function BrandingSettings() {
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function fetchBranding() {
-      try {
-        setLoading(true);
-        const res = await getPlatformBranding();
-        if (isMounted && res?.data) {
-          setSettings({
-            platformName: res.data.platformName || DEFAULT_PLATFORM_BRANDING.platformName,
-            primaryColor: res.data.primaryColor || DEFAULT_PLATFORM_BRANDING.primaryColor,
-            logoUrl: res.data.logoUrl || DEFAULT_PLATFORM_BRANDING.logoUrl,
-            faviconUrl: res.data.faviconUrl || DEFAULT_PLATFORM_BRANDING.faviconUrl,
-            loginBackgroundImage:
-              res.data.loginBackgroundImage || DEFAULT_PLATFORM_BRANDING.loginBackgroundImage
-          });
-        }
-      } catch (err) {
-        toast.error(err.message || 'Failed to load platform branding');
-      } finally {
-        if (isMounted) setLoading(false);
+  const fetchBranding = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await getPlatformBranding();
+      if (res?.data) {
+        setSettings({
+          platformName: res.data.platformName || DEFAULT_PLATFORM_BRANDING.platformName,
+          primaryColor: res.data.primaryColor || DEFAULT_PLATFORM_BRANDING.primaryColor,
+          logoUrl: res.data.logoUrl || DEFAULT_PLATFORM_BRANDING.logoUrl,
+          faviconUrl: res.data.faviconUrl || DEFAULT_PLATFORM_BRANDING.faviconUrl,
+          loginBackgroundImage:
+            res.data.loginBackgroundImage || DEFAULT_PLATFORM_BRANDING.loginBackgroundImage
+        });
       }
+    } catch (err) {
+      toast.error(err.message || 'Failed to load platform branding');
+    } finally {
+      setLoading(false);
     }
-
-    fetchBranding();
-
-    return () => {
-      isMounted = false;
-    };
   }, []);
+
+  useEffect(() => {
+    fetchBranding();
+  }, [fetchBranding]);
+
+  // Live Data Event Subscription: auto refresh platform branding
+  useLiveDataRefresh(fetchBranding, [fetchBranding], ['platform_branding', 'branding']);
 
   const handleSave = async (e) => {
     if (e?.preventDefault) e.preventDefault();
@@ -75,6 +74,8 @@ export default function BrandingSettings() {
         });
       }
       toast.success('Global branding settings saved successfully!');
+      notifyDataChanged('platform_branding');
+      notifyDataChanged('branding');
     } catch (err) {
       toast.error(err.message || 'Failed to save branding settings');
     } finally {
@@ -102,6 +103,8 @@ export default function BrandingSettings() {
         setSettings({ ...DEFAULT_PLATFORM_BRANDING });
       }
       toast.success('Platform branding reset to defaults successfully!');
+      notifyDataChanged('platform_branding');
+      notifyDataChanged('branding');
     } catch (err) {
       toast.error(err.message || 'Failed to reset branding settings');
     } finally {

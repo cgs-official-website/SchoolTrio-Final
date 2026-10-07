@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getSubscriptions, getStats } from '../../api/superadmin';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { Link } from 'react-router-dom';
 import { LuCreditCard as CreditCard, LuArrowUpRight as ArrowUpRight, LuTrendingUp as TrendingUp, LuCircleAlert as AlertCircle, LuCircleCheck as CheckCircle2 } from 'react-icons/lu';
 
@@ -42,6 +43,11 @@ export default function SubscriptionsList() {
   useEffect(() => {
     fetchSubscriptions();
   }, [fetchSubscriptions]);
+
+  // Live Data Event Subscription: auto refresh subscriptions and MRR stats
+  useLiveDataRefresh(fetchSubscriptions, [fetchSubscriptions], [
+    'subscriptions', 'billing', 'tenants', 'schools', 'plans'
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / itemsPerPage));
   const startIndex = (currentPage - 1) * itemsPerPage;

@@ -2006,7 +2006,7 @@ export default function StaffAssignment() {
                     </div>
                     <p className="font-bold text-slate-700 dark:text-slate-200 mt-2 mb-1">Optional (all other columns supported):</p>
                     <div className="flex flex-wrap gap-1.5">
-                      {['Staff ID', 'Mobile Number', 'Gender', 'Date of Birth', 'Blood Group', 'Role', 'Staff Type', 'Aadhar Number', 'PAN Number', 'PF Number', 'Bank Account Number'].map(col => (
+                      {['Staff ID', 'Mobile Number', 'Gender', 'Date of Birth', 'Blood Group', 'Role', 'Staff Type', 'Assigned Class', 'Subject Classes', 'Aadhar Number', 'PAN Number', 'PF Number', 'Bank Account Number'].map(col => (
                         <span key={col} className="bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium px-2 py-0.5 rounded-md">{col}</span>
                       ))}
                     </div>
@@ -2014,8 +2014,8 @@ export default function StaffAssignment() {
                   <button
                     type="button"
                     onClick={() => {
-                      const headers = ['Staff ID', 'Full Name', 'Date of Birth', 'Gender', 'Nationality', 'Marital Status', 'Blood Group', 'Aadhar Number', 'Languages Known', 'Mobile Number', 'Email Address', 'Residential Address', 'Emergency Contact Details', 'Father Name/Guardian Name', 'Highest Qualification', 'Degree(s) and Specialization', 'University/College Name', 'Year of Passing', 'Previous Experience (Years)', 'Previous School/Organization', 'Subject Specialization', 'Grades/Classes Handled', 'Certifications', 'Government-issued ID', 'Tax Identification Details (PAN)', 'PF Number', 'ESIC Number', 'UAN Number', 'Bank Account Number', 'Bank Name and Branch', 'IFSC Code', 'PAN Number'];
-                      const sampleRow = ['STF001', 'John Doe', '1990-01-15', 'Male', 'Indian', 'Single', 'A+', '1234-5678-9012', 'English, Hindi', '9876543210', 'john.doe@school.com', '123 Main St, City', 'Jane Doe - 9876500000', 'Robert Doe', 'M.Sc Education', 'B.Ed, Mathematics', 'Delhi University', '2015', '5', 'ABC School', 'Mathematics', '9, 10, 11', 'B.Ed', 'Aadhaar', 'ABCDE1234F', 'PF123456', 'ESIC789', 'UAN456', '123456789012', 'State Bank, Main Branch', 'SBIN0001234', 'ABCDE1234F'];
+                      const headers = ['Staff ID', 'Full Name', 'Date of Birth', 'Gender', 'Nationality', 'Marital Status', 'Blood Group', 'Aadhar Number', 'Languages Known', 'Mobile Number', 'Email Address', 'Role', 'Staff Type', 'Assigned Class', 'Subject Classes', 'Residential Address', 'Emergency Contact Details', 'Father Name/Guardian Name', 'Highest Qualification', 'Degree(s) and Specialization', 'University/College Name', 'Year of Passing', 'Previous Experience (Years)', 'Previous School/Organization', 'Subject Specialization', 'Grades/Classes Handled', 'Certifications', 'Government-issued ID', 'Tax Identification Details (PAN)', 'PF Number', 'ESIC Number', 'UAN Number', 'Bank Account Number', 'Bank Name and Branch', 'IFSC Code', 'PAN Number'];
+                      const sampleRow = ['STF001', 'John Doe', '1990-01-15', 'Male', 'Indian', 'Single', 'A+', '1234-5678-9012', 'English, Hindi', '9876543210', 'john.doe@school.com', 'Teacher', 'teaching', 'Grade 10 - A', 'Grade 10 - A, Grade 10 - B', '123 Main St, City', 'Jane Doe - 9876500000', 'Robert Doe', 'M.Sc Education', 'B.Ed, Mathematics', 'Delhi University', '2015', '5', 'ABC School', 'Mathematics', '9, 10, 11', 'B.Ed', 'Aadhaar', 'ABCDE1234F', 'PF123456', 'ESIC789', 'UAN456', '123456789012', 'State Bank, Main Branch', 'SBIN0001234', 'ABCDE1234F'];
                       const ws = XLSX.utils.aoa_to_sheet([headers, sampleRow]);
                       const wb = XLSX.utils.book_new();
                       XLSX.utils.book_append_sheet(wb, ws, 'Staff Import');
@@ -2023,7 +2023,7 @@ export default function StaffAssignment() {
                     }}
                     className="flex items-center gap-2 text-xs font-semibold text-primary-600 hover:text-primary-800 hover:underline"
                   >
-                    <Download size={14} /> Download Full Template (32 columns)
+                    <Download size={14} /> Download Full Template (36 columns)
                   </button>
                 </div>
               )}

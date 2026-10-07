@@ -116,6 +116,19 @@ homeworkRouter.delete(
 );
 
 /**
+ * Bulk Evaluate / Grade Student Submissions
+ * PUT /api/v1/homework/:id/submissions/bulk
+ */
+homeworkRouter.put(
+  '/:id/submissions/bulk',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('homework', 'edit'),
+  validate(homeworkSchemas.bulkUpdateSubmissionsSchema),
+  homeworkController.bulkUpdateStaffSubmissions
+);
+
+/**
  * Evaluate / Grade Student Submission
  * PATCH /api/v1/homework/:id/submissions/:studentId
  */

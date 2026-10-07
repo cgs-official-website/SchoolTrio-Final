@@ -164,6 +164,34 @@ export async function updateStaffSubmission(req, res, next) {
 }
 
 /**
+ * Staff updates/evaluates multiple student submissions in a batch.
+ * PUT /api/v1/homework/:id/submissions/bulk
+ */
+export async function bulkUpdateStaffSubmissions(req, res, next) {
+  try {
+    const schoolId = req.tenant?.schoolId || req.auth?.schoolId || req.schoolId;
+    const homeworkId = req.params.id;
+    const actor = req.auth || req.user;
+    const { submissions } = req.body;
+
+    const result = await homeworkService.bulkUpdateStaffSubmissions(
+      schoolId,
+      homeworkId,
+      submissions,
+      actor
+    );
+
+    return ApiResponse.success(
+      res,
+      result,
+      `Successfully processed ${result.updatedCount} submission(s)`
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
  * Lists student-scoped homework assignments for parent/student view.
  * GET /api/v1/students/:studentId/homework
  */

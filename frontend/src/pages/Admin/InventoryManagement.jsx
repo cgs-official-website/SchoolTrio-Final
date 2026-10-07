@@ -25,6 +25,8 @@ import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
 import { uploadCustomDataFiles } from '../../utils/cloudinary';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function InventoryManagement() {
   const navigate = useNavigate();
@@ -97,6 +99,9 @@ export default function InventoryManagement() {
     loadInventoryData();
   }, [loadInventoryData]);
 
+  // Event-driven live synchronization for inventory changes across tabs and views
+  useLiveDataRefresh(loadInventoryData, [loadInventoryData], 'inventory');
+
   // Item Save
   const handleSaveItem = async (e) => {
     e.preventDefault();
@@ -137,6 +142,7 @@ export default function InventoryManagement() {
 
         await updateItem(itemFormData.id, updatePayload);
         toast.success('Item updated successfully');
+        notifyDataChanged('inventory');
       } else {
         // Create Item (Initial quantity supplied on creation)
         const createPayload = {
@@ -151,6 +157,7 @@ export default function InventoryManagement() {
 
         await createItem(createPayload);
         toast.success('Item added successfully');
+        notifyDataChanged('inventory');
       }
 
       setShowItemModal(false);
@@ -184,9 +191,11 @@ export default function InventoryManagement() {
       if (categoryFormData.id) {
         await updateCategory(categoryFormData.id, finalData);
         toast.success('Category updated');
+        notifyDataChanged('inventory');
       } else {
         await createCategory(finalData);
         toast.success('Category created');
+        notifyDataChanged('inventory');
       }
       setShowCategoryModal(false);
       await loadInventoryData();
@@ -223,6 +232,7 @@ export default function InventoryManagement() {
       });
 
       toast.success('Stock adjusted successfully');
+      notifyDataChanged('inventory');
       setShowStockModal(false);
       await loadInventoryData();
     } catch (err) {
@@ -241,9 +251,11 @@ export default function InventoryManagement() {
       if (confirmDeleteState.type === 'item') {
         await deleteItem(confirmDeleteState.id);
         toast.success('Item deleted');
+        notifyDataChanged('inventory');
       } else {
         await deleteCategory(confirmDeleteState.id);
         toast.success('Category deleted');
+        notifyDataChanged('inventory');
       }
       setConfirmDeleteState({ isOpen: false, type: '', id: null, name: '' });
       await loadInventoryData();
@@ -275,6 +287,7 @@ export default function InventoryManagement() {
       } else {
         toast.success(`Successfully deleted ${data.deletedCount} items`);
       }
+      notifyDataChanged('inventory');
       setSelectedItemIds([]);
       await loadInventoryData();
     } catch (err) {
@@ -494,6 +507,7 @@ export default function InventoryManagement() {
           setImportErrors(summary.errors);
         }
 
+        notifyDataChanged('inventory');
         toast.success('Bulk import completed');
         await loadInventoryData();
       } catch (err) {

@@ -9,6 +9,8 @@ import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
 import usePermissions from '../../hooks/usePermissions';
 import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function ResourceSharing() {
   const { userProfile, currentUser } = useAuth();
@@ -119,6 +121,10 @@ export default function ResourceSharing() {
     };
   }, [schoolId, fetchMetadata, fetchResources]);
 
+  // Event-driven live synchronization for academic resources and metadata
+  useLiveDataRefresh(fetchResources, [fetchResources], 'resources');
+  useLiveDataRefresh(fetchMetadata, [fetchMetadata], ['classes', 'subjects']);
+
   const handleOpenCreate = () => {
     setFormData({
       title: '',
@@ -151,6 +157,7 @@ export default function ResourceSharing() {
       await deleteAcademicResource(resourceId);
       toast.success("Resource deleted successfully!");
       setResources(prev => prev.filter(r => r.id !== resourceId));
+      notifyDataChanged('resources');
     } catch (error) {
       console.error('Delete resource error:', error);
       toast.error(error.message || "Failed to delete resource.");
@@ -220,6 +227,7 @@ export default function ResourceSharing() {
       if (createdRecord?.id) {
         setResources(prev => [createdRecord, ...prev.filter(r => r.id !== createdRecord.id)]);
       }
+      notifyDataChanged('resources');
       fetchResources(true);
     } catch (error) {
       console.error('Create resource error:', error);

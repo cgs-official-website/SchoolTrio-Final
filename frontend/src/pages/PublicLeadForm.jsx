@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { admissionsApi } from '../api/admissions';
+import { notifyDataChanged } from '../utils/liveData';
 import { LuCircleCheck } from 'react-icons/lu';
 
 export default function PublicLeadForm() {
@@ -97,6 +98,7 @@ export default function PublicLeadForm() {
         data: formData
       });
 
+      notifyDataChanged('leads');
       setSubmitted(true);
     } catch (err) {
       console.error(err);

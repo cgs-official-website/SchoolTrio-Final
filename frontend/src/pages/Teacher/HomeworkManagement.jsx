@@ -6,7 +6,8 @@ import {
   createHomework,
   updateHomework,
   deleteHomework,
-  updateSubmission
+  updateSubmission,
+  bulkUpdateSubmissions
 } from '../../api/homework';
 import { listClasses } from '../../api/classes';
 import { listSubjects } from '../../api/subjects';
@@ -477,8 +478,9 @@ export default function HomeworkManagement() {
             return;
           }
 
-          let successCount = 0;
           const roster = selectedHomework?.roster || [];
+          const submissionsByHwId = new Map();
+          let skippedCount = 0;
 
           for (const row of data) {
             const admNo = String(row['Admission Number'] || row['AdmissionNo'] || row['ADM'] || '').trim();
@@ -493,7 +495,10 @@ export default function HomeworkManagement() {
               if (matchedHw) targetHwId = matchedHw.id;
             }
 
-            if (!targetHwId) continue;
+            if (!targetHwId) {
+              skippedCount++;
+              continue;
+            }
 
             let targetStudentId = null;
             if (roster.length > 0) {
@@ -501,21 +506,37 @@ export default function HomeworkManagement() {
               if (matchedStudent) targetStudentId = matchedStudent.studentId;
             }
 
-            if (targetStudentId) {
-              try {
-                await updateSubmission(targetHwId, targetStudentId, {
-                  status: statusVal,
-                  grade: gradeVal ? String(gradeVal) : null,
-                  feedback: feedbackVal ? String(feedbackVal) : null
-                });
-                successCount++;
-              } catch (subErr) {
-                console.warn(`Failed to update student ${admNo}:`, subErr);
-              }
+            if (!targetStudentId) {
+              skippedCount++;
+              continue;
             }
+
+            if (!submissionsByHwId.has(targetHwId)) {
+              submissionsByHwId.set(targetHwId, []);
+            }
+
+            submissionsByHwId.get(targetHwId).push({
+              studentId: targetStudentId,
+              status: statusVal,
+              grade: gradeVal ? String(gradeVal) : null,
+              feedback: feedbackVal ? String(feedbackVal) : null
+            });
           }
 
-          toast.success(`Processed and updated ${successCount} student records successfully!`);
+          if (submissionsByHwId.size === 0) {
+            toast.error('No matching student submissions found in the Excel file.');
+            setCreating(false);
+            return;
+          }
+
+          let totalUpdated = 0;
+          for (const [hwId, subs] of submissionsByHwId.entries()) {
+            const res = await bulkUpdateSubmissions(hwId, subs);
+            totalUpdated += (res?.data?.updatedCount || subs.length);
+          }
+
+          notifyDataChanged('homework');
+          toast.success(`Processed and updated ${totalUpdated} student record(s) successfully!${skippedCount > 0 ? ` (${skippedCount} skipped)` : ''}`);
           setShowExcelModal(false);
           setExcelFile(null);
           
@@ -525,8 +546,8 @@ export default function HomeworkManagement() {
           }
           fetchHomeworkList(true);
         } catch (parseErr) {
-          console.error('Error parsing excel:', parseErr);
-          toast.error('Failed to parse Excel file.');
+          console.error('Error processing bulk submissions:', parseErr);
+          toast.error(parseErr?.message || 'Failed to process Excel file.');
         } finally {
           setCreating(false);
         }
@@ -537,6 +558,41 @@ export default function HomeworkManagement() {
       toast.error('Failed to process Excel file.');
       setCreating(false);
     }
+  };
+
+  // ============================================================
+  // EVALUATION TEMPLATE DOWNLOAD
+  // ============================================================
+
+  const handleDownloadEvaluationTemplate = () => {
+    const headers = ['Homework Title', 'Student Name', 'Admission Number', 'Status', 'Grade', 'Feedback'];
+    let rows = [];
+
+    const roster = selectedHomework?.roster || [];
+    if (roster.length > 0) {
+      rows = roster.map(s => [
+        selectedHomework?.title || '',
+        s.studentName || '',
+        s.admissionNumber || '',
+        s.status || 'Completed',
+        s.grade || '',
+        s.feedback || ''
+      ]);
+    } else {
+      // Default sample fictional data
+      rows = [
+        ['Mathematics Chapter 5 Assignment', 'Rahul Sharma', 'ADM1001', 'Completed', 'A', 'Great effort and accurate calculations.'],
+        ['Mathematics Chapter 5 Assignment', 'Priya Patel', 'ADM1002', 'Completed', 'B+', 'Good work, review question 4.']
+      ];
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Evaluations');
+    const fileName = selectedHomework?.title
+      ? `${selectedHomework.title.replace(/[^a-zA-Z0-9_-]/g, '_')}_Evaluation_Template.xlsx`
+      : 'Homework_Evaluation_Template.xlsx';
+    XLSX.writeFile(wb, fileName);
   };
 
   // ============================================================
@@ -1162,10 +1218,21 @@ export default function HomeworkManagement() {
             </div>
             <form onSubmit={handleExcelUpload} className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
               <div className="p-6 space-y-6 flex-1">
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Upload an Excel (.xlsx) file containing student evaluations for automatic batch submission updating. <br />
-                  <strong>Required Columns:</strong> Admission Number, Status (Not Started, In Progress, Completed, Submitted), Grade, Feedback
-                </p>
+                <div className="flex flex-col gap-3 bg-emerald-50/60 dark:bg-emerald-950/20 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800/40">
+                  <p className="text-sm text-slate-700 dark:text-slate-300">
+                    Upload an Excel (.xlsx) or CSV file containing student evaluations for automatic batch submission updating.
+                  </p>
+                  <div className="text-xs text-slate-600 dark:text-slate-400">
+                    <strong>Supported Columns:</strong> Admission Number (required), Status (Completed, Submitted, In Progress, Not Started), Grade, Feedback, Homework Title
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDownloadEvaluationTemplate}
+                    className="self-start text-xs font-semibold px-3.5 py-2 bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-800 rounded-lg text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 shadow-sm"
+                  >
+                    <FileDown size={15} /> Download Evaluation Template
+                  </button>
+                </div>
 
                 <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-8 text-center bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors relative">
                   <input
@@ -1230,6 +1297,14 @@ export default function HomeworkManagement() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <button
+                  onClick={handleDownloadEvaluationTemplate}
+                  className="w-full sm:w-auto justify-center inline-flex items-center gap-2 px-3.5 py-2.5 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-all active:scale-[0.98]"
+                  title="Download evaluation spreadsheet pre-filled with this class roster"
+                >
+                  <FileDown size={16} />
+                  Download Evaluation Template
+                </button>
                 <button
                   onClick={() => {
                     const defaultName = selectedHomework ? selectedHomework.title.replace(/\s+/g, '_') : 'Homework';

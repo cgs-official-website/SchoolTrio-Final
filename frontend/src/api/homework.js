@@ -114,6 +114,24 @@ export async function updateSubmission(homeworkId, studentId, payload = {}) {
 }
 
 /**
+ * Staff evaluates or updates multiple student submissions in a batch.
+ * Calls PUT /api/v1/homework/:id/submissions/bulk.
+ *
+ * @param {string} homeworkId - PostgreSQL Homework UUID
+ * @param {Array<{ studentId: string, status?: string, grade?: string|null, feedback?: string|null }>} submissions
+ * @returns {Promise<{ success: boolean, data: Object, message?: string }>}
+ */
+export async function bulkUpdateSubmissions(homeworkId, submissions = []) {
+  return apiClient(
+    `/api/v1/homework/${encodeURIComponent(homeworkId)}/submissions/bulk`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ submissions })
+    }
+  );
+}
+
+/**
  * Lists student-scoped homework assignments for parent/student view.
  * Calls GET /api/v1/students/:studentId/homework.
  *

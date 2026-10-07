@@ -36,6 +36,31 @@ export async function findStudentInTenant(schoolId, studentId, tx = prisma) {
 }
 
 /**
+ * Finds students belonging to a specific class and school.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} classId - Class UUID
+ * @param {Array<string>} studentIds - List of student UUIDs
+ * @param {Object} [tx=prisma] - Transaction client
+ * @returns {Promise<Array<Object>>}
+ */
+export async function findStudentsInClass(schoolId, classId, studentIds, tx = prisma) {
+  return tx.student.findMany({
+    where: {
+      id: { in: studentIds },
+      schoolId,
+      classId
+    },
+    select: {
+      id: true,
+      admissionNumber: true,
+      firstName: true,
+      lastName: true
+    }
+  });
+}
+
+/**
  * Derives authorized student IDs for an authenticated parent user within tenant context.
  *
  * @param {string} schoolId - Tenant UUID

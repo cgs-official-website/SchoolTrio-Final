@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getMyChildren } from '../../api/parents';
 import { getStudentAttendance } from '../../api/attendance';
 import { listAssessments, getStudentAssessmentGrade } from '../../api/assessments';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { LuTrendingUp, LuAward, LuBookOpen } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 
@@ -190,6 +191,20 @@ export default function Performance() {
       mountedRef.current = false;
     };
   }, [studentId, activeChildFromContext, enrolledChildrenFromContext, userProfile?.linkedClassId]);
+
+  // Live Data Event Subscription: refresh attendance & grades silently
+  const refreshPerformance = useCallback(() => {
+    const currentId = currentStudentRef.current;
+    if (!currentId) return;
+    fetchAttendance(currentId);
+    if (currentClassRef.current) {
+      fetchAssessmentsAndGrades(currentClassRef.current, currentId);
+    }
+  }, []);
+
+  useLiveDataRefresh(refreshPerformance, [refreshPerformance], [
+    'attendance', 'marks', 'exams', 'assessments', 'grades', 'report_cards', 'students'
+  ]);
 
   if (loading) {
     return (

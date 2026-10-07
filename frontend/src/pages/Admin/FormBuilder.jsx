@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
   listCustomModules,
@@ -12,6 +12,8 @@ import { Settings, Plus, LayoutGrid, MoveUp, MoveDown, Trash2, Folder, Save } fr
 import toast from 'react-hot-toast';
 import { allNavItems } from '../AdminDashboard';
 import ConfirmModal from '../../components/ConfirmModal';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 const defaultCoreSchemas = {
   'staff': {
@@ -89,7 +91,7 @@ export default function FormBuilder() {
   ];
 
   // Fetch Custom Modules via REST
-  const fetchCustomModules = async () => {
+  const fetchCustomModules = useCallback(async () => {
     if (!schoolId) return;
     setLoadingModules(true);
     try {
@@ -102,10 +104,10 @@ export default function FormBuilder() {
     } finally {
       setLoadingModules(false);
     }
-  };
+  }, [schoolId]);
 
   // Fetch Sidebar Order via REST
-  const fetchSidebarOrder = async () => {
+  const fetchSidebarOrder = useCallback(async () => {
     if (!schoolId) return;
     try {
       const res = await getSidebarSettings();
@@ -118,12 +120,15 @@ export default function FormBuilder() {
     } catch (err) {
       console.error("Error fetching sidebar settings:", err);
     }
-  };
+  }, [schoolId]);
 
   useEffect(() => {
     fetchCustomModules();
     fetchSidebarOrder();
-  }, [schoolId]);
+  }, [fetchCustomModules, fetchSidebarOrder]);
+
+  // Event-driven live synchronization for custom modules and form schemas across tabs
+  useLiveDataRefresh(fetchCustomModules, [fetchCustomModules], 'custom-modules');
 
   useEffect(() => {
     // Combine core modules (excluding Dashboard/Environment) and custom modules
@@ -157,14 +162,8 @@ export default function FormBuilder() {
     setUnifiedModules(combined);
   }, [customModules, sidebarOrder]);
 
-  useEffect(() => {
-    if (schoolId && activeModule && activeTab === 'schema') {
-      loadSchema();
-      setImportModuleId('');
-    }
-  }, [schoolId, activeModule, activeTab]);
-
-  const loadSchema = async () => {
+  const loadSchema = useCallback(async () => {
+    if (!schoolId || !activeModule) return;
     setLoadingSchema(true);
     try {
       const res = await getFormSchema(activeModule);
@@ -186,13 +185,24 @@ export default function FormBuilder() {
     } finally {
       setLoadingSchema(false);
     }
-  };
+  }, [schoolId, activeModule]);
+
+  useEffect(() => {
+    if (schoolId && activeModule && activeTab === 'schema') {
+      loadSchema();
+      setImportModuleId('');
+    }
+  }, [schoolId, activeModule, activeTab, loadSchema]);
+
+  // Live synchronization for form schemas
+  useLiveDataRefresh(loadSchema, [loadSchema], 'forms');
 
   const handleSaveSchema = async () => {
     setSavingSchema(true);
     try {
       await upsertFormSchema(activeModule, { sections });
       toast.success("Module schema saved successfully!");
+      notifyDataChanged('forms');
     } catch (error) {
       console.error("Error saving schema:", error);
       toast.error("Failed to save module schema.");
@@ -266,6 +276,8 @@ export default function FormBuilder() {
       
       setNewModuleName('');
       toast.success("Custom module created with initial schema!");
+      notifyDataChanged('custom-modules');
+      notifyDataChanged('forms');
       await fetchCustomModules();
       await fetchSidebarOrder();
     } catch (error) {
@@ -284,6 +296,8 @@ export default function FormBuilder() {
         try {
           await deleteCustomModule(id);
           toast.success("Module and stored records deleted successfully.");
+          notifyDataChanged('custom-modules');
+          notifyDataChanged('forms');
           await fetchCustomModules();
           await fetchSidebarOrder();
         } catch (error) {
@@ -305,6 +319,7 @@ export default function FormBuilder() {
     try {
       const orderArray = newList.map(m => m.id);
       await updateSidebarSettings({ order: orderArray });
+      notifyDataChanged('settings');
     } catch (error) {
       console.error("Error saving global order:", error);
       toast.error("Failed to save sidebar order.");

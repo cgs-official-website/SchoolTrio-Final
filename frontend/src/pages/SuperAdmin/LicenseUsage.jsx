@@ -11,6 +11,8 @@ import {
   LuShieldCheck
 } from 'react-icons/lu';
 import { getLicenseUsage, updateTenantConfig } from '../../api/superadmin';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 import toast from 'react-hot-toast';
 
 export default function LicenseUsage() {
@@ -58,6 +60,11 @@ export default function LicenseUsage() {
     fetchUsage();
   }, [fetchUsage]);
 
+  // Live Data Event Subscription: auto refresh license usage
+  useLiveDataRefresh(fetchUsage, [fetchUsage], [
+    'license-usage', 'tenants', 'schools', 'subscriptions'
+  ]);
+
   const totalPages = Math.max(1, Math.ceil(totalCount / itemsPerPage));
   const startIndex = (currentPage - 1) * itemsPerPage;
 
@@ -89,6 +96,8 @@ export default function LicenseUsage() {
       toast.success(`Limits updated for ${selectedSchool.schoolName || selectedSchool.name || 'School'}!`);
       setExpandModalOpen(false);
       await fetchUsage();
+      notifyDataChanged('tenants');
+      notifyDataChanged('license-usage');
     } catch (err) {
       console.error('Failed to update school limit via REST:', err);
       toast.error('Failed to update school limit.');

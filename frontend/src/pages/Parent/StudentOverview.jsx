@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getMyChildren } from '../../api/parents';
 import { getStudentInvoices } from '../../api/invoices';
 import { getStudentAttendance } from '../../api/attendance';
 import { listAssessments, getStudentAssessmentGrade } from '../../api/assessments';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { LuCircleUser as _UserCircle, LuCalendar as Calendar, LuGraduationCap as GraduationCap, LuCircleCheck as CheckCircle2, LuTrendingUp as TrendingUp, LuTriangleAlert as AlertTriangle, LuCreditCard as CreditCard, LuArrowRight as ArrowRight } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 
@@ -269,6 +270,22 @@ export default function StudentOverview() {
       window.removeEventListener('sms:invoice-paid', handleInvoicePaid);
     };
   }, []);
+
+  // Live Data Event Subscription: refresh profile, fees, attendance, and assessments silently
+  const refreshAllData = useCallback(() => {
+    const currentId = currentStudentRef.current;
+    if (!currentId) return;
+    loadStudentProfile(currentId);
+    fetchFeeSummary(currentId);
+    fetchAttendanceSummary(currentId);
+    if (currentClassRef.current) {
+      fetchAssessmentsAndGrades(currentClassRef.current, currentId);
+    }
+  }, []);
+
+  useLiveDataRefresh(refreshAllData, [refreshAllData], [
+    'students', 'parents', 'attendance', 'fees', 'invoices', 'fee', 'invoice', 'marks', 'exams', 'assessments', 'grades', 'report_cards'
+  ]);
 
   if (loading) {
     return (

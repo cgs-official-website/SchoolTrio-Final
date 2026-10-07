@@ -6,6 +6,7 @@ import {
 import { LuClipboardList } from 'react-icons/lu';
 import { useAuth } from '../../context/AuthContext';
 import { listAuditLogs, fetchAllPages } from '../../api/inventory';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -105,6 +106,9 @@ export default function InventoryAuditLogs() {
   useEffect(() => {
     loadLogs();
   }, [loadLogs]);
+
+  // Event-driven live synchronization for inventory audit logs across tabs and views
+  useLiveDataRefresh(loadLogs, [loadLogs], 'inventory');
 
   // Fetch full filtered logs dataset for export to prevent silent truncation
   const getFullExportDataset = async () => {

@@ -318,6 +318,7 @@ export default function AdminOverview() {
   useLiveDataRefresh(fetchCalendarEvents, [fetchCalendarEvents], 'calendar');
   useLiveDataRefresh(fetchInvoiceStats, [fetchInvoiceStats], ['fees', 'invoices']);
   useLiveDataRefresh(fetchAttendanceAlerts, [fetchAttendanceAlerts], 'attendance');
+  useLiveDataRefresh(fetchPayrollStats, [fetchPayrollStats], 'payroll');
 
   if (loading) {
     return (

@@ -9,6 +9,11 @@ import {
 import { SYSTEM_ROLES } from '../../../src/config/constants.js';
 
 vi.mock('../../../src/modules/homework/homework.repository.js');
+vi.mock('../../../src/database/prisma.client.js', () => ({
+  prisma: {
+    $transaction: vi.fn(async (cb) => cb({}))
+  }
+}));
 vi.mock('../../../src/modules/audit/audit.repository.js', () => ({
   createAuditLog: vi.fn().mockResolvedValue({ id: 'audit-log-1' })
 }));
@@ -510,6 +515,79 @@ describe('Unit: Homework Service Tests — Phase 4C.7-D.2-I-M.1', () => {
         })
       );
       expect(result.count).toBe(10);
+    });
+  });
+
+  describe('8. bulkUpdateStaffSubmissions', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('successfully processes multiple student submissions in an atomic batch', async () => {
+      homeworkRepository.findHomeworkById.mockResolvedValue(MOCK_ASSIGNMENT);
+      homeworkRepository.findStudentsInClass.mockResolvedValue([
+        { id: STUDENT_ID, admissionNumber: 'ADM-101', firstName: 'Alice', lastName: 'Smith' },
+        { id: OTHER_STUDENT_ID, admissionNumber: 'ADM-102', firstName: 'Bob', lastName: 'Jones' }
+      ]);
+      homeworkRepository.upsertSubmission.mockImplementation(async (schId, hwId, sId, payload) => ({
+        id: `sub-${sId}`,
+        homeworkId: hwId,
+        studentId: sId,
+        status: payload.status || 'Completed',
+        grade: payload.grade || null,
+        feedback: payload.feedback || null,
+        submittedAt: payload.submittedAt || null,
+        updatedAt: new Date()
+      }));
+
+      const batch = [
+        { studentId: STUDENT_ID, status: 'Completed', grade: 'A+', feedback: 'Great job' },
+        { studentId: OTHER_STUDENT_ID, status: 'Submitted', grade: 'B' }
+      ];
+
+      const result = await homeworkService.bulkUpdateStaffSubmissions(
+        SCHOOL_ID,
+        HOMEWORK_ID,
+        batch,
+        ADMIN_ACTOR
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.updatedCount).toBe(2);
+      expect(result.submissions).toHaveLength(2);
+      expect(homeworkRepository.upsertSubmission).toHaveBeenCalledTimes(2);
+    });
+
+    it('rejects batch if any student is not found in the class or tenant', async () => {
+      homeworkRepository.findHomeworkById.mockResolvedValue(MOCK_ASSIGNMENT);
+      homeworkRepository.findStudentsInClass.mockResolvedValue([
+        { id: STUDENT_ID, admissionNumber: 'ADM-101', firstName: 'Alice', lastName: 'Smith' }
+      ]);
+
+      const batch = [
+        { studentId: STUDENT_ID, status: 'Completed' },
+        { studentId: OTHER_STUDENT_ID, status: 'Completed' } // Not in class
+      ];
+
+      await expect(
+        homeworkService.bulkUpdateStaffSubmissions(SCHOOL_ID, HOMEWORK_ID, batch, ADMIN_ACTOR)
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it('rejects cross-tenant homework assignment', async () => {
+      homeworkRepository.findHomeworkById.mockResolvedValue(null);
+
+      const batch = [{ studentId: STUDENT_ID, status: 'Completed' }];
+
+      await expect(
+        homeworkService.bulkUpdateStaffSubmissions(SCHOOL_ID, HOMEWORK_ID, batch, ADMIN_ACTOR)
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it('rejects empty submissions array', async () => {
+      await expect(
+        homeworkService.bulkUpdateStaffSubmissions(SCHOOL_ID, HOMEWORK_ID, [], ADMIN_ACTOR)
+      ).rejects.toThrow(ValidationError);
     });
   });
 });

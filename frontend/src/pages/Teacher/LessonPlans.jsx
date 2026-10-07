@@ -9,6 +9,8 @@ import * as XLSX from 'xlsx';
 import usePermissions from '../../hooks/usePermissions';
 import ConfirmModal from '../../components/ConfirmModal';
 import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 /**
  * Returns today's date formatted as local YYYY-MM-DD.
@@ -213,6 +215,10 @@ export default function LessonPlans() {
     };
   }, [schoolId, currentUser, fetchMetadata, fetchLessonPlans]);
 
+  // Event-driven live synchronization for lesson plans and academic metadata
+  useLiveDataRefresh(fetchLessonPlans, [fetchLessonPlans], 'lesson-plans');
+  useLiveDataRefresh(fetchMetadata, [fetchMetadata], ['classes', 'subjects']);
+
   const handleOpenCreate = () => {
     setEditingPlan(null);
     setFormData({
@@ -257,6 +263,7 @@ export default function LessonPlans() {
       await deleteLessonPlan(planId);
       setPlans(prev => prev.filter(p => p.id !== planId));
       toast.success("Lesson plan deleted successfully!");
+      notifyDataChanged('lesson-plans');
     } catch (error) {
       toast.error(error?.message || "Failed to delete lesson plan.");
     }
@@ -293,6 +300,7 @@ export default function LessonPlans() {
         }
         toast.success("Lesson plan created successfully!");
       }
+      notifyDataChanged('lesson-plans');
       setShowModal(false);
     } catch (error) {
       toast.error(error?.message || "Failed to save lesson plan.");

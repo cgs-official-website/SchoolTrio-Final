@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getMySalary, getConfig } from '../../api/hr-payroll';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { LuBanknote } from 'react-icons/lu';
 import { Printer, X, FileText, Download } from 'lucide-react';
 import jsPDF from 'jspdf';
@@ -44,6 +45,9 @@ export default function MySalary() {
   useEffect(() => {
     fetchSalaryData();
   }, [fetchSalaryData]);
+
+  // Event-driven live synchronization for teacher salary records across tabs and views
+  useLiveDataRefresh(fetchSalaryData, [fetchSalaryData], 'payroll');
 
   const handlePrint = () => {
     window.print();

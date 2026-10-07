@@ -1,4 +1,5 @@
 import * as homeworkRepository from './homework.repository.js';
+import { prisma } from '../../database/prisma.client.js';
 import { createAuditLog } from '../audit/audit.repository.js';
 import { SYSTEM_ROLES } from '../../config/constants.js';
 import {
@@ -628,6 +629,94 @@ export async function updateStaffSubmission(schoolId, homeworkId, studentId, dat
     feedback: upserted.feedback,
     submittedAt: upserted.status === 'Submitted' ? upserted.submittedAt : null,
     updatedAt: upserted.updatedAt
+  };
+}
+
+/**
+ * Staff updates or grades multiple student submissions in a single atomic transaction.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} homeworkId - Homework UUID
+ * @param {Array<{ studentId: string, status?: string, grade?: string, feedback?: string }>} submissions - Batch of submission records
+ * @param {Object} [actor=null] - Authenticated user context
+ * @returns {Promise<{ success: boolean, updatedCount: number, submissions: Array<Object> }>}
+ */
+export async function bulkUpdateStaffSubmissions(schoolId, homeworkId, submissions, actor = null) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required to evaluate submissions');
+  }
+
+  if (!Array.isArray(submissions) || submissions.length === 0) {
+    throw new ValidationError('Submissions array must contain at least one item');
+  }
+
+  const assignment = await homeworkRepository.findHomeworkById(schoolId, homeworkId);
+  if (!assignment) {
+    throw new NotFoundError('Homework assignment');
+  }
+
+  await authorizeTeacherClass(schoolId, assignment.classId, actor);
+
+  const studentIds = submissions.map(s => s.studentId);
+  const validStudents = await homeworkRepository.findStudentsInClass(schoolId, assignment.classId, studentIds);
+  const validStudentIdSet = new Set(validStudents.map(s => s.id));
+
+  for (const sub of submissions) {
+    if (!validStudentIdSet.has(sub.studentId)) {
+      throw new ValidationError(`Student ${sub.studentId} does not belong to the assigned class or tenant`);
+    }
+  }
+
+  const results = await prisma.$transaction(async (tx) => {
+    const updated = [];
+    for (const sub of submissions) {
+      const payload = {};
+      if (sub.status !== undefined) payload.status = sub.status;
+      if (sub.grade !== undefined) payload.grade = sub.grade;
+      if (sub.feedback !== undefined) payload.feedback = sub.feedback;
+      if (sub.status === 'Submitted') {
+        payload.submittedAt = new Date();
+      }
+
+      const upserted = await homeworkRepository.upsertSubmission(
+        schoolId,
+        homeworkId,
+        sub.studentId,
+        payload,
+        tx
+      );
+
+      updated.push({
+        id: upserted.id,
+        homeworkId: upserted.homeworkId,
+        studentId: upserted.studentId,
+        status: upserted.status,
+        grade: upserted.grade,
+        feedback: upserted.feedback,
+        submittedAt: upserted.status === 'Submitted' ? upserted.submittedAt : null,
+        updatedAt: upserted.updatedAt
+      });
+    }
+    return updated;
+  });
+
+  createAuditLog({
+    schoolId,
+    action: 'homework.submission.bulk_grade',
+    entityType: 'HomeworkAssignment',
+    entityId: homeworkId,
+    userId: actor?.id || actor?.userId || null,
+    metadata: {
+      homeworkId,
+      updatedCount: results.length,
+      studentIds
+    }
+  }).catch(() => {});
+
+  return {
+    success: true,
+    updatedCount: results.length,
+    submissions: results
   };
 }
 

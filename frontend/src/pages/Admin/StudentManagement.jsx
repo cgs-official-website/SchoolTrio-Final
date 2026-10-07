@@ -2852,8 +2852,8 @@ export default function StudentManagement() {
                   <button
                     onClick={() => {
                       const ws_data = [
-                        ['Full Name', 'Admission Number', 'Date of Birth', 'Gender', 'Blood Group', 'Nationality', 'Religion', 'Aadhar Number', 'Home Address', 'Parent/Guardian Name', 'Parent Phone', 'Parent Email', 'Parent Occupation', 'Emergency Contact', 'Previous School'],
-                        ['Rahul Sharma', 'ADM1001', '2012-04-15', 'Male', 'O+', 'Indian', 'Hindu', '1234-5678-9012', '123 Park Street', 'Anil Sharma', '9876543210', 'parent@example.com', 'Business', '9876543210', 'St. Xavier School']
+                        ['Full Name', 'Admission Number', 'Date of Birth', 'Gender', 'Blood Group', 'Nationality', 'Religion', 'Aadhar Number', 'Home Address', 'Parent/Guardian Name', 'Parent Phone', 'Parent Email', 'Parent Occupation', 'Emergency Contact', 'Previous School', 'Class', 'Section'],
+                        ['Rahul Sharma', 'ADM1001', '2012-04-15', 'Male', 'O+', 'Indian', 'Hindu', '1234-5678-9012', '123 Park Street', 'Anil Sharma', '9876543210', 'parent@example.com', 'Business', '9876543210', 'St. Xavier School', 'Grade 10', 'A']
                       ];
                       const ws = XLSX.utils.aoa_to_sheet(ws_data);
                       const wb = XLSX.utils.book_new();
@@ -2862,7 +2862,7 @@ export default function StudentManagement() {
                     }}
                     className="self-start text-sm px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-medium text-primary-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2"
                   >
-                    <FileDown size={16} /> Download Standard Template
+                    <FileDown size={16} /> Download Standard Template (17 columns)
                   </button>
                 </div>
               )}

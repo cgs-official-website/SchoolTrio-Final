@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { listPlans, updatePlan } from '../../api/superadmin';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 import { LuPen as Edit2, LuCheck as Check, LuX as X, LuSave as Save, LuSettings as Settings } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 
@@ -52,6 +54,9 @@ export default function PlanManagement() {
     fetchPlans();
   }, [fetchPlans]);
 
+  // Live Data Event Subscription: auto refresh plans
+  useLiveDataRefresh(fetchPlans, [fetchPlans], ['plans', 'subscriptions']);
+
   const openEditor = (plan) => {
     setCurrentPlan(JSON.parse(JSON.stringify({
       ...plan,
@@ -83,6 +88,8 @@ export default function PlanManagement() {
       toast.success(`${currentPlan.name} updated successfully!`);
       closeEditor();
       await fetchPlans();
+      notifyDataChanged('plans');
+      notifyDataChanged('subscriptions');
     } catch (error) {
       console.error('Error saving plan via PATCH:', error);
       toast.error('Failed to update plan.');

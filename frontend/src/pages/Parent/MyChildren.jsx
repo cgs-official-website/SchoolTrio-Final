@@ -20,6 +20,8 @@ import {
 } from 'react-icons/lu';
 import { normalizeGender } from '../../utils/genderUtils';
 import { formatDate } from '../../utils/dateUtils';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 import toast from 'react-hot-toast';
 
 const getStoredActiveStudentId = () => {
@@ -135,6 +137,9 @@ export default function MyChildren() {
     };
   }, [loadChildren]);
 
+  // Live Data Event Subscription: auto refresh on student / parent mutations
+  useLiveDataRefresh(loadChildren, [loadChildren], ['students', 'parents']);
+
   // Handle Switch Active Child
   const handleSwitchActive = (studentId, studentName) => {
     if (studentId === activeStudentId) return;
@@ -176,6 +181,8 @@ export default function MyChildren() {
       toast.success(`${studentName || 'Student'} linked successfully!`);
       closeAddModal();
       await loadChildren();
+      notifyDataChanged('parents');
+      notifyDataChanged('students');
     } catch (error) {
       console.error('[MyChildren] Link error:', error);
       const status = error?.status || error?.response?.status;
@@ -273,6 +280,8 @@ export default function MyChildren() {
       toast.success(`Unlinked ${studentName} from account.`);
       setUnlinkingStudent(null);
       await loadChildren();
+      notifyDataChanged('parents');
+      notifyDataChanged('students');
     } catch (error) {
       console.error('[MyChildren] Error unlinking student:', error);
       toast.error('Failed to unlink student.');

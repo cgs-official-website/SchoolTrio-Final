@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -14,6 +14,8 @@ import { LuPlus, LuPencil, LuTrash2, LuLayoutGrid, LuX, LuSave, LuPaperclip, LuE
 import { uploadFileToCloudinaryOrFirebase } from '../../utils/cloudinary';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function CustomModuleView() {
   const { moduleId } = useParams();
@@ -33,13 +35,8 @@ export default function CustomModuleView() {
   const [saving, setSaving] = useState(false);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, message: '', title: '' });
 
-  useEffect(() => {
-    if (schoolId && moduleId) {
-      loadModuleData();
-    }
-  }, [schoolId, moduleId]);
-
-  const loadModuleData = async () => {
+  const loadModuleData = useCallback(async () => {
+    if (!schoolId || !moduleId) return;
     setLoading(true);
     try {
       // 1. Fetch Module Metadata via REST
@@ -77,7 +74,14 @@ export default function CustomModuleView() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [schoolId, moduleId]);
+
+  useEffect(() => {
+    loadModuleData();
+  }, [loadModuleData]);
+
+  // Event-driven live synchronization for custom module records and schemas
+  useLiveDataRefresh(loadModuleData, [loadModuleData], ['custom-modules', 'forms']);
 
   const handleOpenModal = (record = null) => {
     if (record) {
@@ -146,6 +150,7 @@ export default function CustomModuleView() {
         setData([...data, { id: newRecordId, ...cleanData }]);
         toast.success("Record created");
       }
+      notifyDataChanged('custom-modules');
       handleCloseModal();
     } catch (error) {
       console.error("Error saving record:", error);
@@ -166,6 +171,7 @@ export default function CustomModuleView() {
           await deleteModuleRecord(moduleId, id);
           setData(data.filter(d => d.id !== id));
           toast.success("Record deleted");
+          notifyDataChanged('custom-modules');
         } catch (error) {
           console.error("Error deleting record:", error);
           toast.error("Failed to delete record");
@@ -184,6 +190,8 @@ export default function CustomModuleView() {
         try {
           await deleteCustomModule(moduleId);
           toast.success(`Module "${moduleMetadata?.name || 'Custom Module'}" deleted successfully.`);
+          notifyDataChanged('custom-modules');
+          notifyDataChanged('forms');
           navigate('/admin/form-builder');
         } catch (error) {
           console.error("Error deleting custom module:", error);

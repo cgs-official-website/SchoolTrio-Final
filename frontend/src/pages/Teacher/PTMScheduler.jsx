@@ -5,6 +5,8 @@ import { listStudents } from '../../api/students';
 import { LuCalendarClock, LuPlus, LuCalendarCheck, LuClock, LuUsers, LuCircleCheck, LuVideo, LuMapPin, LuCircleX, LuX } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 import { whatsappService } from '../../services/whatsappService';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 const TimePicker12Hour = ({ value, onChange, required }) => {
   let initialHour12 = '';
@@ -137,6 +139,10 @@ export default function PTMScheduler() {
     };
   }, [fetchMeetings, fetchStudents]);
 
+  // Event-driven live synchronization for PTM appointments and student roster
+  useLiveDataRefresh(fetchMeetings, [fetchMeetings], 'ptm');
+  useLiveDataRefresh(fetchStudents, [fetchStudents], ['students', 'classes']);
+
   const handleBookMeeting = async (e) => {
     e.preventDefault();
     if (!newMeeting.studentId || !newMeeting.date || !newMeeting.time) return;
@@ -162,7 +168,8 @@ export default function PTMScheduler() {
       setShowCreateModal(false);
       setNewMeeting({ studentId: '', date: '', time: '', type: 'online' });
 
-      // Refresh appointments list
+      // Live event dispatch & refresh
+      notifyDataChanged('ptm');
       await fetchMeetings();
 
       // Send WhatsApp notification only after successful creation
@@ -201,6 +208,7 @@ export default function PTMScheduler() {
     try {
       await ptmApi.updateAppointmentStatus(ptmId, { status: normalizedStatus });
       toast.success(`Meeting ${status}`);
+      notifyDataChanged('ptm');
       await fetchMeetings();
     } catch (error) {
       console.error('Failed to update status:', error);
