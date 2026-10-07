@@ -162,6 +162,104 @@ describe('Assessment Grade Service Unit Tests (Phase 4C.7-B Batch 1)', () => {
       ).rejects.toThrow(ForbiddenError);
     });
 
+    it('blocks class teacher from updating marks for a subject they do NOT teach', async () => {
+      const subjectAssessment = {
+        ...mockAssessment,
+        subjectId: 'subject-science-uuid'
+      };
+      assessmentGradeRepository.findAssessmentForGradeOperation.mockResolvedValue(subjectAssessment);
+      // Teacher is class teacher of classId, but only teaches Math, not Science
+      assessmentGradeRepository.findStaffProfileByUserId.mockResolvedValue({
+        id: 'staff-1',
+        assignedClassId: classId,
+        customData: {
+          assignments: {
+            assignedSubjectIds: ['subject-math-uuid'],
+            assignedClassId: classId
+          }
+        }
+      });
+
+      await expect(
+        assessmentGradeService.upsertSingleGrade(schoolId, assessmentId, student1Id, { marksObtained: 40 }, teacherActor)
+      ).rejects.toThrow(/Only the assigned subject teacher or school administrator can update marks for this subject/);
+    });
+
+    it('allows class teacher to update marks for a subject they DO teach', async () => {
+      const subjectAssessment = {
+        ...mockAssessment,
+        subjectId: 'subject-math-uuid'
+      };
+      assessmentGradeRepository.findAssessmentForGradeOperation.mockResolvedValue(subjectAssessment);
+      assessmentGradeRepository.findStaffProfileByUserId.mockResolvedValue({
+        id: 'staff-1',
+        assignedClassId: classId,
+        customData: {
+          assignments: {
+            assignedSubjectIds: ['subject-math-uuid'],
+            assignedClassId: classId
+          }
+        }
+      });
+      assessmentGradeRepository.findStudentForGradeOperation.mockResolvedValue(mockStudent1);
+      assessmentGradeRepository.upsertGrade.mockResolvedValue({
+        id: 'grade-1',
+        schoolId,
+        assessmentId,
+        studentId: student1Id,
+        marksObtained: 45.0,
+        grade: null,
+        student: mockStudent1
+      });
+
+      const result = await assessmentGradeService.upsertSingleGrade(
+        schoolId,
+        assessmentId,
+        student1Id,
+        { marksObtained: 45 },
+        teacherActor
+      );
+      expect(result.marksObtained).toBe(45.0);
+    });
+
+    it('allows subject-only teacher to update marks for their subject in a class they teach', async () => {
+      const subjectAssessment = {
+        ...mockAssessment,
+        subjectId: 'subject-science-uuid'
+      };
+      assessmentGradeRepository.findAssessmentForGradeOperation.mockResolvedValue(subjectAssessment);
+      // Teacher is NOT class teacher (assignedClassId: null), but teaches Science in classId
+      assessmentGradeRepository.findStaffProfileByUserId.mockResolvedValue({
+        id: 'staff-1',
+        assignedClassId: null,
+        customData: {
+          assignments: {
+            assignedSubjectIds: ['subject-science-uuid'],
+            subjectClassIds: [classId]
+          }
+        }
+      });
+      assessmentGradeRepository.findStudentForGradeOperation.mockResolvedValue(mockStudent1);
+      assessmentGradeRepository.upsertGrade.mockResolvedValue({
+        id: 'grade-1',
+        schoolId,
+        assessmentId,
+        studentId: student1Id,
+        marksObtained: 48.0,
+        grade: null,
+        student: mockStudent1
+      });
+
+      const result = await assessmentGradeService.upsertSingleGrade(
+        schoolId,
+        assessmentId,
+        student1Id,
+        { marksObtained: 48 },
+        teacherActor
+      );
+      expect(result.marksObtained).toBe(48.0);
+    });
+
     it('allows mark equal to totalMarks (e.g. 50 out of 50)', async () => {
       assessmentGradeRepository.findAssessmentForGradeOperation.mockResolvedValue(mockAssessment); // totalMarks = 50
       assessmentGradeRepository.findStaffProfileByUserId.mockResolvedValue({

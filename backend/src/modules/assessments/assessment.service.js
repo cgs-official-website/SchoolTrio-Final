@@ -18,14 +18,41 @@ import { logger } from '../../utils/logger.js';
  */
 
 /**
- * Verifies whether an authenticated user is authorized to manage assessments for a specific class.
- * Teachers are restricted strictly to their assigned class.
+ * Helper to get assigned subject IDs for a teacher profile.
+ */
+export function getTeacherAssignedSubjectIds(profile) {
+  if (!profile) return [];
+  const custom = profile.customData || {};
+  const assignments = custom.assignments || {};
+  const list = [
+    ...(Array.isArray(assignments.assignedSubjectIds) ? assignments.assignedSubjectIds : []),
+    ...(Array.isArray(custom.assignedSubjectIds) ? custom.assignedSubjectIds : []),
+    ...(Array.isArray(profile.assignedSubjectIds) ? profile.assignedSubjectIds : [])
+  ];
+  return [...new Set(list.filter(Boolean))];
+}
+
+/**
+ * Checks whether a teacher is the class teacher for a specific class.
+ */
+export function isClassTeacherOf(profile, classId) {
+  if (!profile || !classId) return false;
+  if (profile.assignedClassId === classId) return true;
+  if (profile.customData?.assignments?.assignedClassId === classId) return true;
+  if (Array.isArray(profile.headedClasses) && profile.headedClasses.some(c => c.id === classId)) return true;
+  return false;
+}
+
+/**
+ * Verifies whether an authenticated user is authorized to manage assessments for a specific class/subject.
+ * Teachers are restricted strictly to their assigned class or subjects.
  *
  * @param {string} schoolId - Tenant school UUID
  * @param {string} classId - Class UUID
  * @param {Object} actor - Authenticated user identity ({ id, userId, systemRole, role })
+ * @param {string|null} [subjectId=null] - Optional subject UUID
  */
-async function authorizeClassAccess(schoolId, classId, actor) {
+async function authorizeClassAccess(schoolId, classId, actor, subjectId = null) {
   if (!actor) return;
 
   const role = (actor.systemRole || actor.role || '').toUpperCase();
@@ -33,14 +60,33 @@ async function authorizeClassAccess(schoolId, classId, actor) {
     const userId = actor.id || actor.userId;
     const profile = await assessmentRepository.findStaffProfileByUserId(schoolId, userId);
 
-    if (!profile || profile.assignedClassId !== classId) {
-      throw new ForbiddenError('Teachers are only authorized to manage assessments for their assigned class');
+    if (!profile) {
+      throw new ForbiddenError('Staff profile not found for authenticated teacher');
+    }
+
+    const isClassTeacher = isClassTeacherOf(profile, classId);
+    const teacherSubjectIds = getTeacherAssignedSubjectIds(profile);
+    const custom = profile.customData || {};
+    const assignments = custom.assignments || {};
+    const subjectClassIds = assignments.subjectClassIds || [];
+    const teachesInClass = isClassTeacher || subjectClassIds.includes(classId);
+
+    if (!teachesInClass) {
+      throw new ForbiddenError('Teachers are only authorized to manage assessments for their assigned class or subjects');
+    }
+
+    // If teacher has assigned subjects configured and subjectId is specified:
+    if (subjectId && teacherSubjectIds.length > 0 && !teacherSubjectIds.includes(subjectId)) {
+      throw new ForbiddenError('You are only authorized to manage assessments for your assigned subject');
     }
   }
 }
 
 /**
  * Lists assessments with pagination, search, and filtering.
+ * Enforces subject teacher vs class teacher visibility rules:
+ * - Subject teacher only: only their assigned subjects are visible; other subjects are hidden.
+ * - Class teacher: can view all assessments/subjects of their class students.
  *
  * @param {string} schoolId - Tenant school UUID
  * @param {Object} query - Query parameters (classId, examId, subjectId, search, date, page, limit, sort, order)
@@ -52,9 +98,10 @@ export async function listAssessments(schoolId, query = {}, actor = null) {
     throw new TenantAccessError('Tenant context required to list assessments');
   }
 
-  // If teacher, enforce assigned class filter
+  // If teacher, enforce assigned class filter & subject visibility
   const role = actor ? (actor.systemRole || actor.role || '').toUpperCase() : '';
   let effectiveClassId = query.classId;
+  let effectiveSubjectId = query.subjectId;
 
   if (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
     const userId = actor.id || actor.userId;
@@ -87,6 +134,25 @@ export async function listAssessments(schoolId, query = {}, actor = null) {
       effectiveClassId = teacherClasses[0];
     } else {
       effectiveClassId = { in: teacherClasses };
+    }
+
+    const teacherSubjectIds = getTeacherAssignedSubjectIds(profile);
+
+    // Check if teacher is class teacher of the target class
+    const isClassTeacher = typeof effectiveClassId === 'string'
+      ? isClassTeacherOf(profile, effectiveClassId)
+      : false;
+
+    // Subject teacher only: other subjects should NOT get visible to them!
+    if (!isClassTeacher && teacherSubjectIds.length > 0) {
+      if (query.subjectId) {
+        if (!teacherSubjectIds.includes(query.subjectId)) {
+          throw new ForbiddenError('You are not authorized to view assessments for this subject');
+        }
+        effectiveSubjectId = query.subjectId;
+      } else {
+        effectiveSubjectId = { in: teacherSubjectIds };
+      }
     }
   }
 
@@ -127,7 +193,7 @@ export async function listAssessments(schoolId, query = {}, actor = null) {
   const filterOptions = {
     classId: effectiveClassId,
     examId: query.examId,
-    subjectId: query.subjectId,
+    subjectId: effectiveSubjectId,
     search: query.search ? query.search.trim() : undefined,
     date: query.date
   };
@@ -170,7 +236,28 @@ export async function getAssessmentById(schoolId, id, actor = null) {
   if (actor) {
     const role = (actor.systemRole || actor.role || '').toUpperCase();
     if (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
-      await authorizeClassAccess(schoolId, assessment.classId, actor);
+      const userId = actor.id || actor.userId;
+      const profile = await assessmentRepository.findStaffProfileByUserId(schoolId, userId);
+      if (!profile) {
+        throw new ForbiddenError('Staff profile not found');
+      }
+
+      const isClassTeacher = isClassTeacherOf(profile, assessment.classId);
+      const teacherSubjectIds = getTeacherAssignedSubjectIds(profile);
+      const isSubjectTeacher = assessment.subjectId ? teacherSubjectIds.includes(assessment.subjectId) : false;
+
+      // Subject teacher only: cannot view other subjects' assessments
+      if (!isClassTeacher && teacherSubjectIds.length > 0 && !isSubjectTeacher) {
+        throw new ForbiddenError('Subject teachers can only view assessments for their assigned subject');
+      }
+
+      const custom = profile.customData || {};
+      const assignments = custom.assignments || {};
+      const subjectClassIds = assignments.subjectClassIds || [];
+      const teacherClasses = [profile.assignedClassId, ...subjectClassIds].filter(Boolean);
+      if (!teacherClasses.includes(assessment.classId)) {
+        throw new ForbiddenError('Teachers are only authorized to manage assessments for their assigned class');
+      }
     }
     if (role === SYSTEM_ROLES.PARENT || role === 'PARENT') {
       const userId = actor.id || actor.userId;

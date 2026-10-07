@@ -52,16 +52,37 @@ export function serializeGrade(grade) {
 }
 
 /**
- * Verifies that the authenticated teacher is assigned to the assessment's subject and class/section.
- * Administrative roles bypass this check.
- *
- * @param {string} schoolId - Tenant school UUID
- * @param {string} assessmentClassId - Class UUID associated with the assessment
- * @param {string|null} [assessmentSubjectId=null] - Subject UUID
- * @param {string|null} [assessmentSectionId=null] - Section UUID
- * @param {Object} actor - Authenticated user identity ({ id, userId, systemRole, role })
+ * Helper to get assigned subject IDs for a teacher profile.
  */
-async function authorizeTeacherClassAccess(schoolId, assessmentClassId, subjectIdOrActor = null, sectionId = null, actorObj = null) {
+export function getTeacherAssignedSubjectIds(profile) {
+  if (!profile) return [];
+  const custom = profile.customData || {};
+  const assignments = custom.assignments || {};
+  const list = [
+    ...(Array.isArray(assignments.assignedSubjectIds) ? assignments.assignedSubjectIds : []),
+    ...(Array.isArray(custom.assignedSubjectIds) ? custom.assignedSubjectIds : []),
+    ...(Array.isArray(profile.assignedSubjectIds) ? profile.assignedSubjectIds : [])
+  ];
+  return [...new Set(list.filter(Boolean))];
+}
+
+/**
+ * Checks whether a teacher is the class teacher for a specific class.
+ */
+export function isClassTeacherOf(profile, classId) {
+  if (!profile || !classId) return false;
+  if (profile.assignedClassId === classId) return true;
+  if (profile.customData?.assignments?.assignedClassId === classId) return true;
+  if (Array.isArray(profile.headedClasses) && profile.headedClasses.some(c => c.id === classId)) return true;
+  return false;
+}
+
+/**
+ * Verifies that the authenticated teacher is authorized to READ/VIEW marks for an assessment.
+ * - Class teacher: can view all marks/subjects of their class students.
+ * - Subject teacher: can view marks for their assigned subject.
+ */
+async function authorizeTeacherGradeReadAccess(schoolId, assessmentClassId, subjectIdOrActor = null, sectionId = null, actorObj = null) {
   let assessmentSubjectId = null;
   let assessmentSectionId = null;
   let actor = null;
@@ -85,18 +106,18 @@ async function authorizeTeacherClassAccess(schoolId, assessmentClassId, subjectI
       throw new ForbiddenError('Staff profile not found for authenticated teacher');
     }
 
-    // Direct Class Teacher match
-    if (profile.assignedClassId === assessmentClassId) {
+    // Class Teacher can view all subjects/assessments in their assigned class
+    if (isClassTeacherOf(profile, assessmentClassId)) {
       return;
     }
 
-    // Check Subject + Section / Class assignments in customData
+    // Subject Teacher can view assessments for their assigned subject in classes they teach
+    const teacherSubjectIds = getTeacherAssignedSubjectIds(profile);
     const custom = profile.customData || {};
     const assignments = custom.assignments || {};
-    const assignedSubjectIds = assignments.assignedSubjectIds || [];
     const subjectClassIds = assignments.subjectClassIds || [];
 
-    const matchesSubject = !assessmentSubjectId || assignedSubjectIds.includes(assessmentSubjectId);
+    const matchesSubject = !assessmentSubjectId || teacherSubjectIds.includes(assessmentSubjectId);
     const matchesClassOrSection = subjectClassIds.includes(assessmentClassId) || 
       (assessmentSectionId && subjectClassIds.includes(assessmentSectionId));
 
@@ -104,7 +125,61 @@ async function authorizeTeacherClassAccess(schoolId, assessmentClassId, subjectI
       return;
     }
 
-    throw new ForbiddenError('You are only authorized to enter marks for subjects and classes assigned to you');
+    throw new ForbiddenError('You are only authorized to view marks for subjects and classes assigned to you');
+  }
+}
+
+/**
+ * Verifies that the authenticated teacher is authorized to UPDATE/MUTATE marks for an assessment.
+ * - Subject teacher: can update their subject mark only.
+ * - Class teacher: can only update marks if they are ALSO the assigned subject teacher for that subject.
+ */
+async function authorizeTeacherGradeMutationAccess(schoolId, assessmentClassId, subjectIdOrActor = null, sectionId = null, actorObj = null) {
+  let assessmentSubjectId = null;
+  let assessmentSectionId = null;
+  let actor = null;
+
+  if (subjectIdOrActor && typeof subjectIdOrActor === 'object' && ('role' in subjectIdOrActor || 'systemRole' in subjectIdOrActor || 'id' in subjectIdOrActor || 'userId' in subjectIdOrActor)) {
+    actor = subjectIdOrActor;
+  } else {
+    assessmentSubjectId = subjectIdOrActor;
+    assessmentSectionId = sectionId;
+    actor = actorObj;
+  }
+
+  if (!actor) return;
+
+  const role = (actor.systemRole || actor.role || '').toUpperCase();
+  if (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
+    const userId = actor.id || actor.userId;
+    const profile = await assessmentGradeRepository.findStaffProfileByUserId(schoolId, userId);
+
+    if (!profile) {
+      throw new ForbiddenError('Staff profile not found for authenticated teacher');
+    }
+
+    const isClassTeacher = isClassTeacherOf(profile, assessmentClassId);
+    const teacherSubjectIds = getTeacherAssignedSubjectIds(profile);
+    const custom = profile.customData || {};
+    const assignments = custom.assignments || {};
+    const subjectClassIds = assignments.subjectClassIds || [];
+    const teachesInClass = isClassTeacher || subjectClassIds.includes(assessmentClassId) || 
+      (assessmentSectionId && subjectClassIds.includes(assessmentSectionId));
+
+    if (!teachesInClass) {
+      throw new ForbiddenError('You are only authorized to enter marks for subjects and classes assigned to you');
+    }
+
+    // If assessment has a specific subject and teacher has assigned subjects configured:
+    if (assessmentSubjectId && teacherSubjectIds.length > 0) {
+      const isSubjectTeacher = teacherSubjectIds.includes(assessmentSubjectId);
+      if (!isSubjectTeacher) {
+        if (isClassTeacher) {
+          throw new ForbiddenError('Only the assigned subject teacher or school administrator can update marks for this subject');
+        }
+        throw new ForbiddenError('You are only authorized to enter marks for subjects assigned to you');
+      }
+    }
   }
 }
 
@@ -127,7 +202,7 @@ export async function listAssessmentGrades(schoolId, assessmentId, query = {}, a
     throw new NotFoundError(`Assessment with ID '${assessmentId}' not found`);
   }
 
-  await authorizeTeacherClassAccess(schoolId, assessment.classId, assessment.subjectId, assessment.sectionId, actor);
+  await authorizeTeacherGradeReadAccess(schoolId, assessment.classId, assessment.subjectId, assessment.sectionId, actor);
 
   const paginationParams = parsePagination(query, {
     defaultSort: 'createdAt',
@@ -174,9 +249,9 @@ export async function getAssessmentGrade(schoolId, assessmentId, studentId, acto
   if (actor) {
     const role = (actor.systemRole || actor.role || '').toUpperCase();
 
-    // Teacher authorization: Must be assigned to assessment subject & class/section
+    // Teacher authorization: Must be assigned to assessment subject or be class teacher for the class
     if (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
-      await authorizeTeacherClassAccess(schoolId, assessment.classId, assessment.subjectId, assessment.sectionId, actor);
+      await authorizeTeacherGradeReadAccess(schoolId, assessment.classId, assessment.subjectId, assessment.sectionId, actor);
     }
 
     // Parent authorization: Must have active ParentStudentLink to student, and student must be in assessment class
@@ -253,8 +328,8 @@ export async function upsertSingleGrade(schoolId, assessmentId, studentId, data,
     throw new ValidationError('An override reason is required to modify marks for a finalized/locked assessment or exam.');
   }
 
-  // 2. Authorize Teacher class/subject access
-  await authorizeTeacherClassAccess(schoolId, assessment.classId, assessment.subjectId, assessment.sectionId, actor);
+  // 2. Authorize Teacher class/subject mutation access (subject teacher only or authorized class teacher who is also subject teacher)
+  await authorizeTeacherGradeMutationAccess(schoolId, assessment.classId, assessment.subjectId, assessment.sectionId, actor);
 
   // 3. Resolve Student and verify class membership
   const student = await assessmentGradeRepository.findStudentForGradeOperation(schoolId, studentId);
@@ -385,8 +460,8 @@ export async function bulkUpsertGrades(schoolId, assessmentId, data, actor = nul
     throw new ValidationError('An override reason is required to modify marks for a finalized/locked assessment or exam.');
   }
 
-  // 2. Authorize Teacher class/subject access
-  await authorizeTeacherClassAccess(schoolId, assessment.classId, assessment.subjectId, assessment.sectionId, actor);
+  // 2. Authorize Teacher class/subject mutation access (subject teacher only or authorized class teacher who is also subject teacher)
+  await authorizeTeacherGradeMutationAccess(schoolId, assessment.classId, assessment.subjectId, assessment.sectionId, actor);
 
   const maxMarks = Number(assessment.totalMarks);
 
@@ -530,7 +605,7 @@ export async function deleteAssessmentGrade(schoolId, assessmentId, studentId, a
     throw new NotFoundError(`Assessment with ID '${assessmentId}' not found`);
   }
 
-  await authorizeTeacherClassAccess(schoolId, assessment.classId, assessment.subjectId, assessment.sectionId, actor);
+  await authorizeTeacherGradeMutationAccess(schoolId, assessment.classId, assessment.subjectId, assessment.sectionId, actor);
 
   const existingGrade = await assessmentGradeRepository.findGrade(schoolId, assessmentId, studentId);
   if (!existingGrade) {

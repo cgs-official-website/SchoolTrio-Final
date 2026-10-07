@@ -71,6 +71,67 @@ describe('Assessment Service Unit Tests', () => {
       expect(result.assessments.length).toBe(1);
     });
 
+    it('filters out other subjects for a subject-only teacher', async () => {
+      // Teacher teaches subjectId in classIdA, but is not the class teacher of classIdA
+      assessmentRepository.findStaffProfileByUserId.mockResolvedValue({
+        id: 'staff-1',
+        assignedClassId: null,
+        customData: {
+          assignments: {
+            assignedSubjectIds: [subjectId],
+            subjectClassIds: [classIdA]
+          }
+        }
+      });
+      assessmentRepository.findAssessments.mockResolvedValue({
+        items: [{ id: assessmentId, classId: classIdA, subjectId }],
+        total: 1
+      });
+
+      const result = await assessmentService.listAssessments(schoolId, { classId: classIdA }, teacherActor);
+      expect(assessmentRepository.findAssessments).toHaveBeenCalledWith(
+        schoolId,
+        expect.objectContaining({
+          classId: classIdA,
+          subjectId: { in: [subjectId] }
+        }),
+        expect.any(Object)
+      );
+      expect(result.assessments.length).toBe(1);
+    });
+
+    it('allows class teacher to view all subjects for their class', async () => {
+      // Teacher is class teacher of classIdA and also teaches subjectId
+      assessmentRepository.findStaffProfileByUserId.mockResolvedValue({
+        id: 'staff-1',
+        assignedClassId: classIdA,
+        customData: {
+          assignments: {
+            assignedSubjectIds: [subjectId],
+            assignedClassId: classIdA
+          }
+        }
+      });
+      assessmentRepository.findAssessments.mockResolvedValue({
+        items: [
+          { id: 'a1', classId: classIdA, subjectId },
+          { id: 'a2', classId: classIdA, subjectId: 'other-subject-uuid' }
+        ],
+        total: 2
+      });
+
+      const result = await assessmentService.listAssessments(schoolId, { classId: classIdA }, teacherActor);
+      expect(assessmentRepository.findAssessments).toHaveBeenCalledWith(
+        schoolId,
+        expect.objectContaining({
+          classId: classIdA,
+          subjectId: undefined // All subjects visible to class teacher
+        }),
+        expect.any(Object)
+      );
+      expect(result.assessments.length).toBe(2);
+    });
+
     it('throws ForbiddenError if teacher attempts to query another class', async () => {
       assessmentRepository.findStaffProfileByUserId.mockResolvedValue({
         id: 'staff-1',

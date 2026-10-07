@@ -20,7 +20,32 @@ import autoTable from 'jspdf-autotable';
 export default function Grades() {
   const { userProfile } = useAuth();
   const schoolId = userProfile?.schoolId;
-  const classId = userProfile?.assignedClassId;
+  const initialClassId = userProfile?.assignedClassId || 
+    userProfile?.customData?.assignments?.subjectClassIds?.[0] || 
+    userProfile?.staffProfile?.customData?.assignments?.subjectClassIds?.[0] || null;
+
+  const [selectedClassId, setSelectedClassId] = useState(initialClassId);
+  const classId = selectedClassId;
+
+  // Extract all teacher assigned classes and subjects
+  const teacherSubjectIds = [
+    ...(Array.isArray(userProfile?.customData?.assignments?.assignedSubjectIds) ? userProfile.customData.assignments.assignedSubjectIds : []),
+    ...(Array.isArray(userProfile?.staffProfile?.customData?.assignments?.assignedSubjectIds) ? userProfile.staffProfile.customData.assignments.assignedSubjectIds : []),
+    ...(Array.isArray(userProfile?.assignedSubjectIds) ? userProfile.assignedSubjectIds : []),
+    ...(Array.isArray(userProfile?.customData?.assignedSubjectIds) ? userProfile.customData.assignedSubjectIds : [])
+  ];
+
+  
+  const assignedClassesList = [
+    userProfile?.assignedClassId ? { id: userProfile.assignedClassId, name: userProfile.assignedClass?.name || 'Assigned Class (Class Teacher)', isClassTeacher: true } : null,
+    ...(Array.isArray(userProfile?.customData?.assignments?.subjectClassIds) ? userProfile.customData.assignments.subjectClassIds.map(id => ({ id, name: `Subject Class (${id.substring(0, 8)})`, isClassTeacher: false })) : []),
+    ...(Array.isArray(userProfile?.staffProfile?.customData?.assignments?.subjectClassIds) ? userProfile.staffProfile.customData.assignments.subjectClassIds.map(id => ({ id, name: `Subject Class (${id.substring(0, 8)})`, isClassTeacher: false })) : [])
+  ].filter(Boolean);
+
+  // Deduplicate classes
+  const uniqueClasses = Array.from(new Map(assignedClassesList.map(c => [c.id, c])).values());
+
+  const isClassTeacher = Boolean(userProfile?.assignedClassId && userProfile?.assignedClassId === classId);
 
   const [students, setStudents] = useState([]);
   const [assessments, setAssessments] = useState([]);
@@ -48,7 +73,8 @@ export default function Grades() {
     title: '',
     date: new Date().toISOString().split('T')[0],
     totalMarks: 100,
-    examId: ''
+    examId: '',
+    subjectId: ''
   });
 
   const [publishing, setPublishing] = useState(false);
@@ -214,7 +240,8 @@ export default function Grades() {
         classId,
         totalMarks: Number(newAssessment.totalMarks),
         date: newAssessment.date || null,
-        examId: newAssessment.examId ? newAssessment.examId : null
+        examId: newAssessment.examId ? newAssessment.examId : null,
+        subjectId: newAssessment.subjectId || (teacherSubjectIds.length === 1 ? teacherSubjectIds[0] : null)
       };
       const res = await createAssessment(payload);
       const createdAssessment = res?.data;
@@ -224,7 +251,7 @@ export default function Grades() {
       
       setAssessments(prev => [createdAssessment, ...prev]);
       setShowCreateModal(false);
-      setNewAssessment({ title: '', date: new Date().toISOString().split('T')[0], totalMarks: 100, examId: '' });
+      setNewAssessment({ title: '', date: new Date().toISOString().split('T')[0], totalMarks: 100, examId: '', subjectId: '' });
       toast.success("Assessment created successfully!");
       notifyDataChanged('exams');
       notifyDataChanged('marks');
@@ -461,22 +488,44 @@ export default function Grades() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 shrink-0 gap-4 w-full">
         <div className="min-w-0">
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white truncate">Grades & Assessments</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">Create exams and log student performance.</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">
+            {isClassTeacher 
+              ? 'Class Teacher View: Full class progress overview & subject mark entry.'
+              : 'Subject Teacher View: Log student performance for your assigned subject.'}
+          </p>
+          {uniqueClasses.length > 1 && (
+            <div className="mt-3 flex items-center gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Class:</label>
+              <select
+                value={selectedClassId || ''}
+                onChange={(e) => setSelectedClassId(e.target.value)}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+              >
+                {uniqueClasses.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
-          <button 
-            onClick={handlePublishReportCards}
-            disabled={publishing}
-            className="w-full sm:w-auto flex justify-center items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-xl text-sm font-semibold hover:bg-green-100 shadow-sm transition-colors border border-green-200 disabled:opacity-50"
-          >
-            <Send size={18} className={publishing ? "animate-spin" : ""} /> {publishing ? "Publishing..." : "Publish to Parent Portal"}
-          </button>
-          <button 
-            onClick={generateReportCards}
-            className="w-full sm:w-auto flex justify-center items-center gap-2 px-4 py-2 bg-primary-50 text-primary-700 rounded-xl text-sm font-semibold hover:bg-primary-100 dark:hover:bg-slate-700 shadow-sm transition-colors border border-primary-200"
-          >
-            <Printer size={18} /> Print Report Cards
-          </button>
+          {isClassTeacher && (
+            <button 
+              onClick={handlePublishReportCards}
+              disabled={publishing}
+              className="w-full sm:w-auto flex justify-center items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-xl text-sm font-semibold hover:bg-green-100 shadow-sm transition-colors border border-green-200 disabled:opacity-50"
+            >
+              <Send size={18} className={publishing ? "animate-spin" : ""} /> {publishing ? "Publishing..." : "Publish to Parent Portal"}
+            </button>
+          )}
+          {isClassTeacher && (
+            <button 
+              onClick={generateReportCards}
+              className="w-full sm:w-auto flex justify-center items-center gap-2 px-4 py-2 bg-primary-50 text-primary-700 rounded-xl text-sm font-semibold hover:bg-primary-100 dark:hover:bg-slate-700 shadow-sm transition-colors border border-primary-200"
+            >
+              <Printer size={18} /> Print Report Cards
+            </button>
+          )}
           <button 
             onClick={() => setShowCreateModal(true)}
             className="w-full sm:w-auto justify-center px-4 py-2 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 shadow-sm flex items-center gap-2 transition-colors"
@@ -503,7 +552,7 @@ export default function Grades() {
             <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 text-center text-slate-500 dark:text-slate-400">
               <FileText size={32} className="mx-auto mb-3 text-slate-300" />
               <p className="font-medium text-slate-900 dark:text-white">No assessments yet</p>
-              <p className="text-sm mt-1 mb-4">Create your first exam or homework assignment.</p>
+              <p className="text-sm mt-1 mb-4">Create your first exam or assignment.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -531,9 +580,14 @@ export default function Grades() {
                   >
                     <div className="font-bold text-slate-900 dark:text-white truncate">{assessment.title}</div>
                     <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex justify-between">
-                      <span>{assessment.date}</span>
+                      <span>{assessment.date || 'No Date'}</span>
                       <span className="font-mono">{assessment.totalMarks} Marks</span>
                     </div>
+                    {assessment.subject && (
+                      <div className="text-xs font-semibold text-primary-600 dark:text-primary-400 mt-1">
+                        {assessment.subject.name}
+                      </div>
+                    )}
                     
                     <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
                       <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Progress</span>
@@ -557,6 +611,11 @@ export default function Grades() {
                 const linkedExam = exams.find(e => e.id === activeAssessment.examId);
                 const isLocked = activeAssessment.status === 'LOCKED' || linkedExam?.status === 'FINALIZED';
 
+                const isSubjectTeacher = activeAssessment.subjectId ? teacherSubjectIds.includes(activeAssessment.subjectId) : false;
+                const isAdmin = ['admin', 'superadmin'].includes(userProfile?.role?.toLowerCase()) || ['ADMIN', 'SUPER_ADMIN', 'SCHOOL_ADMIN'].includes(userProfile?.systemRole);
+                const canEditMarks = isAdmin || isSubjectTeacher || (!activeAssessment.subjectId && isClassTeacher) || (teacherSubjectIds.length === 0 && isClassTeacher);
+                const isViewOnlyClassTeacher = isClassTeacher && !canEditMarks;
+
                 return (
                   <>
                     {isLocked && (
@@ -565,6 +624,14 @@ export default function Grades() {
                         <span>This assessment is locked by administration. Marks are read-only for teachers. Contact Admin for changes.</span>
                       </div>
                     )}
+
+                    {!isLocked && isViewOnlyClassTeacher && (
+                      <div className="bg-sky-50 dark:bg-sky-950/40 border-b border-sky-200 dark:border-sky-900 px-6 py-2.5 flex items-center gap-2 text-xs font-semibold text-sky-800 dark:text-sky-300">
+                        <BookOpen size={15} className="shrink-0 text-sky-600" />
+                        <span>Class Teacher Overview: Marks for this subject are entered by the assigned subject teacher ({activeAssessment.subject?.name || 'Subject Teacher'}). You can review student marks in read-only mode.</span>
+                      </div>
+                    )}
+
                     <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 flex flex-wrap justify-between items-center gap-4">
                       <div>
                         <div className="flex items-center gap-3">
@@ -585,10 +652,11 @@ export default function Grades() {
                         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                           Grading out of <span className="font-bold text-slate-700 dark:text-slate-200">{activeAssessment.totalMarks}</span> total marks
                           {linkedExam && ` • Linked to ${linkedExam.name}`}
+                          {activeAssessment.subject && ` • Subject: ${activeAssessment.subject.name}`}
                         </p>
                       </div>
                       
-                      {!isLocked && (
+                      {!isLocked && canEditMarks ? (
                         <div className="flex items-center gap-2">
                           <button 
                             onClick={() => handleSaveGrades(true)}
@@ -607,7 +675,13 @@ export default function Grades() {
                             {submittingMarks ? 'Submitting...' : 'Submit to Admin'}
                           </button>
                         </div>
-                      )}
+                      ) : !isLocked && isViewOnlyClassTeacher ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs px-3 py-1.5 rounded-xl font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                            Read-Only (Class Teacher)
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
 
                     {/* Data Table */}
@@ -662,7 +736,7 @@ export default function Grades() {
                                     <td className="p-4 text-center">
                                       <input 
                                         type="checkbox"
-                                        disabled={isLocked}
+                                        disabled={isLocked || !canEditMarks}
                                         checked={isAbsent}
                                         onChange={(e) => {
                                           const checked = e.target.checked;
@@ -678,7 +752,7 @@ export default function Grades() {
                                     <td className="p-4 text-center">
                                       <input 
                                         type="checkbox"
-                                        disabled={isLocked}
+                                        disabled={isLocked || !canEditMarks}
                                         checked={isExempt}
                                         onChange={(e) => {
                                           const checked = e.target.checked;
@@ -712,7 +786,7 @@ export default function Grades() {
                                               <input 
                                                 type="number"
                                                 min="0"
-                                                disabled={isLocked}
+                                                disabled={isLocked || !canEditMarks}
                                                 max={activeAssessment.totalMarks}
                                                 value={grades[student.id] === undefined || grades[student.id] === '' ? '' : grades[student.id]}
                                                 onChange={(e) => handleGradeChange(student.id, e.target.value)}
