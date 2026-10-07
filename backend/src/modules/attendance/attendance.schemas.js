@@ -11,13 +11,14 @@ export const ATTENDANCE_SESSIONS = ['STANDARD', 'FN', 'AN'];
 export const TIMELINE_FILTERS = ['all', 'weekly', 'monthly', 'term'];
 
 /**
- * Helper to validate ISO Date (YYYY-MM-DD) and ensure it is not in the future.
+ * Helper to validate ISO Date (YYYY-MM-DD) and ensure it is not in the future (with 24h grace window for timezone differences).
  */
 const isoDateSchema = z.string({ required_error: 'Date is required' })
   .regex(REGEX.DATE_ISO, 'Date must be formatted as YYYY-MM-DD')
   .refine((val) => {
-    const today = new Date().toISOString().split('T')[0];
-    return val <= today;
+    // Graceful check: allow dates up to tomorrow (UTC) to safely accommodate all global timezones (e.g. UTC+5:30 to UTC+14)
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    return val <= tomorrow;
   }, {
     message: 'Attendance date cannot be in the future'
   });

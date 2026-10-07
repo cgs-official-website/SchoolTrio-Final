@@ -100,7 +100,10 @@ export default async function handler(req, res) {
     const smtpSecure = process.env.SMTP_SECURE === 'true' || process.env.SMTP_SECURE === '1';
     const smtpUser = process.env.SMTP_USER;
     const smtpPass = process.env.SMTP_PASS;
-    const smtpFrom = process.env.SMTP_FROM || 'School Management System <noreply@schoolmanagement.com>';
+    let smtpFrom = process.env.SMTP_FROM || 'School Management System';
+    if (smtpUser && !smtpFrom.includes('@')) {
+      smtpFrom = `"${smtpFrom.replace(/"/g, '')}" <${smtpUser}>`;
+    }
 
     let sendResult = { message: 'Logged in mock mode' };
 

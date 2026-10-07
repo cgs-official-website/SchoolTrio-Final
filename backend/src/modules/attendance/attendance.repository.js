@@ -507,6 +507,93 @@ export async function deleteAbsenteeFlag(schoolId, studentId, monthStr, tx = pri
 }
 
 /**
+ * Efficiently recalculates and upserts attendance stats and absentee flags for a batch of students.
+ */
+export async function batchRecalculateStudentStats(schoolId, classId, studentIds, academicYear, monthStr, absenteeThreshold, tx = prisma) {
+  if (!studentIds || studentIds.length === 0) return;
+
+  const uniqueStudentIds = Array.from(new Set(studentIds)).sort();
+
+  // 1. Bulk fetch all records for these students
+  const allRecords = await tx.attendanceRecord.findMany({
+    where: {
+      schoolId,
+      studentId: { in: uniqueStudentIds }
+    },
+    select: {
+      studentId: true,
+      status: true
+    }
+  });
+
+  const statsMap = {};
+  uniqueStudentIds.forEach(id => {
+    statsMap[id] = { total: 0, present: 0, absent: 0, late: 0 };
+  });
+
+  allRecords.forEach(r => {
+    if (statsMap[r.studentId]) {
+      if (r.status === 'Present') statsMap[r.studentId].present++;
+      else if (r.status === 'Absent') statsMap[r.studentId].absent++;
+      else if (r.status === 'Late') statsMap[r.studentId].late++;
+      statsMap[r.studentId].total++;
+    }
+  });
+
+  // 2. Count monthly absents in bulk
+  const monthlyAbsentRecords = await tx.attendanceRecord.findMany({
+    where: {
+      schoolId,
+      studentId: { in: uniqueStudentIds },
+      status: 'Absent',
+      session: {
+        date: {
+          startsWith: monthStr
+        }
+      }
+    },
+    select: {
+      studentId: true
+    }
+  });
+
+  const monthlyAbsentsMap = {};
+  uniqueStudentIds.forEach(id => {
+    monthlyAbsentsMap[id] = 0;
+  });
+  monthlyAbsentRecords.forEach(r => {
+    if (monthlyAbsentsMap[r.studentId] !== undefined) {
+      monthlyAbsentsMap[r.studentId]++;
+    }
+  });
+
+  // 3. Upsert stats and absentee flags in parallel
+  await Promise.all(
+    uniqueStudentIds.map(async (studentId) => {
+      const s = statsMap[studentId];
+      const percentage = s.total === 0 ? 100 : Number((((s.present + s.late) / s.total) * 100).toFixed(1));
+
+      const statData = {
+        totalDays: s.total,
+        presentDays: s.present,
+        absentDays: s.absent,
+        lateDays: s.late,
+        percentage
+      };
+
+      await upsertAttendanceStat(schoolId, studentId, academicYear, statData, tx);
+
+      const monthlyAbsents = monthlyAbsentsMap[studentId] || 0;
+      if (monthlyAbsents >= absenteeThreshold) {
+        await upsertAbsenteeFlag(schoolId, studentId, classId, monthStr, monthlyAbsents, tx);
+      } else {
+        await deleteAbsenteeFlag(schoolId, studentId, monthStr, tx);
+      }
+    })
+  );
+}
+
+/**
  * Lists paginated AbsenteeFlag records with filters.
  */
 export async function findAbsenteeFlags(schoolId, options = {}, tx = prisma) {

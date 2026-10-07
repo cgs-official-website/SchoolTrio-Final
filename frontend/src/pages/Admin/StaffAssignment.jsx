@@ -8,7 +8,6 @@ import { LuSearch as Search, LuShieldCheck as ShieldCheck, LuMail as Mail, LuUse
 import { TableSkeleton } from '../../components/Skeleton';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
-import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
 import ConfirmModal from '../../components/ConfirmModal';
 import usePermissions from '../../hooks/usePermissions';
 import { sortClassesAscending } from '../../utils/classSorting';
@@ -980,6 +979,18 @@ export default function StaffAssignment() {
       const matchedRole = rolesList.find(r => r.name === selectedRoleName || r.slug === selectedRoleName || r.id === editStaffData.roleId);
 
       const updatePayload = {
+        firstName: (editStaffData.firstName || '').trim() || selectedStaffToView.firstName || null,
+        lastName: (editStaffData.lastName || '').trim() || selectedStaffToView.lastName || null,
+        phone: (editStaffData.phone || editStaffData.mobileNumber || '').trim() || selectedStaffToView.phone || null,
+        dob: (editStaffData.dob || '').trim() || selectedStaffToView.dob || null,
+        gender: editStaffData.gender || selectedStaffToView.gender || null,
+        bloodGroup: (editStaffData.bloodGroup || '').trim() || selectedStaffToView.bloodGroup || null,
+        maritalStatus: editStaffData.maritalStatus || selectedStaffToView.maritalStatus || null,
+        nationality: (editStaffData.nationality || '').trim() || selectedStaffToView.nationality || null,
+        fatherGuardianName: (editStaffData.fatherGuardianName || editStaffData.fatherName || '').trim() || selectedStaffToView.fatherGuardianName || null,
+        emergencyContact: (editStaffData.emergencyContact || '').trim() || selectedStaffToView.emergencyContact || null,
+        languagesKnown: (editStaffData.languagesKnown || '').trim() || selectedStaffToView.languagesKnown || null,
+        address: (editStaffData.residentialAddress || editStaffData.address || '').trim() || selectedStaffToView.residentialAddress || null,
         staffType: editStaffData.staff_type || editStaffData.staffType || selectedStaffToView.staffType || 'teaching',
         designation: editStaffData.designation || selectedRoleName || selectedStaffToView.designation || null,
         roleId: matchedRole ? matchedRole.id : (editStaffData.roleId || selectedStaffToView.roleId || null),
@@ -1020,6 +1031,18 @@ export default function StaffAssignment() {
         documents: mergedDocs,
         customData: {
           ...(uploadedCustomData || {}),
+          firstName: (editStaffData.firstName || '').trim() || selectedStaffToView.firstName || null,
+          lastName: (editStaffData.lastName || '').trim() || selectedStaffToView.lastName || null,
+          mobileNumber: (editStaffData.phone || editStaffData.mobileNumber || '').trim() || selectedStaffToView.phone || null,
+          dob: (editStaffData.dob || '').trim() || selectedStaffToView.dob || null,
+          gender: editStaffData.gender || selectedStaffToView.gender || null,
+          bloodGroup: (editStaffData.bloodGroup || '').trim() || selectedStaffToView.bloodGroup || null,
+          maritalStatus: editStaffData.maritalStatus || selectedStaffToView.maritalStatus || null,
+          nationality: (editStaffData.nationality || '').trim() || selectedStaffToView.nationality || null,
+          fatherGuardianName: (editStaffData.fatherGuardianName || editStaffData.fatherName || '').trim() || selectedStaffToView.fatherGuardianName || null,
+          emergencyContact: (editStaffData.emergencyContact || '').trim() || selectedStaffToView.emergencyContact || null,
+          languagesKnown: (editStaffData.languagesKnown || '').trim() || selectedStaffToView.languagesKnown || null,
+          residentialAddress: (editStaffData.residentialAddress || editStaffData.address || '').trim() || selectedStaffToView.residentialAddress || null,
           aadharNumber: (editStaffData.aadharNumber || '').trim() || null,
           govtIdNumber: (editStaffData.govtIdNumber || '').trim() || null,
           govtIdType: (editStaffData.govtIdType || '').trim() || null
@@ -1766,7 +1789,7 @@ export default function StaffAssignment() {
                           <button
                             onClick={() => {
                               setSelectedStaffToView(member);
-                              setAddStaffActiveTab('Education & Work');
+                              setAddStaffActiveTab('Personal Details');
                               setIsStaffEditMode(false);
                               setEditStaffData(null);
                               setEditStaffErrors({});
@@ -2840,7 +2863,7 @@ export default function StaffAssignment() {
 
             {/* Tabbed details navigation */}
             <div className="flex border-b border-slate-150 overflow-x-auto bg-slate-50/50 dark:bg-slate-800/50 shrink-0 custom-scrollbar">
-              {['Education & Work', 'Identity & Banking', 'Documents'].map(tab => {
+              {['Personal Details', 'Education & Work', 'Identity & Banking', 'Documents'].map(tab => {
                 const isTabActive = addStaffActiveTab === tab;
                 return (
                   <button
@@ -2861,93 +2884,298 @@ export default function StaffAssignment() {
             <div className="p-6 flex-1 overflow-y-auto custom-scrollbar space-y-6">
               {isStaffEditMode && editStaffData ? (
                 /* ── EDIT MODE (tab-driven) ── */
-                <div className="animate-fade-in">
+                <div className="animate-fade-in space-y-6">
+                  {/* Personal Details Tab */}
+                  {(addStaffActiveTab === 'Personal Details' || addStaffActiveTab === 'Personal Info' || addStaffActiveTab === 'Personal') && (
+                    <div className="space-y-6 animate-fade-in">
+                      <div className="bg-slate-50 dark:bg-slate-800 p-5 rounded-xl border border-slate-200/60">
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4">Personal Details & Contact</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">First Name *</label>
+                            <input
+                              type="text"
+                              value={editStaffData.firstName || ''}
+                              onChange={e => setEditStaffData({ ...editStaffData, firstName: e.target.value })}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              placeholder="First Name"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Last Name</label>
+                            <input
+                              type="text"
+                              value={editStaffData.lastName || ''}
+                              onChange={e => setEditStaffData({ ...editStaffData, lastName: e.target.value })}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              placeholder="Last Name"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Email Address</label>
+                            <input
+                              type="email"
+                              disabled
+                              value={editStaffData.email || selectedStaffToView.email || ''}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 text-slate-500 text-sm cursor-not-allowed"
+                              title="System email address cannot be changed directly"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Phone / Mobile</label>
+                            <input
+                              type="text"
+                              value={editStaffData.phone || editStaffData.mobileNumber || ''}
+                              onChange={e => setEditStaffData({ ...editStaffData, phone: e.target.value, mobileNumber: e.target.value })}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              placeholder="Phone Number"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Designation</label>
+                            <input
+                              type="text"
+                              value={editStaffData.designation || ''}
+                              onChange={e => setEditStaffData({ ...editStaffData, designation: e.target.value })}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              placeholder="e.g. Senior Teacher"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Date of Birth</label>
+                            <input
+                              type="date"
+                              value={editStaffData.dob || ''}
+                              onChange={e => setEditStaffData({ ...editStaffData, dob: e.target.value })}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Gender</label>
+                            <select
+                              value={editStaffData.gender || ''}
+                              onChange={e => setEditStaffData({ ...editStaffData, gender: e.target.value })}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            >
+                              <option value="">Select Gender</option>
+                              <option value="Male">Male</option>
+                              <option value="Female">Female</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Blood Group</label>
+                            <select
+                              value={editStaffData.bloodGroup || ''}
+                              onChange={e => setEditStaffData({ ...editStaffData, bloodGroup: e.target.value })}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            >
+                              <option value="">Select Blood Group</option>
+                              <option value="A+">A+</option>
+                              <option value="A-">A-</option>
+                              <option value="B+">B+</option>
+                              <option value="B-">B-</option>
+                              <option value="AB+">AB+</option>
+                              <option value="AB-">AB-</option>
+                              <option value="O+">O+</option>
+                              <option value="O-">O-</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Marital Status</label>
+                            <select
+                              value={editStaffData.maritalStatus || ''}
+                              onChange={e => setEditStaffData({ ...editStaffData, maritalStatus: e.target.value })}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            >
+                              <option value="">Select Status</option>
+                              <option value="Single">Single</option>
+                              <option value="Married">Married</option>
+                              <option value="Divorced">Divorced</option>
+                              <option value="Widowed">Widowed</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Nationality</label>
+                            <input
+                              type="text"
+                              value={editStaffData.nationality || ''}
+                              onChange={e => setEditStaffData({ ...editStaffData, nationality: e.target.value })}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              placeholder="e.g. Indian"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Father / Guardian Name</label>
+                            <input
+                              type="text"
+                              value={editStaffData.fatherGuardianName || editStaffData.fatherName || ''}
+                              onChange={e => setEditStaffData({ ...editStaffData, fatherGuardianName: e.target.value, fatherName: e.target.value })}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              placeholder="Father / Guardian Name"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Emergency Contact</label>
+                            <input
+                              type="text"
+                              value={editStaffData.emergencyContact || ''}
+                              onChange={e => setEditStaffData({ ...editStaffData, emergencyContact: e.target.value })}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              placeholder="Name & Contact Number"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Languages Known</label>
+                            <input
+                              type="text"
+                              value={editStaffData.languagesKnown || ''}
+                              onChange={e => setEditStaffData({ ...editStaffData, languagesKnown: e.target.value })}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              placeholder="e.g. English, Hindi, Tamil"
+                            />
+                          </div>
+                          <div className="sm:col-span-2 md:col-span-3">
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Residential Address</label>
+                            <textarea
+                              rows="2"
+                              value={editStaffData.residentialAddress || editStaffData.address || ''}
+                              onChange={e => setEditStaffData({ ...editStaffData, residentialAddress: e.target.value, address: e.target.value })}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                              placeholder="Complete residential address"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Education & Work Tab */}
                   {addStaffActiveTab === 'Education & Work' && (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {[
-                          ['highestQualification', 'Highest Qualification'],
-                          ['degreeSpecialization', 'Degree & Specialization'],
-                          ['universityName', 'University / College'],
-                          ['yearOfPassing', 'Year of Passing'],
-                          ['previousExperience', 'Previous Experience (Years)'],
-                          ['previousOrganization', 'Previous School / Organization'],
-                          ['previousDesignation', 'Previous Designation'],
-                          ['subjectsTaughtPreviously', 'Subjects Taught Previously'],
-                          ['subjectSpecialization', 'Subject Specialization'],
-                          ['gradesClassesHandled', 'Grades / Classes Handled'],
-                          ['achievements', 'Achievements'],
-                          ['professionalCertifications', 'Professional Certifications']
-                        ].map(([field, label]) => (
-                          <div key={field}>
-                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">{label}</label>
-                            <input type="text" value={editStaffData[field] || ''} onChange={e => setEditStaffData({ ...editStaffData, [field]: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                          </div>
-                        ))}
-                        <div className="col-span-1 sm:col-span-2">
-                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Assigned Roles *</label>
-                          <select
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val) {
-                                const currentRoles = editStaffData.roles || (editStaffData.role ? [editStaffData.role] : ['Staffs']);
-                                if (!currentRoles.includes(val)) {
-                                  const updated = [...currentRoles, val];
-                                  setEditStaffData({
-                                    ...editStaffData,
-                                    roles: updated,
-                                    role: updated[0] || 'Staffs'
-                                  });
-                                }
-                              }
-                              e.target.value = '';
-                            }}
-                            className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer"
-                          >
-                            <option value="">-- Choose a role to add --</option>
-                            {allRoles.map(roleOption => {
-                              const currentRoles = editStaffData.roles || (editStaffData.role ? [editStaffData.role] : ['Staffs']);
-                              const isAssigned = currentRoles.includes(roleOption);
-                              return (
-                                <option key={roleOption} value={roleOption} disabled={isAssigned}>
-                                  {roleOption} {isAssigned ? '(Already added)' : ''}
-                                </option>
-                              );
-                            })}
-                          </select>
+                    <div className="space-y-6">
+                      {/* Academic Qualifications */}
+                      <div className="bg-slate-50 dark:bg-slate-800 p-5 rounded-xl border border-slate-200/60">
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4">Academic Qualifications</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {[
+                            ['highestQualification', 'Highest Qualification', 'e.g. MCA, B.Ed, M.Sc'],
+                            ['degreeSpecialization', 'Degree & Specialization', 'e.g. Computer Science'],
+                            ['universityName', 'University / College', 'e.g. Bharathiar University'],
+                            ['yearOfPassing', 'Year of Passing', 'e.g. 2021']
+                          ].map(([field, label, placeholder]) => (
+                            <div key={field}>
+                              <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">{label}</label>
+                              <input
+                                type="text"
+                                placeholder={placeholder}
+                                value={editStaffData[field] || ''}
+                                onChange={e => setEditStaffData({ ...editStaffData, [field]: e.target.value })}
+                                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
 
-                          {/* Render assigned roles as tags */}
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {(editStaffData.roles || (editStaffData.role ? [editStaffData.role] : ['Staffs'])).map(role => (
-                              <span key={role} className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold rounded-xl uppercase tracking-wider">
-                                {role}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const currentRoles = editStaffData.roles || (editStaffData.role ? [editStaffData.role] : ['Staffs']);
-                                    let updated = currentRoles.filter(r => r !== role);
-                                    if (updated.length === 0) updated = ['Staffs'];
+                      {/* Professional Experience */}
+                      <div className="bg-slate-50 dark:bg-slate-800 p-5 rounded-xl border border-slate-200/60">
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4">Professional Experience</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {[
+                            ['previousExperience', 'Previous Experience (Years)'],
+                            ['previousOrganization', 'Previous School / Organization'],
+                            ['previousDesignation', 'Previous Designation'],
+                            ['subjectsTaughtPreviously', 'Subjects Taught Previously'],
+                            ['subjectSpecialization', 'Subject Specialization'],
+                            ['gradesClassesHandled', 'Grades / Classes Handled'],
+                            ['achievements', 'Achievements'],
+                            ['professionalCertifications', 'Professional Certifications']
+                          ].map(([field, label]) => (
+                            <div key={field}>
+                              <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">{label}</label>
+                              <input
+                                type="text"
+                                value={editStaffData[field] || ''}
+                                onChange={e => setEditStaffData({ ...editStaffData, [field]: e.target.value })}
+                                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Institutional Roles & Classification */}
+                      <div className="bg-slate-50 dark:bg-slate-800 p-5 rounded-xl border border-slate-200/60">
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4">Institutional Roles & Classification</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="col-span-1 sm:col-span-2">
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Assigned Roles *</label>
+                            <select
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val) {
+                                  const currentRoles = editStaffData.roles || (editStaffData.role ? [editStaffData.role] : ['Staffs']);
+                                  if (!currentRoles.includes(val)) {
+                                    const updated = [...currentRoles, val];
                                     setEditStaffData({
                                       ...editStaffData,
                                       roles: updated,
                                       role: updated[0] || 'Staffs'
                                     });
-                                  }}
-                                  className="text-indigo-400 hover:text-indigo-650 focus:outline-none"
-                                >
-                                  <X size={14} />
-                                </button>
-                              </span>
-                            ))}
+                                  }
+                                }
+                                e.target.value = '';
+                              }}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer"
+                            >
+                              <option value="">-- Choose a role to add --</option>
+                              {allRoles.map(roleOption => {
+                                const currentRoles = editStaffData.roles || (editStaffData.role ? [editStaffData.role] : ['Staffs']);
+                                const isAssigned = currentRoles.includes(roleOption);
+                                return (
+                                  <option key={roleOption} value={roleOption} disabled={isAssigned}>
+                                    {roleOption} {isAssigned ? '(Already added)' : ''}
+                                  </option>
+                                );
+                              })}
+                            </select>
+
+                            {/* Render assigned roles as tags */}
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {(editStaffData.roles || (editStaffData.role ? [editStaffData.role] : ['Staffs'])).map(role => (
+                                <span key={role} className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold rounded-xl uppercase tracking-wider">
+                                  {role}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const currentRoles = editStaffData.roles || (editStaffData.role ? [editStaffData.role] : ['Staffs']);
+                                      let updated = currentRoles.filter(r => r !== role);
+                                      if (updated.length === 0) updated = ['Staffs'];
+                                      setEditStaffData({
+                                        ...editStaffData,
+                                        roles: updated,
+                                        role: updated[0] || 'Staffs'
+                                      });
+                                    }}
+                                    className="text-indigo-400 hover:text-indigo-650 focus:outline-none"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Staff Type</label>
-                          <select value={editStaffData.staff_type || 'teaching'} onChange={e => setEditStaffData({ ...editStaffData, staff_type: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                            <option value="teaching">Teaching Staff</option>
-                            <option value="non-teaching">Non-Teaching Staff</option>
-                          </select>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Staff Type</label>
+                            <select
+                              value={editStaffData.staff_type || editStaffData.staffType || 'teaching'}
+                              onChange={e => setEditStaffData({ ...editStaffData, staff_type: e.target.value, staffType: e.target.value })}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            >
+                              <option value="teaching">Teaching Staff</option>
+                              <option value="non-teaching">Non-Teaching Staff</option>
+                            </select>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -3091,8 +3319,120 @@ export default function StaffAssignment() {
               ) : (
                 /* ── VIEW MODE ── */
                 <>
+                  {(addStaffActiveTab === 'Personal Details' || addStaffActiveTab === 'Personal Info' || addStaffActiveTab === 'Personal') && (
+                    <div className="space-y-6 animate-fade-in">
+                      {/* Profile Card Header */}
+                      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 p-4 rounded-2xl bg-gradient-to-r from-indigo-50 to-slate-50 dark:from-slate-800 dark:to-slate-850 border border-slate-200/80 dark:border-slate-700">
+                        <div className="w-16 h-16 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xl shadow-md shrink-0">
+                          {selectedStaffToView.name ? selectedStaffToView.name.charAt(0).toUpperCase() : (selectedStaffToView.firstName ? selectedStaffToView.firstName.charAt(0).toUpperCase() : 'S')}
+                        </div>
+                        <div className="flex-1 text-center sm:text-left min-w-0">
+                          <h3 className="text-lg font-bold text-slate-900 dark:text-white truncate">
+                            {selectedStaffToView.name || `${selectedStaffToView.firstName || ''} ${selectedStaffToView.lastName || ''}`.trim() || 'Staff Member'}
+                          </h3>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            ID: <span className="font-semibold text-slate-700 dark:text-slate-200">{selectedStaffToView.staffId || selectedStaffToView.employeeId || '—'}</span>
+                            {' • '}
+                            Type: <span className="font-semibold text-slate-700 dark:text-slate-200 capitalize">{selectedStaffToView.staffType || selectedStaffToView.staff_type || 'Teaching'}</span>
+                            {' • '}
+                            Status: <span className={`font-semibold ${selectedStaffToView.status === 'Active' ? 'text-emerald-600' : 'text-slate-500'}`}>{selectedStaffToView.status || 'Active'}</span>
+                          </p>
+                          <div className="flex flex-wrap gap-1.5 mt-2 justify-center sm:justify-start">
+                            {(selectedStaffToView.roles || [selectedStaffToView.role || 'Staffs']).map((r, idx) => (
+                              <span key={idx} className="px-2.5 py-0.5 bg-white dark:bg-slate-700 border border-indigo-200 dark:border-slate-600 text-indigo-700 dark:text-indigo-300 rounded-lg text-[11px] font-bold">
+                                {r}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Personal Information Grid */}
+                      <div className="bg-slate-50 dark:bg-slate-800 p-5 rounded-xl border border-slate-200/60">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Email Address</label>
+                            <p className="text-slate-900 dark:text-white font-semibold break-all">{selectedStaffToView.email || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Phone / Mobile</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.phone || selectedStaffToView.mobileNumber || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Designation</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.designation || selectedStaffToView.role || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Date of Birth</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.dob || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Gender</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.gender || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Blood Group</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.bloodGroup || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Marital Status</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.maritalStatus || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Nationality</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.nationality || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Father / Guardian Name</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.fatherGuardianName || selectedStaffToView.fatherName || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Emergency Contact</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.emergencyContact || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Languages Known</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.languagesKnown || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Joining Date</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.joiningDate || (selectedStaffToView.createdAt ? String(selectedStaffToView.createdAt).split('T')[0] : '—')}</p>
+                          </div>
+                          <div className="sm:col-span-2 md:col-span-3">
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Residential Address</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.residentialAddress || selectedStaffToView.address || '—'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {addStaffActiveTab === 'Education & Work' && (
                     <div className="space-y-6 animate-fade-in">
+                      {/* Academic Qualifications */}
+                      <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200/60">
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">Academic Qualifications</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Highest Qualification</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.highestQualification || selectedStaffToView.qualification || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Degree & Specialization</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.degreeSpecialization || selectedStaffToView.degree || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">University / College</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.universityName || selectedStaffToView.university || selectedStaffToView.college || '—'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Year of Passing</label>
+                            <p className="text-slate-900 dark:text-white font-semibold">{selectedStaffToView.yearOfPassing || '—'}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Professional Experience */}
                       <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200/60">
                         <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">Professional Experience</h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -3283,7 +3623,9 @@ export default function StaffAssignment() {
                       });
                       setEditStaffErrors({});
                       setEditStaffDocFiles({});
-                      setAddStaffActiveTab('Education & Work');
+                      if (!['Personal Details', 'Education & Work', 'Identity & Banking', 'Documents'].includes(addStaffActiveTab)) {
+                        setAddStaffActiveTab('Personal Details');
+                      }
                       setIsStaffEditMode(true);
                     }}
                     className="px-6 py-2.5 bg-primary-600 text-white font-bold hover:bg-primary-700 rounded-xl transition-colors shadow-sm"

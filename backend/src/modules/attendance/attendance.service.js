@@ -73,17 +73,32 @@ export async function verifyTeacherClassAuthorization(schoolId, classId, actor) 
   const systemRole = actor.systemRole || actor.role;
 
   // 1. SuperAdmin and SchoolAdmin have full institutional access across all classes
-  if (systemRole === SYSTEM_ROLES.SUPER_ADMIN || systemRole === SYSTEM_ROLES.SCHOOL_ADMIN || systemRole === 'admin' || systemRole === 'superadmin') {
+  if (
+    systemRole === SYSTEM_ROLES.SUPER_ADMIN ||
+    systemRole === SYSTEM_ROLES.SCHOOL_ADMIN ||
+    systemRole === 'SUPER_ADMIN' ||
+    systemRole === 'ADMIN' ||
+    systemRole === 'admin' ||
+    systemRole === 'superadmin' ||
+    systemRole === 'PRINCIPAL' ||
+    systemRole === 'principal'
+  ) {
     return true;
   }
 
   // 2. Check if user holds institutional permissions that grant school-wide attendance management
   const permissions = actor.permissions || [];
-  if (permissions.includes('attendance:create') || permissions.includes('attendance:edit') || permissions.includes('attendance.create') || permissions.includes('attendance.edit')) {
+  if (
+    permissions.includes('attendance:create') ||
+    permissions.includes('attendance:edit') ||
+    permissions.includes('attendance:manage') ||
+    permissions.includes('attendance.create') ||
+    permissions.includes('attendance.edit')
+  ) {
     return true;
   }
 
-  // 3. Class Teacher: Must be assigned as the classTeacherId for this specific class
+  // 3. Class Teacher / Staff Check
   const staffProfile = await prisma.staffProfile.findFirst({
     where: {
       schoolId,
@@ -91,13 +106,12 @@ export async function verifyTeacherClassAuthorization(schoolId, classId, actor) 
     },
     select: {
       id: true,
-      assignedClassId: true
+      assignedClassId: true,
+      headedClasses: {
+        select: { id: true }
+      }
     }
   });
-
-  if (!staffProfile) {
-    throw new ForbiddenError('Staff profile not found for this user in current tenant');
-  }
 
   const targetClass = await prisma.class.findFirst({
     where: {
@@ -114,12 +128,34 @@ export async function verifyTeacherClassAuthorization(schoolId, classId, actor) 
     throw new NotFoundError('Class');
   }
 
-  const isClassTeacher = targetClass.classTeacherId === staffProfile.id || staffProfile.assignedClassId === classId;
-  if (!isClassTeacher) {
-    throw new ForbiddenError('You are only authorized to mark attendance for your assigned class');
+  if (staffProfile) {
+    const isClassTeacher =
+      targetClass.classTeacherId === staffProfile.id ||
+      staffProfile.assignedClassId === classId ||
+      (Array.isArray(staffProfile.headedClasses) && staffProfile.headedClasses.some(c => c.id === classId));
+
+    if (isClassTeacher) {
+      return true;
+    }
+
+    if (staffProfile.assignedClassId && staffProfile.assignedClassId !== classId) {
+      throw new ForbiddenError('You are only authorized to mark attendance for your assigned class');
+    }
   }
 
-  return true;
+  // Fallback: If actor is an active teacher/staff in the tenant without specific restrictions, allow attendance entry
+  if (
+    systemRole === SYSTEM_ROLES.TEACHER ||
+    systemRole === SYSTEM_ROLES.STAFF ||
+    systemRole === 'TEACHER' ||
+    systemRole === 'teacher' ||
+    systemRole === 'STAFF' ||
+    systemRole === 'staff'
+  ) {
+    return true;
+  }
+
+  throw new ForbiddenError('You are only authorized to mark attendance for your school classes');
 }
 
 /**
@@ -276,17 +312,19 @@ export async function submitAttendanceSession(schoolId, data, actor = null) {
 
     const sessionId = sessionRow.id;
 
-    // Step B: Upsert individual student records
-    for (const item of records) {
-      await attendanceRepository.upsertRecord(
-        schoolId,
-        sessionId,
-        item.studentId,
-        item.status,
-        item.remark || null,
-        tx
-      );
-    }
+    // Step B: Upsert individual student records in parallel
+    await Promise.all(
+      records.map((item) =>
+        attendanceRepository.upsertRecord(
+          schoolId,
+          sessionId,
+          item.studentId,
+          item.status,
+          item.remark || null,
+          tx
+        )
+      )
+    );
 
     // Step C: Deterministic Student Lock Ordering & Aggregate Stat Recalculation
     const sortedStudentIds = Array.from(new Set(studentIds)).sort();
@@ -315,6 +353,9 @@ export async function submitAttendanceSession(schoolId, data, actor = null) {
     await attendanceRepository.resolvePendingAttendanceNotifications(schoolId, classId, date, tx);
 
     return attendanceRepository.findSessionById(schoolId, sessionId, tx);
+  }, {
+    maxWait: 10000,
+    timeout: 60000
   });
 
   // 7. Canonical Audit Logging
@@ -384,17 +425,19 @@ export async function updateAttendanceSession(schoolId, id, data, actor = null) 
     // Step A: Row lock target session
     await attendanceRepository.lockSessionForUpdate(schoolId, id, tx);
 
-    // Step B: Upsert modified student records
-    for (const item of records) {
-      await attendanceRepository.upsertRecord(
-        schoolId,
-        id,
-        item.studentId,
-        item.status,
-        item.remark || null,
-        tx
-      );
-    }
+    // Step B: Upsert modified student records in parallel
+    await Promise.all(
+      records.map((item) =>
+        attendanceRepository.upsertRecord(
+          schoolId,
+          id,
+          item.studentId,
+          item.status,
+          item.remark || null,
+          tx
+        )
+      )
+    );
 
     // Step C: Deterministic Student Lock Ordering & Stat Recalculation
     const sortedStudentIds = Array.from(new Set(studentIds)).sort();
@@ -416,6 +459,9 @@ export async function updateAttendanceSession(schoolId, id, data, actor = null) 
     await attendanceRepository.resolvePendingAttendanceNotifications(schoolId, existingSession.classId, existingSession.date, tx);
 
     return attendanceRepository.findSessionById(schoolId, id, tx);
+  }, {
+    maxWait: 10000,
+    timeout: 60000
   });
 
   // 4. Canonical Audit Logging
@@ -489,6 +535,9 @@ export async function deleteAttendanceSession(schoolId, id, actor = null) {
         await attendanceRepository.deleteAbsenteeFlag(schoolId, studentId, monthStr, tx);
       }
     }
+  }, {
+    maxWait: 10000,
+    timeout: 60000
   });
 
   // Canonical Audit Logging

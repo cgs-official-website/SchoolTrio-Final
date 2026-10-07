@@ -247,13 +247,25 @@ export const requirePermission = (...args) => {
           hasPermission = modulePerms[reqPerm.permField];
         }
 
-        // System-wide fallback for TEACHER role for read operations on core educational modules
-        if (!hasPermission && isTeacherRole && reqPerm.operation === 'read') {
-          const DEFAULT_TEACHER_READ_MODULES = [
-            'students', 'classes', 'subjects', 'attendance', 'homework',
-            'timetables', 'noticeboard', 'lesson_plans', 'resources', 'calendar', 'chats', 'exams', 'performance'
-          ];
-          if (DEFAULT_TEACHER_READ_MODULES.includes(reqPerm.moduleKey)) {
+        // System-wide fallback for TEACHER role on core educational modules
+        if (!hasPermission && isTeacherRole) {
+          const DEFAULT_TEACHER_MODULES = {
+            attendance: ['read', 'create', 'edit'],
+            homework: ['read', 'create', 'edit', 'delete'],
+            lesson_plans: ['read', 'create', 'edit', 'delete'],
+            resources: ['read', 'create', 'edit', 'delete'],
+            chats: ['read', 'create', 'edit'],
+            students: ['read'],
+            classes: ['read'],
+            subjects: ['read'],
+            timetables: ['read'],
+            noticeboard: ['read'],
+            calendar: ['read'],
+            exams: ['read'],
+            performance: ['read']
+          };
+
+          if (DEFAULT_TEACHER_MODULES[reqPerm.moduleKey]?.includes(reqPerm.operation)) {
             hasPermission = true;
           }
         }

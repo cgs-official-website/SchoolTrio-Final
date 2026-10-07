@@ -130,9 +130,14 @@ export const sendMail = async ({ to, subject, html, text, from = env.SMTP_FROM }
   const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   const recipientStr = Array.isArray(to) ? to.join(', ') : to;
 
+  let resolvedFrom = from || env.SMTP_FROM || 'School Management System';
+  if (env.SMTP_USER && !resolvedFrom.includes('@')) {
+    resolvedFrom = `"${resolvedFrom.replace(/"/g, '')}" <${env.SMTP_USER}>`;
+  }
+
   const emailRecord = {
     messageId,
-    from,
+    from: resolvedFrom,
     to: recipientStr,
     subject,
     html,
@@ -147,7 +152,7 @@ export const sendMail = async ({ to, subject, html, text, from = env.SMTP_FROM }
   if (transporter && !env.isTest) {
     try {
       const info = await transporter.sendMail({
-        from,
+        from: resolvedFrom,
         to: recipientStr,
         subject,
         html,

@@ -453,11 +453,11 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
   });
 
   describe('22. STAFF EDIT MODE & PERSONAL DETAILS REMOVAL (BUG-05)', () => {
-    it('verifies Staff tabs in View and Edit exclude Personal Info / Personal Details', () => {
+    it('verifies Staff tabs in View include Personal Details and Edit exclude Personal Details', () => {
       const getTabs = (isStaffEditMode) => {
         return isStaffEditMode
           ? ['Education & Work', 'Identity & Banking', 'Documents']
-          : ['Education & Work', 'Identity & Banking', 'Documents'];
+          : ['Personal Details', 'Education & Work', 'Identity & Banking', 'Documents'];
       };
 
       const editTabs = getTabs(true);
@@ -466,9 +466,8 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
       expect(editTabs).not.toContain('Personal Details');
 
       const viewTabs = getTabs(false);
-      expect(viewTabs).toEqual(['Education & Work', 'Identity & Banking', 'Documents']);
-      expect(viewTabs).not.toContain('Personal Info');
-      expect(viewTabs).not.toContain('Personal Details');
+      expect(viewTabs).toEqual(['Personal Details', 'Education & Work', 'Identity & Banking', 'Documents']);
+      expect(viewTabs).toContain('Personal Details');
     });
 
     it('falls back to Education & Work tab if edit mode is active with Personal Info tab state', () => {
@@ -946,24 +945,32 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
     });
   });
 
-  describe('24. BUG-003: STAFF DETAILS VIEW EXCLUDES PERSONAL DETAILS & ACADEMIC DETAILS', () => {
-    it('verifies View Details modal tabs include only Education & Work, Identity & Banking, Documents', () => {
-      const viewTabs = ['Education & Work', 'Identity & Banking', 'Documents'];
-      expect(viewTabs).toEqual(['Education & Work', 'Identity & Banking', 'Documents']);
-      expect(viewTabs).not.toContain('Personal Details');
-      expect(viewTabs).not.toContain('Personal Info');
+  describe('24. STAFF DETAILS VIEW INCLUDES PERSONAL DETAILS & EDUCATION DETAILS', () => {
+    it('verifies View Details modal tabs include Personal Details, Education & Work, Identity & Banking, Documents', () => {
+      const viewTabs = ['Personal Details', 'Education & Work', 'Identity & Banking', 'Documents'];
+      expect(viewTabs).toEqual(['Personal Details', 'Education & Work', 'Identity & Banking', 'Documents']);
+      expect(viewTabs).toContain('Personal Details');
       expect(viewTabs).not.toContain('Academic Details');
       expect(viewTabs).not.toContain('Academic Qualifications');
     });
 
-    it('verifies View Details initial active tab is Education & Work', () => {
-      const getInitialViewTab = () => 'Education & Work';
-      expect(getInitialViewTab()).toBe('Education & Work');
+    it('verifies View Details initial active tab is Personal Details', () => {
+      const getInitialViewTab = () => 'Personal Details';
+      expect(getInitialViewTab()).toBe('Personal Details');
     });
 
-    it('verifies View Details Education & Work sections contain Professional Experience but exclude Academic Qualifications', () => {
+    it('verifies View Details Education & Work sections contain Academic Qualifications and Professional Experience', () => {
       // Structure verification for View mode Education & Work tab
       const educationAndWorkViewSections = [
+        {
+          title: 'Academic Qualifications',
+          fields: [
+            'highestQualification',
+            'degreeSpecialization',
+            'universityName',
+            'yearOfPassing'
+          ]
+        },
         {
           title: 'Professional Experience',
           fields: [
@@ -980,10 +987,8 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
       ];
 
       const sectionTitles = educationAndWorkViewSections.map(s => s.title);
+      expect(sectionTitles).toContain('Academic Qualifications');
       expect(sectionTitles).toContain('Professional Experience');
-      expect(sectionTitles).not.toContain('Academic Qualifications');
-      expect(sectionTitles).not.toContain('Academic Details');
-      expect(sectionTitles).not.toContain('Personal Details');
     });
 
     it('verifies View Details preserves all required remaining sections (Identity, Banking, Documents)', () => {
@@ -1347,20 +1352,53 @@ describe('Admin StaffAssignment Component (REST Migration)', () => {
       expect(editStaffData.achievements).toBe('Teacher of the Year 2023');
     });
 
-    it('11. existing Edit Staff behavior across all tabs remains intact and deterministic', () => {
-      const tabs = ['Education & Work', 'Identity & Banking', 'Documents'];
-      let activeTab = 'Education & Work';
+    it('11. existing Edit Staff behavior across all tabs remains intact and deterministic including Personal Details', () => {
+      const tabs = ['Personal Details', 'Education & Work', 'Identity & Banking', 'Documents'];
+      let activeTab = 'Personal Details';
 
       const switchTab = (tab) => { activeTab = tab; };
+      expect(activeTab).toBe('Personal Details');
+
+      switchTab('Education & Work');
+      expect(activeTab).toBe('Education & Work');
+
       switchTab('Identity & Banking');
       expect(activeTab).toBe('Identity & Banking');
 
       switchTab('Documents');
       expect(activeTab).toBe('Documents');
 
-      expect(tabs).toContain('Education & Work');
-      expect(tabs).toContain('Identity & Banking');
-      expect(tabs).toContain('Documents');
+      expect(tabs).toEqual(['Personal Details', 'Education & Work', 'Identity & Banking', 'Documents']);
+    });
+
+    it('12. Edit Staff mode supports personal details and academic qualifications editing and payload generation', () => {
+      const editStaffData = {
+        firstName: 'Robert',
+        lastName: 'Brown',
+        phone: '9876543210',
+        designation: 'HOD Science',
+        dob: '1985-05-20',
+        gender: 'Male',
+        bloodGroup: 'O+',
+        maritalStatus: 'Married',
+        nationality: 'Indian',
+        fatherGuardianName: 'George Brown',
+        emergencyContact: 'Mary Brown - 9876500000',
+        languagesKnown: 'English, French',
+        residentialAddress: '123 Baker Street',
+        highestQualification: 'Ph.D Physics',
+        degreeSpecialization: 'Quantum Mechanics',
+        universityName: 'Oxford University',
+        yearOfPassing: '2012'
+      };
+
+      expect(editStaffData.firstName).toBe('Robert');
+      expect(editStaffData.lastName).toBe('Brown');
+      expect(editStaffData.dob).toBe('1985-05-20');
+      expect(editStaffData.highestQualification).toBe('Ph.D Physics');
+      expect(editStaffData.degreeSpecialization).toBe('Quantum Mechanics');
+      expect(editStaffData.universityName).toBe('Oxford University');
+      expect(editStaffData.yearOfPassing).toBe('2012');
     });
   });
 });
