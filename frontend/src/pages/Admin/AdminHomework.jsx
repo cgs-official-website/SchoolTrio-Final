@@ -14,6 +14,7 @@ import {
 } from 'react-icons/lu';
 import { TableSkeleton } from '../../components/Skeleton';
 import { sortClassesAscending } from '../../utils/classSorting';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import toast from 'react-hot-toast';
 
 export default function AdminHomework() {
@@ -92,6 +93,22 @@ export default function AdminHomework() {
     currentClassRef.current = selectedClassId;
     fetchHomeworkList(selectedClassId, false);
   }, [selectedClassId, fetchHomeworkList]);
+
+  // Live data synchronization for homework
+  const handleLiveRefresh = useCallback(() => {
+    fetchHomeworkList(selectedClassId, true);
+    if (showTrackingModal && selectedHomework?.id) {
+      getHomework(selectedHomework.id)
+        .then((res) => {
+          if (mountedRef.current && (res?.data || res?.id)) {
+            setSelectedHomework(res?.data || res);
+          }
+        })
+        .catch((err) => console.error('[AdminHomework] Live refresh tracking modal error:', err));
+    }
+  }, [fetchHomeworkList, selectedClassId, showTrackingModal, selectedHomework?.id]);
+
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], 'homework');
 
   // ============================================================
   // 3. TRACKING MODAL (GET /api/v1/homework/:id)

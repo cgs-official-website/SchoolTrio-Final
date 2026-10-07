@@ -19,6 +19,8 @@ import { whatsappService } from '../../services/whatsappService';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
 import usePermissions from '../../hooks/usePermissions';
+import { notifyDataChanged } from '../../utils/liveData.js';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function Noticeboard() {
   const { userProfile, currentUser } = useAuth();
@@ -110,6 +112,9 @@ export default function Noticeboard() {
     fetchNotices();
   }, [fetchNotices]);
 
+  // Canonical live-data synchronization for notices
+  useLiveDataRefresh(fetchNotices, [fetchNotices], 'notices');
+
   const handleSaveNotice = async (e) => {
     e.preventDefault();
     setCreating(true);
@@ -121,6 +126,7 @@ export default function Noticeboard() {
           audience: newNotice.audience,
           priority: newNotice.priority
         });
+        notifyDataChanged('notices');
         toast.success('Notice updated successfully!');
       } else {
         const noticePayload = {
@@ -133,6 +139,7 @@ export default function Noticeboard() {
         const res = await noticesApi.createNotice(noticePayload);
         const createdNotice = res.data;
 
+        notifyDataChanged('notices');
         toast.success('Notice published successfully! WhatsApp messages queued.');
 
         // Non-blocking WhatsApp side effect
@@ -169,6 +176,7 @@ export default function Noticeboard() {
     if (!noticeId) return;
     try {
       await noticesApi.deleteNotice(noticeId);
+      notifyDataChanged('notices');
       toast.success('Notice deleted.');
       await fetchNotices();
     } catch (error) {
@@ -422,13 +430,21 @@ export default function Noticeboard() {
                   <p>No one has viewed this notice yet.</p>
                 </div>
               ) : (
-                <div className="divide-y divide-slate-100">
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
                   {selectedViewers.map((viewer, index) => (
-                    <div key={index} className="p-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl">
+                    <div key={index} className="p-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors">
                       <div>
-                        <div className="font-bold text-slate-900 dark:text-white">{viewer.name}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 capitalize">{viewer.role} {viewer.classId ? `- Class: ${classesMap[viewer.classId] || viewer.classId}` : ''}</div>
+                        <div className="font-bold text-slate-900 dark:text-white">{viewer.name || viewer.userName || 'Staff Member'}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 capitalize">{viewer.role || 'Member'} {viewer.classId ? `- Class: ${classesMap[viewer.classId] || viewer.classId}` : ''}</div>
                       </div>
+                      {viewer.viewedAt && (
+                        <div className="text-xs text-slate-400 dark:text-slate-500 text-right">
+                          <span>Viewed</span>
+                          <div className="font-medium text-slate-600 dark:text-slate-300">
+                            {new Date(viewer.viewedAt).toLocaleDateString()} {new Date(viewer.viewedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -5,6 +5,7 @@ import { noticesApi } from '../../api/notices';
 import { getMyChildren } from '../../api/parents';
 import { LuBell as Bell, LuMegaphone as Megaphone, LuUsers as Users, LuTriangleAlert as AlertTriangle } from 'react-icons/lu';
 import toast from 'react-hot-toast';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function ParentNoticeboard() {
   const { userProfile, currentUser } = useAuth();
@@ -77,6 +78,9 @@ export default function ParentNoticeboard() {
   useEffect(() => {
     fetchNotices();
   }, [fetchNotices, activeStudentId]);
+
+  // Canonical live-data synchronization for notices
+  useLiveDataRefresh(fetchNotices, [fetchNotices], 'notices');
 
   const displayedNotices = activeTab === 'global' ? globalNotices : classNotices;
 

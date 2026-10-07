@@ -18,6 +18,8 @@ import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
 import { uploadCustomDataFiles } from '../../utils/cloudinary';
 import usePermissions from '../../hooks/usePermissions';
 import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 
 const DEFAULT_CATEGORIES = [
   'General'
@@ -153,6 +155,9 @@ export default function LibraryManagement() {
     loadLibraryData();
   }, [loadLibraryData]);
 
+  // Live data synchronization for library inventory and active loans
+  useLiveDataRefresh(loadLibraryData, [loadLibraryData], ['library', 'books', 'loans']);
+
   const handleAddCategory = async (e) => {
     e.preventDefault();
     const trimmed = newCategoryName.trim();
@@ -167,6 +172,7 @@ export default function LibraryManagement() {
       const createdCatName = res?.data?.name || trimmed;
       setCustomCategories(prev => Array.from(new Set([...prev, createdCatName])));
       setNewBook(prev => ({ ...prev, category: createdCatName }));
+      notifyDataChanged('library');
       toast.success(`Category "${createdCatName}" added!`);
       setShowAddCategoryModal(false);
       setNewCategoryName('');
@@ -195,6 +201,8 @@ export default function LibraryManagement() {
         totalQuantity: Number(newBook.totalQuantity) || 1,
         customData: uploadedCustomData
       });
+      notifyDataChanged('library');
+      notifyDataChanged('books');
       toast.success("Book added to catalog!");
       setShowAddModal(false);
       setNewBook({ title: '', author: '', isbn: '', category: '', totalQuantity: 1, customData: {} });
@@ -236,6 +244,9 @@ export default function LibraryManagement() {
         studentId: issueData.studentId,
         dueDate: issueData.dueDate
       });
+      notifyDataChanged('library');
+      notifyDataChanged('books');
+      notifyDataChanged('loans');
       toast.success("Book issued successfully!");
       setShowIssueModal(false);
       setIssueData({ bookId: '', classId: '', studentId: '', dueDate: '' });
@@ -273,6 +284,9 @@ export default function LibraryManagement() {
     if (!issueId) return;
     try {
       await returnBook(issueId);
+      notifyDataChanged('library');
+      notifyDataChanged('books');
+      notifyDataChanged('loans');
       toast.success("Book marked as returned!");
       // Refresh books and issues
       const [updatedBooks, updatedIssues] = await Promise.all([

@@ -21,6 +21,8 @@ import {
 } from 'react-icons/lu';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 const DAILY_FIELDS_LIST = [
   { key: 'admissionNo', label: 'Admission No' },
@@ -444,6 +446,7 @@ export default function Attendance() {
         }
       }
 
+      notifyDataChanged('attendance');
       setSuccessMsg('Attendance saved successfully!');
       toast.success('Attendance saved successfully!');
       setTimeout(() => setSuccessMsg(''), 3000);
@@ -456,6 +459,15 @@ export default function Attendance() {
       }
     }
   };
+
+  const handleLiveRefresh = useCallback(() => {
+    if (classId && students.length > 0 && viewMode === 'daily') {
+      fetchSessionAttendance(classId, selectedDate, selectedSession, true);
+    }
+  }, [classId, students.length, viewMode, selectedDate, selectedSession, fetchSessionAttendance]);
+
+  // Canonical live-data synchronization for attendance
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], 'attendance');
 
   const handleRefresh = () => {
     if (classId) {

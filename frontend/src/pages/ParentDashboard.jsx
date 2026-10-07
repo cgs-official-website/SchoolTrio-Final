@@ -7,6 +7,7 @@ import TopNavbar from '../components/TopNavbar';
 import { LuCircleUser as UserCircle, LuLogOut as LogOut, LuSquareCheck as CheckSquare, LuGraduationCap as GraduationCap, LuCreditCard as CreditCard, LuLink as LinkIcon, LuBell as Bell, LuX as X, LuFileText as FileText, LuCalendar as Calendar, LuCoffee as Coffee, LuTrendingUp as TrendingUp, LuCalendarClock as CalendarClock, LuMessageSquare as MessageSquare, LuUsers as Users, LuChevronDown as ChevronDown, LuPlus as Plus, LuBookOpen as BookOpen } from 'react-icons/lu';
 import useSchoolBranding from '../hooks/useSchoolBranding';
 import { useNotifications } from '../context/NotificationContext';
+import { useLiveDataRefresh } from '../hooks/useLiveDataRefresh';
 
 const getStoredActiveStudentId = () => {
   try {
@@ -204,6 +205,15 @@ export default function ParentDashboard() {
       setHasOverdueFees(false);
     }
   }, [loadingChildren, activeStudentId, enrolledChildren, fetchFeeBadge]);
+
+  // Live data synchronization for fee badges and invoices
+  const handleLiveFeeRefresh = useCallback(() => {
+    if (activeStudentId) {
+      fetchFeeBadge(activeStudentId);
+    }
+  }, [activeStudentId, fetchFeeBadge]);
+
+  useLiveDataRefresh(handleLiveFeeRefresh, [handleLiveFeeRefresh], ['fees', 'invoices']);
 
   // Listen for payment events to refresh badge immediately
   useEffect(() => {

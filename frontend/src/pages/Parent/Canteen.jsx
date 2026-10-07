@@ -4,6 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import { listCanteenRequests, createCanteenRequest } from '../../api/canteen';
 import { getMyChildren } from '../../api/parents';
 import toast from 'react-hot-toast';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 import { 
   LuCoffee as Coffee, 
   LuUtensils as Utensils, 
@@ -83,6 +85,9 @@ export default function Canteen() {
     fetchRequests();
   }, [fetchRequests]);
 
+  // Live data synchronization for canteen meal requests and status updates
+  useLiveDataRefresh(fetchRequests, [fetchRequests], 'canteen');
+
   const handleRequestMeal = async (mealType) => {
     if (!studentId) {
       toast.error("No linked student found. Please link a student to your account first.");
@@ -95,6 +100,7 @@ export default function Canteen() {
         mealType,
         date: new Date().toISOString().split('T')[0]
       });
+      notifyDataChanged('canteen');
       toast.success(`${mealType} requested successfully!`);
       await fetchRequests();
     } catch (error) {

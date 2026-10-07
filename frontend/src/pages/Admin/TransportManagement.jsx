@@ -34,6 +34,8 @@ import toast from 'react-hot-toast';
 import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
 import usePermissions from '../../hooks/usePermissions';
 import { validateVehicleRegistrationNumber } from '../../utils/validationUtils';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 
 export default function TransportManagement() {
   const { userProfile } = useAuth();
@@ -197,6 +199,9 @@ export default function TransportManagement() {
     loadAllTransportData();
   }, [loadAllTransportData]);
 
+  // Live data synchronization for transport routes, vehicles, and student assignments
+  useLiveDataRefresh(loadAllTransportData, [loadAllTransportData], 'transport');
+
   // Route Handlers
   const handleCreateRoute = async (e) => {
     e.preventDefault();
@@ -240,6 +245,7 @@ export default function TransportManagement() {
         toast.success("Route created successfully!");
       }
       
+      notifyDataChanged('transport');
       setShowCreateModal(false);
       setNewRoute({ name: '', vehicleNumber: '', vehicleId: '', driverName: '', driverPhone: '', capacity: '', customData: {} });
       await loadAllTransportData();
@@ -259,6 +265,7 @@ export default function TransportManagement() {
     if (!confirmDeleteState.id) return;
     try {
       await deleteRoute(confirmDeleteState.id);
+      notifyDataChanged('transport');
       toast.success("Route deleted successfully");
       setConfirmDeleteState({ isOpen: false, id: null, name: '' });
       await loadAllTransportData();
@@ -288,6 +295,7 @@ export default function TransportManagement() {
     setAssigning(true);
     try {
       await assignStudentToRoute(activeRouteId, { studentId: selectedStudentId });
+      notifyDataChanged('transport');
       setShowAssignModal(false);
       setSelectedStudentId('');
       toast.success("Student assigned successfully!");
@@ -316,6 +324,7 @@ export default function TransportManagement() {
         }));
       }
       
+      notifyDataChanged('transport');
       toast.success("Student unassigned successfully");
       await loadAllTransportData();
     } catch (error) {
@@ -467,6 +476,7 @@ export default function TransportManagement() {
         await createVehicle(payload);
         toast.success("Vehicle registered successfully!");
       }
+      notifyDataChanged('transport');
       setVehicleErrors({});
       setShowVehicleModal(false);
       await loadAllTransportData();
@@ -487,6 +497,7 @@ export default function TransportManagement() {
     if (!vehicleConfirmDeleteState.id) return;
     try {
       await deleteVehicle(vehicleConfirmDeleteState.id);
+      notifyDataChanged('transport');
       toast.success("Vehicle deleted successfully");
       setVehicleConfirmDeleteState({ isOpen: false, id: null, name: '' });
       await loadAllTransportData();

@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getStudentAttendance } from '../../api/attendance';
 import { LuCalendar as Calendar, LuCircleCheck as CheckCircle2, LuCircleX as XCircle, LuCircleAlert as AlertCircle } from 'react-icons/lu';
 import toast from 'react-hot-toast';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function ParentAttendance() {
   const { userProfile } = useAuth();
@@ -19,7 +20,7 @@ export default function ParentAttendance() {
   const mountedRef = useRef(true);
   const currentStudentRef = useRef(studentId);
 
-  const fetchAttendance = async (targetStudentId, currentFilter) => {
+  const fetchAttendance = useCallback(async (targetStudentId, currentFilter) => {
     try {
       setLoading(true);
       setError(null);
@@ -52,7 +53,7 @@ export default function ParentAttendance() {
         setLoading(false);
       }
     }
-  };
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -69,7 +70,16 @@ export default function ParentAttendance() {
     return () => {
       mountedRef.current = false;
     };
-  }, [studentId, filter]);
+  }, [studentId, filter, fetchAttendance]);
+
+  const handleLiveRefresh = useCallback(() => {
+    if (studentId) {
+      fetchAttendance(studentId, filter);
+    }
+  }, [studentId, filter, fetchAttendance]);
+
+  // Canonical live-data synchronization for attendance
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], 'attendance');
 
   const normalizeStatus = (status) => {
     const s = (status || '').toUpperCase();

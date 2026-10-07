@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { LuCalendarDays, LuClock, LuBookOpen, LuMapPin, LuDownload as LuFileDown, LuX } from 'react-icons/lu';
 import { useAuth } from '../../context/AuthContext';
 import { getMyTimetable } from '../../api/timetables';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 
@@ -139,6 +140,9 @@ export default function TeacherTimetable() {
       fetchMyTimetable();
     }
   }, [schoolId, fetchMyTimetable]);
+
+  // Live data synchronization for timetables
+  useLiveDataRefresh(fetchMyTimetable, [fetchMyTimetable], ['timetables', 'timetable']);
 
   useEffect(() => {
     if (viewType === 'class' && isClassTeacher) {

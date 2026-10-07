@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getStudentInvoices, payInvoice } from '../../api/invoices';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { LuCreditCard as _CreditCard, LuReceipt as Receipt, LuCircleCheck as CheckCircle2, LuTrendingUp as TrendingUp, LuTriangleAlert as AlertTriangle, LuInfo as _Info } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 
@@ -19,9 +21,16 @@ export default function ParentFees() {
   const mountedRef = useRef(true);
   const currentStudentRef = useRef(studentId);
 
-  const fetchInvoices = async (targetStudentId) => {
+  const fetchInvoices = useCallback(async (targetStudentId, silent = false) => {
+    if (!targetStudentId) {
+      setInvoices([]);
+      setStats({ totalInvoiced: 0, paid: 0, outstanding: 0, overdueCount: 0, overdueAmount: 0 });
+      setLoading(false);
+      return;
+    }
+
+    if (!silent) setLoading(true);
     try {
-      setLoading(true);
       const res = await getStudentInvoices(targetStudentId, { limit: 100 });
       if (!mountedRef.current || currentStudentRef.current !== targetStudentId) return;
 
@@ -48,10 +57,10 @@ export default function ParentFees() {
       }
     } finally {
       if (mountedRef.current && currentStudentRef.current === targetStudentId) {
-        setLoading(false);
+        if (!silent) setLoading(false);
       }
     }
-  };
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -65,12 +74,21 @@ export default function ParentFees() {
     }
 
     setSelectedInvoice(null);
-    fetchInvoices(studentId);
+    fetchInvoices(studentId, false);
 
     return () => {
       mountedRef.current = false;
     };
-  }, [studentId]);
+  }, [studentId, fetchInvoices]);
+
+  // Live data synchronization for fees and invoices
+  const handleLiveRefresh = useCallback(() => {
+    if (studentId) {
+      fetchInvoices(studentId, true);
+    }
+  }, [fetchInvoices, studentId]);
+
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], ['fees', 'invoices']);
 
   const handleSimulatePayment = (invoice) => {
     setSelectedInvoice(invoice);
@@ -95,7 +113,10 @@ export default function ParentFees() {
       setSelectedInvoice(null);
 
       // Refresh authoritative invoice list and balance summary from PostgreSQL
-      await fetchInvoices(studentId);
+      await fetchInvoices(studentId, false);
+
+      notifyDataChanged('fees');
+      notifyDataChanged('invoices');
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('sms:invoice-paid', { detail: { studentId } }));

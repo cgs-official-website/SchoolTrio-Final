@@ -5,6 +5,8 @@ import { leavesApi } from '../../api/leaves';
 import toast from 'react-hot-toast';
 import usePermissions from '../../hooks/usePermissions';
 import ConfirmModal from '../../components/ConfirmModal';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 
 export default function LeaveManagement() {
   const { userProfile } = useAuth();
@@ -49,6 +51,9 @@ export default function LeaveManagement() {
     fetchLeaves();
   }, [fetchLeaves]);
 
+  // Live data synchronization for leave applications and approvals
+  useLiveDataRefresh(fetchLeaves, [fetchLeaves], ['leaves', 'leave']);
+
   const handleStatusUpdateClick = (leaveId, newStatus) => {
     if (!hasEditPermission) {
       toast.error("You do not have permission to approve/reject leave requests.");
@@ -88,9 +93,13 @@ export default function LeaveManagement() {
     try {
       if (actionType === 'delete') {
         await leavesApi.deleteLeave(leaveId);
+        notifyDataChanged('leaves');
+        notifyDataChanged('leave');
         toast.success("Leave request deleted successfully!");
       } else {
         await leavesApi.updateLeaveStatus(leaveId, { status: newStatus });
+        notifyDataChanged('leaves');
+        notifyDataChanged('leave');
         toast.success(`Leave request ${newStatus.toLowerCase()} successfully!`);
       }
       setSelectedLeave(null);

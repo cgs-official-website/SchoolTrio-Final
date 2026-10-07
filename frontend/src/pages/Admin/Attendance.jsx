@@ -28,6 +28,8 @@ import {
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function Attendance() {
   const { userProfile } = useAuth();
@@ -538,6 +540,7 @@ export default function Attendance() {
         }
       }
 
+      notifyDataChanged('attendance');
       toast.success('Attendance saved successfully!');
     } catch (error) {
       console.error('[Admin Attendance] Error saving attendance:', error);
@@ -548,6 +551,19 @@ export default function Attendance() {
       }
     }
   };
+
+  const handleLiveRefresh = useCallback(() => {
+    if (activeTab === 'dashboard') {
+      fetchDashboardStats(selectedDate);
+    } else if (activeTab === 'marking' && selectedClassId && students.length > 0) {
+      fetchDailySession(selectedClassId, selectedDate, selectedSession, true);
+    } else if (activeTab === 'analytics') {
+      fetchAnalyticsData(selectedDate);
+    }
+  }, [activeTab, selectedDate, selectedClassId, students.length, selectedSession, fetchDashboardStats, fetchDailySession, fetchAnalyticsData]);
+
+  // Canonical live-data synchronization for attendance
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], 'attendance');
 
   const handleRefresh = () => {
     setRefreshing(true);

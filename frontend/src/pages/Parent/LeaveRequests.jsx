@@ -5,6 +5,8 @@ import { useAuth } from '../../context/AuthContext';
 import { getStudentLeaves, createStudentLeave } from '../../api/leaves';
 import { uploadFileToCloudinaryOrFirebase } from '../../utils/cloudinary';
 import toast from 'react-hot-toast';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 
 export default function LeaveRequests() {
   const { userProfile } = useAuth();
@@ -76,6 +78,9 @@ export default function LeaveRequests() {
     };
   }, [studentId]);
 
+  // Live data synchronization for parent/student leave requests
+  useLiveDataRefresh(() => fetchLeaves(studentId), [studentId], ['leaves', 'leave']);
+
   const handleOpenModal = () => {
     setFormData({
       leaveType: 'sick',
@@ -139,6 +144,8 @@ export default function LeaveRequests() {
       };
 
       await createStudentLeave(studentId, payload);
+      notifyDataChanged('leaves');
+      notifyDataChanged('leave');
       toast.success('Leave request submitted successfully!');
       setShowModal(false);
       await fetchLeaves(studentId);

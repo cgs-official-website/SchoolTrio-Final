@@ -14,6 +14,8 @@ import {
   LuMessageSquare as MessageSquare
 } from 'react-icons/lu';
 import { TableSkeleton } from '../../components/Skeleton';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import toast from 'react-hot-toast';
 
 export default function HomeworkOverview() {
@@ -86,6 +88,15 @@ export default function HomeworkOverview() {
     };
   }, [studentId, fetchHomework]);
 
+  // Live data synchronization for homework
+  const handleLiveRefresh = useCallback(() => {
+    if (studentId) {
+      fetchHomework(studentId, true);
+    }
+  }, [fetchHomework, studentId]);
+
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], 'homework');
+
   // ============================================================
   // STATUS CHANGE (PATCH /api/v1/students/:studentId/homework/:homeworkId/status)
   // ============================================================
@@ -142,6 +153,7 @@ export default function HomeworkOverview() {
         );
       }
       toast.success('Status updated!');
+      notifyDataChanged('homework');
     } catch (error) {
       console.error('[HomeworkOverview] Error updating submission status:', error);
       toast.error(error.message || 'Failed to update status');

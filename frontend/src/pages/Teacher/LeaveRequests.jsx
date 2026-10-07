@@ -4,6 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import { leavesApi } from '../../api/leaves';
 import { uploadFileToCloudinaryOrFirebase } from '../../utils/cloudinary';
 import toast from 'react-hot-toast';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 
 export default function LeaveRequests() {
   const { userProfile, currentUser } = useAuth();
@@ -46,6 +48,9 @@ export default function LeaveRequests() {
   useEffect(() => {
     fetchMyLeaves();
   }, [fetchMyLeaves]);
+
+  // Live data synchronization for staff leave requests
+  useLiveDataRefresh(fetchMyLeaves, [fetchMyLeaves], ['leaves', 'leave']);
 
   const handleOpenModal = () => {
     setFormData({
@@ -108,6 +113,8 @@ export default function LeaveRequests() {
       };
 
       await leavesApi.createMyLeave(payload);
+      notifyDataChanged('leaves');
+      notifyDataChanged('leave');
       toast.success("Leave request submitted successfully!");
       setShowModal(false);
       await fetchMyLeaves();

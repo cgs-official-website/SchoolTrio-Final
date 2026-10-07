@@ -14,6 +14,7 @@ import {
   LuTag
 } from 'react-icons/lu';
 import toast from 'react-hot-toast';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function ParentLibrary() {
   const { userProfile } = useAuth();
@@ -99,6 +100,9 @@ export default function ParentLibrary() {
       mountedRef.current = false;
     };
   }, [studentId, fetchIssues]);
+
+  // Live data synchronization for student library loans and book returns
+  useLiveDataRefresh(() => fetchIssues(studentId), [studentId, fetchIssues], ['library', 'books', 'loans']);
 
   const handleRefresh = () => {
     fetchIssues(studentId, true);

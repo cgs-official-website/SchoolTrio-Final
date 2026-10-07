@@ -29,6 +29,8 @@ import { TableSkeleton } from '../../components/Skeleton';
 import { uploadFileToCloudinaryOrFirebase } from '../../utils/cloudinary';
 import usePermissions from '../../hooks/usePermissions';
 import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function HomeworkManagement() {
   const { userProfile } = useAuth();
@@ -155,6 +157,9 @@ export default function HomeworkManagement() {
     fetchHomeworkList();
   }, [schoolId, fetchMetadata, fetchHomeworkList]);
 
+  // Canonical live-data synchronization for homework
+  useLiveDataRefresh(fetchHomeworkList, [fetchHomeworkList], 'homework');
+
   // ============================================================
   // FILE VALIDATION
   // ============================================================
@@ -229,6 +234,7 @@ export default function HomeworkManagement() {
         attachments
       });
 
+      notifyDataChanged('homework');
       toast.success('Homework assigned successfully!');
       setShowCreateModal(false);
       setNewHomework({
@@ -326,6 +332,7 @@ export default function HomeworkManagement() {
         attachments
       });
 
+      notifyDataChanged('homework');
       toast.success('Homework updated successfully!');
       setShowEditModal(false);
       setEditingHomework(null);
@@ -352,6 +359,7 @@ export default function HomeworkManagement() {
     setDeleting(true);
     try {
       await deleteHomework(deletingId);
+      notifyDataChanged('homework');
       toast.success('Homework assignment deleted successfully!');
       setShowDeleteModal(false);
       setDeletingId(null);
@@ -397,6 +405,7 @@ export default function HomeworkManagement() {
         grade: grade !== null ? grade : undefined,
         feedback: feedback !== null ? feedback : undefined
       });
+      notifyDataChanged('homework');
       toast.success('Student submission updated!');
       
       // Update local state roster

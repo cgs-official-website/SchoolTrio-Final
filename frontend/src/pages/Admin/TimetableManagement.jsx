@@ -4,6 +4,8 @@ import { listClasses } from '../../api/classes';
 import { listStaff } from '../../api/staff';
 import { listSubjects } from '../../api/subjects';
 import { listTimetables, getClassTimetable, replaceClassTimetable } from '../../api/timetables';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 import { LuCalendar as Calendar, LuPlus as Plus, LuX as X, LuClock as Clock, LuBookOpen as BookOpen, LuUser as User, LuTrash2 as Trash2, LuPencil as Edit2 } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -289,57 +291,67 @@ export default function TimetableManagement() {
     };
   }, [schoolId, fetchAllTimetables]);
 
-  useEffect(() => {
-    let isCurrent = true;
-    if (selectedClassId) {
-      setLoading(true);
-      getClassTimetable(selectedClassId)
-        .then((res) => {
-          if (!isCurrent) return;
-          const scheduleData = res.data?.schedule || {};
-          const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-          const normalizedSchedule = {};
-
-          days.forEach(day => {
-            normalizedSchedule[day] = (scheduleData[day] || []).map(slot => {
-              const subDisplayName = typeof slot.subject === 'object' && slot.subject !== null
-                ? (slot.subject.name || slot.subject.code || 'Subject')
-                : (slot.subjectName || (typeof slot.subject === 'string' ? slot.subject : '') || 'Subject');
-              const subId = slot.subjectId || (typeof slot.subject === 'object' && slot.subject !== null ? slot.subject.id : null);
-
-              const teacherDisplayName = typeof slot.teacher === 'object' && slot.teacher !== null
-                ? (slot.teacher.name || `${slot.teacher.firstName || ''} ${slot.teacher.lastName || ''}`.trim() || '')
-                : (slot.teacherName || (typeof slot.teacher === 'string' ? slot.teacher : '') || '');
-              const teacherId = slot.teacherId || (typeof slot.teacher === 'object' && slot.teacher !== null ? slot.teacher.id : null);
-
-              return {
-                ...slot,
-                subject: subDisplayName,
-                subjectId: subId,
-                teacher: teacherDisplayName,
-                teacherId: teacherId
-              };
-            });
-          });
-
-          setSchedule(normalizedSchedule);
-          setCustomData(res.data?.customData || {});
-          setLoading(false);
-        })
-        .catch((err) => {
-          if (!isCurrent) return;
-          console.error("Error fetching class timetable:", err);
-          setSchedule({ Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [] });
-          setCustomData({});
-          setLoading(false);
-        });
-      return () => {
-        isCurrent = false;
-      };
-    } else {
+  const fetchClassSchedule = useCallback((targetClassId, showSpinner = true) => {
+    if (!targetClassId) {
       setSchedule({ Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [] });
+      setCustomData({});
+      return;
     }
-  }, [selectedClassId]);
+    if (showSpinner) setLoading(true);
+    getClassTimetable(targetClassId)
+      .then((res) => {
+        const scheduleData = res.data?.schedule || {};
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const normalizedSchedule = {};
+
+        days.forEach(day => {
+          normalizedSchedule[day] = (scheduleData[day] || []).map(slot => {
+            const subDisplayName = typeof slot.subject === 'object' && slot.subject !== null
+              ? (slot.subject.name || slot.subject.code || 'Subject')
+              : (slot.subjectName || (typeof slot.subject === 'string' ? slot.subject : '') || 'Subject');
+            const subId = slot.subjectId || (typeof slot.subject === 'object' && slot.subject !== null ? slot.subject.id : null);
+
+            const teacherDisplayName = typeof slot.teacher === 'object' && slot.teacher !== null
+              ? (slot.teacher.name || `${slot.teacher.firstName || ''} ${slot.teacher.lastName || ''}`.trim() || '')
+              : (slot.teacherName || (typeof slot.teacher === 'string' ? slot.teacher : '') || '');
+            const teacherId = slot.teacherId || (typeof slot.teacher === 'object' && slot.teacher !== null ? slot.teacher.id : null);
+
+            return {
+              ...slot,
+              subject: subDisplayName,
+              subjectId: subId,
+              teacher: teacherDisplayName,
+              teacherId: teacherId
+            };
+          });
+        });
+
+        setSchedule(normalizedSchedule);
+        setCustomData(res.data?.customData || {});
+      })
+      .catch((err) => {
+        console.error("Error fetching class timetable:", err);
+        setSchedule({ Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [] });
+        setCustomData({});
+      })
+      .finally(() => {
+        if (showSpinner) setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    fetchClassSchedule(selectedClassId, true);
+  }, [selectedClassId, fetchClassSchedule]);
+
+  // Live data synchronization for timetables
+  const handleLiveRefresh = useCallback(() => {
+    fetchAllTimetables();
+    if (selectedClassId) {
+      fetchClassSchedule(selectedClassId, false);
+    }
+  }, [fetchAllTimetables, fetchClassSchedule, selectedClassId]);
+
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], ['timetables', 'timetable', 'subjects']);
 
   const handleAddSlot = (e) => {
     e.preventDefault();
@@ -488,6 +500,8 @@ export default function TimetableManagement() {
         customData: uploadedCustomData
       });
       toast.success("Timetable saved successfully!");
+      notifyDataChanged('timetables');
+      notifyDataChanged('timetable');
       fetchAllTimetables();
     } catch (error) {
       console.error("Error saving timetable:", error);

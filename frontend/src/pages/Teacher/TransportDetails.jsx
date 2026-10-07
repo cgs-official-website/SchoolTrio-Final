@@ -6,6 +6,7 @@ import { getClass } from '../../api/classes';
 import { LuBus, LuSearch as Search, LuPhone, LuUser, LuMapPin, LuUsers } from 'react-icons/lu';
 import { TableSkeleton } from '../../components/Skeleton';
 import toast from 'react-hot-toast';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function TransportDetails() {
   const { userProfile } = useAuth();
@@ -69,6 +70,9 @@ export default function TransportDetails() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Live data synchronization for class transport assignments
+  useLiveDataRefresh(loadData, [loadData], ['transport', 'students']);
 
   const filteredStudents = students.filter(student => {
     const fullName = `${student.firstName || ''} ${student.lastName || ''}`.toLowerCase();

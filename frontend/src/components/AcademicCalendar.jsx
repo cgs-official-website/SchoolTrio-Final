@@ -11,6 +11,8 @@ import toast from 'react-hot-toast';
 import ConfirmModal from './ConfirmModal';
 import { LuPlus as Plus, LuX as X, LuCalendarDays as CalendarIcon, LuTrash2 as Trash2 } from 'react-icons/lu';
 import usePermissions from '../hooks/usePermissions';
+import { useLiveDataRefresh } from '../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../utils/liveData';
 
 import enUS from 'date-fns/locale/en-US';
 import { LuChevronLeft, LuChevronRight } from 'react-icons/lu';
@@ -122,8 +124,22 @@ export default function AcademicCalendar({ isAdmin }) {
     }
   }, []);
 
+  // Initial fetch on mount
   useEffect(() => {
     fetchEvents();
+  }, [fetchEvents]);
+
+  // Real-time event-driven synchronization across components, windows, and tabs
+  useLiveDataRefresh(fetchEvents, [fetchEvents], 'calendar');
+
+  // Active view background heartbeat (every 30s when tab is visible) for cross-device/independent browser sessions
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchEvents();
+      }
+    }, 30000);
+    return () => clearInterval(interval);
   }, [fetchEvents]);
 
   const handleAddEvent = async (e) => {
@@ -154,6 +170,7 @@ export default function AcademicCalendar({ isAdmin }) {
         };
         await calendarApi.updateEvent(selectedEvent.id, eventPayload);
         toast.success("Event updated successfully!");
+        notifyDataChanged('calendar');
       } else {
         if (!hasCreatePermission) {
           toast.error("You do not have permission to create events.");
@@ -176,6 +193,7 @@ export default function AcademicCalendar({ isAdmin }) {
             )
           );
           toast.success("Events added to calendar!");
+          notifyDataChanged('calendar');
         } else {
           const startDateStr = newEvent.start;
           const endDateStr = newEvent.end || newEvent.start;
@@ -195,6 +213,7 @@ export default function AcademicCalendar({ isAdmin }) {
           };
           await calendarApi.createEvent(eventPayload);
           toast.success("Event added to calendar!");
+          notifyDataChanged('calendar');
         }
       }
       
@@ -230,6 +249,7 @@ export default function AcademicCalendar({ isAdmin }) {
           setShowModal(false);
           setSelectedEvent(null);
           setNewEvent({ title: '', start: '', end: '', type: 'event', isCustomDates: false, customDates: [] });
+          notifyDataChanged('calendar');
           fetchEvents();
         } catch (error) {
           console.error("Error deleting event:", error);

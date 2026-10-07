@@ -84,6 +84,199 @@ async function resolveActorIdentity(schoolId, actor) {
 }
 
 /**
+ * Resolves the viewer display name and role from actor context and tenant database.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} userId - User UUID
+ * @param {Object} actor - Authenticated actor
+ * @returns {Promise<{ name: string, role: string, classId: string }>}
+ */
+export async function resolveViewerIdentity(schoolId, userId, actor = {}) {
+  const role = (actor.systemRole || actor.role || '').toUpperCase();
+  let name = null;
+  let displayRole = actor.systemRole || actor.role || 'User';
+  let classId = '';
+
+  // 1. Staff / Teacher Lookup
+  const staffProfile = await noticeRepository.findStaffProfileByUserId(schoolId, userId);
+  if (staffProfile) {
+    const fn = (staffProfile.firstName || staffProfile.customData?.firstName || '').trim();
+    const ln = (staffProfile.lastName || staffProfile.customData?.lastName || '').trim();
+    const constructedName = (fn || ln) ? `${fn} ${ln}`.trim() : null;
+    name = constructedName || staffProfile.name;
+    classId = staffProfile.assignedClassId || '';
+    if (staffProfile.designation) {
+      displayRole = staffProfile.designation;
+    } else if (staffProfile.staffType === 'teaching' || role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
+      displayRole = 'Teacher';
+    } else {
+      displayRole = 'Staff';
+    }
+  }
+
+  // 2. Parent Lookup
+  if (!name && (role === SYSTEM_ROLES.PARENT || role === 'PARENT' || actor.parentProfile)) {
+    const parentProfile = await noticeRepository.findParentProfileByUserId(schoolId, userId);
+    if (parentProfile) {
+      name = parentProfile.name;
+      displayRole = 'Parent';
+      const { classIds } = await noticeRepository.findParentStudentsAndClasses(schoolId, userId);
+      classId = classIds[0] || '';
+    }
+  }
+
+  // 3. Student Lookup
+  if (!name && (role === SYSTEM_ROLES.STUDENT || role === 'STUDENT')) {
+    const student = await noticeRepository.findStudentByUserId(schoolId, userId);
+    if (student) {
+      const fn = (student.firstName || '').trim();
+      const ln = (student.lastName || '').trim();
+      name = `${fn} ${ln}`.trim() || student.firstName;
+      classId = student.classId || '';
+      displayRole = 'Student';
+    }
+  }
+
+  // 4. Admin / Principal / Explicit Actor Name Fallback
+  if (!name) {
+    if (role === SYSTEM_ROLES.SUPER_ADMIN || role === 'SUPER_ADMIN' || role === 'SUPERADMIN') {
+      displayRole = 'Super Admin';
+    } else if (role === SYSTEM_ROLES.SCHOOL_ADMIN || role === 'SCHOOL_ADMIN' || role === 'ADMIN') {
+      displayRole = 'Administrator';
+    } else if (role === SYSTEM_ROLES.PRINCIPAL || role === 'PRINCIPAL') {
+      displayRole = 'Principal';
+    }
+
+    if (actor.name && actor.name !== 'User' && actor.name !== 'user') {
+      name = actor.name;
+    }
+  }
+
+  // 5. User Email Fallback (capitalized email prefix if no profile)
+  if (!name) {
+    const user = await noticeRepository.findUserById(schoolId, userId);
+    if (user?.email) {
+      const emailPrefix = user.email.split('@')[0];
+      name = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
+    }
+  }
+
+  return {
+    name: name || 'Staff Member',
+    role: displayRole,
+    classId
+  };
+}
+
+/**
+ * Batches identity resolution for viewers across multiple notices to eliminate N+1 queries and resolve historical "User" receipts.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Array<Object>} notices - Array of database Notice records
+ * @returns {Promise<Array<Object>>} Notices with enriched viewedBy arrays
+ */
+export async function batchEnrichNoticeViewers(schoolId, notices) {
+  if (!notices || !Array.isArray(notices) || notices.length === 0) return notices;
+
+  const userIdsToResolve = new Set();
+  for (const notice of notices) {
+    const viewers = Array.isArray(notice?.viewedBy) ? notice.viewedBy : [];
+    for (const v of viewers) {
+      const uid = v?.uid || v?.userId;
+      if (uid && (!v.name || v.name === 'User' || v.name === 'user')) {
+        userIdsToResolve.add(uid);
+      }
+    }
+  }
+
+  if (userIdsToResolve.size === 0) return notices;
+
+  const userIdsArray = Array.from(userIdsToResolve);
+
+  const [staffProfiles, parentProfiles, students, users] = await Promise.all([
+    noticeRepository.findStaffProfilesByUserIds(schoolId, userIdsArray),
+    noticeRepository.findParentProfilesByUserIds(schoolId, userIdsArray),
+    noticeRepository.findStudentsByUserIds(schoolId, userIdsArray),
+    noticeRepository.findUsersByIds(schoolId, userIdsArray)
+  ]);
+
+  const identityMap = new Map();
+
+  for (const s of (staffProfiles || [])) {
+    const fn = (s.firstName || s.customData?.firstName || '').trim();
+    const ln = (s.lastName || s.customData?.lastName || '').trim();
+    const constructedName = (fn || ln) ? `${fn} ${ln}`.trim() : null;
+    const name = constructedName || s.name;
+    if (name && s.userId) {
+      identityMap.set(s.userId, {
+        name,
+        role: s.designation || (s.staffType === 'teaching' ? 'Teacher' : 'Staff'),
+        classId: s.assignedClassId || ''
+      });
+    }
+  }
+
+  for (const p of (parentProfiles || [])) {
+    if (p.name && p.userId && !identityMap.has(p.userId)) {
+      identityMap.set(p.userId, {
+        name: p.name,
+        role: 'Parent',
+        classId: ''
+      });
+    }
+  }
+
+  for (const st of (students || [])) {
+    const fn = (st.firstName || '').trim();
+    const ln = (st.lastName || '').trim();
+    const name = `${fn} ${ln}`.trim();
+    const key = st.userId || st.id;
+    if (name && key && !identityMap.has(key)) {
+      identityMap.set(key, {
+        name,
+        role: 'Student',
+        classId: st.classId || ''
+      });
+    }
+  }
+
+  for (const u of (users || [])) {
+    if (u.id && !identityMap.has(u.id)) {
+      const emailPrefix = u.email ? u.email.split('@')[0] : 'User';
+      const formattedName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
+      identityMap.set(u.id, {
+        name: formattedName,
+        role: u.systemRole === 'SCHOOL_ADMIN' ? 'Administrator' : (u.systemRole === 'TEACHER' ? 'Teacher' : u.systemRole || 'User'),
+        classId: ''
+      });
+    }
+  }
+
+  for (const notice of notices) {
+    if (Array.isArray(notice.viewedBy)) {
+      notice.viewedBy = notice.viewedBy.map((v) => {
+        if (!v) return v;
+        const uid = v.uid || v.userId;
+        if (uid && (!v.name || v.name === 'User' || v.name === 'user')) {
+          const resolved = identityMap.get(uid);
+          if (resolved) {
+            return {
+              ...v,
+              name: resolved.name,
+              role: resolved.role || v.role || 'Staff',
+              classId: v.classId || resolved.classId
+            };
+          }
+        }
+        return v;
+      });
+    }
+  }
+
+  return notices;
+}
+
+/**
  * Lists notices for the authenticated user, applying strict tenant isolation and role-specific visibility rules.
  *
  * @param {string} schoolId - Tenant UUID
@@ -104,9 +297,10 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
     const { notices, total } = await noticeRepository.findNoticesList(schoolId, query);
     const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
     const page = Math.max(1, Number(query.page) || 1);
+    const enrichedNotices = await batchEnrichNoticeViewers(schoolId, notices);
 
     return {
-      notices: notices.map(formatNoticeResponse),
+      notices: enrichedNotices.map(formatNoticeResponse),
       pagination: {
         page,
         limit,
@@ -167,9 +361,10 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
 
     const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
     const page = Math.max(1, Number(query.page) || 1);
+    const enrichedNotices = await batchEnrichNoticeViewers(schoolId, notices);
 
     return {
-      notices: notices.map(formatNoticeResponse),
+      notices: enrichedNotices.map(formatNoticeResponse),
       pagination: {
         page,
         limit,
@@ -215,9 +410,10 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
 
     const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
     const page = Math.max(1, Number(query.page) || 1);
+    const enrichedNotices = await batchEnrichNoticeViewers(schoolId, filteredNotices);
 
     return {
-      notices: filteredNotices.map(formatNoticeResponse),
+      notices: enrichedNotices.map(formatNoticeResponse),
       pagination: {
         page,
         limit,
@@ -256,9 +452,10 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
 
     const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
     const page = Math.max(1, Number(query.page) || 1);
+    const enrichedNotices = await batchEnrichNoticeViewers(schoolId, notices);
 
     return {
-      notices: notices.map(formatNoticeResponse),
+      notices: enrichedNotices.map(formatNoticeResponse),
       pagination: {
         page,
         limit,
@@ -279,9 +476,10 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
 
   const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
   const page = Math.max(1, Number(query.page) || 1);
+  const enrichedNotices = await batchEnrichNoticeViewers(schoolId, notices);
 
   return {
-    notices: notices.map(formatNoticeResponse),
+    notices: enrichedNotices.map(formatNoticeResponse),
     pagination: {
       page,
       limit,
@@ -400,7 +598,8 @@ export async function getNoticeById(schoolId, noticeId, actor = {}) {
     throw new NotFoundError('Notice');
   }
 
-  return formatNoticeResponse(notice);
+  const [enriched] = await batchEnrichNoticeViewers(schoolId, [notice]);
+  return formatNoticeResponse(enriched || notice);
 }
 
 /**
@@ -687,22 +886,12 @@ export async function deleteNotice(schoolId, noticeId, actor = {}) {
  */
 export async function recordNoticeView(schoolId, noticeId, actor = {}) {
   const userId = actor.userId || actor.id;
-  const role = (actor.systemRole || actor.role || 'user').toLowerCase();
-  const name = actor.name || actor.email || 'User';
-
-  let classId = '';
-  if (role === 'teacher') {
-    const staffProfile = await noticeRepository.findStaffProfileByUserId(schoolId, userId);
-    classId = staffProfile?.assignedClassId || '';
-  } else if (role === 'parent') {
-    const { classIds } = await noticeRepository.findParentStudentsAndClasses(schoolId, userId);
-    classId = classIds[0] || '';
-  }
+  const { name, role: resolvedRole, classId } = await resolveViewerIdentity(schoolId, userId, actor);
 
   const viewerData = {
     uid: userId,
     name,
-    role,
+    role: resolvedRole.toLowerCase(),
     classId,
     viewedAt: new Date().toISOString()
   };
@@ -713,8 +902,10 @@ export async function recordNoticeView(schoolId, noticeId, actor = {}) {
     throw new NotFoundError('Notice');
   }
 
+  const [enriched] = await batchEnrichNoticeViewers(schoolId, [result.notice]);
+
   return {
-    notice: formatNoticeResponse(result.notice),
+    notice: formatNoticeResponse(enriched || result.notice),
     alreadyViewed: result.alreadyViewed
   };
 }

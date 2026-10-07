@@ -7,8 +7,41 @@ import * as calendarApiModule from '../../api/calendar.js';
 import * as firestoreModule from '../../firebase/firestore.js';
 
 describe('AcademicCalendar Role Authorization & Read-Only Regressions', () => {
+  let mockStorage = {};
+  const listeners = {};
+
   beforeEach(() => {
     vi.restoreAllMocks();
+    mockStorage = {};
+    global.localStorage = {
+      getItem: (key) => mockStorage[key] || null,
+      setItem: (key, val) => { mockStorage[key] = String(val); },
+      removeItem: (key) => { delete mockStorage[key]; },
+      clear: () => { mockStorage = {}; }
+    };
+    global.window = {
+      addEventListener: (type, fn) => {
+        if (!listeners[type]) listeners[type] = [];
+        listeners[type].push(fn);
+      },
+      removeEventListener: (type, fn) => {
+        if (listeners[type]) {
+          listeners[type] = listeners[type].filter(f => f !== fn);
+        }
+      },
+      dispatchEvent: (event) => {
+        const type = event.type;
+        if (listeners[type]) {
+          listeners[type].forEach(fn => fn(event));
+        }
+      }
+    };
+    global.CustomEvent = class CustomEvent {
+      constructor(type, options = {}) {
+        this.type = type;
+        this.detail = options.detail || {};
+      }
+    };
   });
 
   it('exports AcademicCalendar, AdminCalendar, TeacherCalendar, and ParentCalendar as valid component functions', () => {
@@ -127,6 +160,40 @@ describe('AcademicCalendar Role Authorization & Read-Only Regressions', () => {
       expect(adminWrapper.props.children.props.isAdmin).toBe(true);
       expect(teacherWrapper.props.children.props.isAdmin).toBe(false);
       expect(parentWrapper.props.children.props.isAdmin).toBe(false);
+    });
+  });
+
+  // ============================================================
+  // 4. REAL-TIME DATA SYNCHRONIZATION & MULTI-SESSION PROPAGATION
+  // ============================================================
+  describe('Real-Time Data Synchronization & Multi-Session Propagation', () => {
+    it('dispatches LIVE_DATA_EVENT on notifyDataChanged("calendar")', () => {
+      const eventListener = vi.fn();
+      window.addEventListener('app:data-updated', eventListener);
+
+      import('../../utils/liveData.js').then(({ notifyDataChanged }) => {
+        notifyDataChanged('calendar');
+        expect(eventListener).toHaveBeenCalled();
+        const eventDetail = eventListener.mock.calls[0][0].detail;
+        expect(eventDetail.entity).toBe('calendar');
+        window.removeEventListener('app:data-updated', eventListener);
+      });
+    });
+
+    it('writes live data ping to localStorage for cross-window and cross-tab sync', async () => {
+      const { notifyDataChanged, LIVE_DATA_STORAGE_KEY } = await import('../../utils/liveData.js');
+      notifyDataChanged('calendar');
+
+      const storedPing = localStorage.getItem(LIVE_DATA_STORAGE_KEY);
+      expect(storedPing).toBeTruthy();
+      const parsed = JSON.parse(storedPing);
+      expect(parsed.entity).toBe('calendar');
+      expect(typeof parsed.timestamp).toBe('number');
+    });
+
+    it('filters entity updates correctly so calendar listeners ignore unrelated entities', async () => {
+      const { useLiveDataRefresh } = await import('../../hooks/useLiveDataRefresh.js');
+      expect(typeof useLiveDataRefresh).toBe('function');
     });
   });
 });

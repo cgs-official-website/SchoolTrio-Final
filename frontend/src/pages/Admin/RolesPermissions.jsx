@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getRoles, createRole, updateRole, updateRolePermissions, deleteRole } from '../../api/rbac.js';
+import { notifyDataChanged } from '../../utils/liveData.js';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { LuShield, LuSave, LuCheck, LuX, LuPlus, LuTrash2 } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -175,6 +177,9 @@ export default function RolesPermissions() {
     fetchRolesData();
   }, [fetchRolesData]);
 
+  // Live data synchronization for RBAC roles list and permissions
+  useLiveDataRefresh(fetchRolesData, [fetchRolesData], 'rbac');
+
   const handleAddRole = async (e) => {
     e.preventDefault();
     const role = newRoleName.trim();
@@ -200,6 +205,7 @@ export default function RolesPermissions() {
         setActiveRole(role);
         setNewRoleName('');
         setIsAddingRole(false);
+        notifyDataChanged('rbac');
         toast.success(`Role "${role}" created successfully!`);
       }
     } catch (error) {
@@ -290,6 +296,7 @@ export default function RolesPermissions() {
             setActiveRole(remaining[0] || DEFAULT_ROLES[0]);
           }
 
+          notifyDataChanged('rbac');
           toast.success(`${roleToDelete} role deleted successfully!`);
         } catch (error) {
           console.error('Error deleting role:', error);
@@ -327,6 +334,7 @@ export default function RolesPermissions() {
         }
       }
 
+      notifyDataChanged('rbac');
       window.dispatchEvent(new CustomEvent('rbac-permissions-updated'));
       toast.success(`${activeRole} permissions saved successfully!`);
     } catch (error) {

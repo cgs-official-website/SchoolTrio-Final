@@ -22,6 +22,8 @@ import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
 import usePermissions from '../../hooks/usePermissions';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 
 const EXPORT_FIELD_OPTIONS = [
   { id: 'name', label: 'Subject Name', defaultChecked: true },
@@ -92,6 +94,9 @@ export default function SubjectManagement() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Live data synchronization for subjects and staff assignments
+  useLiveDataRefresh(fetchData, [fetchData], ['subjects', 'staff']);
 
   const handleOpenModal = (subject = null) => {
     if (subject) {
@@ -185,9 +190,11 @@ export default function SubjectManagement() {
 
         if (syncPromises.length > 0) {
           await Promise.allSettled(syncPromises);
+          notifyDataChanged('staff');
         }
       }
 
+      notifyDataChanged('subjects');
       setShowModal(false);
       await fetchData();
     } catch (error) {
@@ -217,6 +224,7 @@ export default function SubjectManagement() {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
         try {
           await deleteSubject(id);
+          notifyDataChanged('subjects');
           toast.success("Subject deleted successfully!");
           await fetchData();
         } catch (error) {
@@ -332,6 +340,7 @@ export default function SubjectManagement() {
         const addedCount = result.addedCount || 0;
         const skippedCount = result.skippedCount || 0;
 
+        notifyDataChanged('subjects');
         await fetchData();
 
         toast.success(`Imported ${addedCount} subjects. (Skipped: ${skippedCount})`);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getMyPermissions } from '../api/rbac.js';
+import { useLiveDataRefresh } from './useLiveDataRefresh';
 
 /**
  * Hook to retrieve and evaluate active user RBAC permissions for the active tenant.
@@ -124,6 +125,9 @@ export default function usePermissions() {
       window.removeEventListener('rbac-permissions-updated', handleRbacUpdate);
     };
   }, [fetchPermissions]);
+
+  // Canonical live-data synchronization for RBAC permissions
+  useLiveDataRefresh(fetchPermissions, [fetchPermissions], ['rbac', 'permissions']);
 
   const canRead = useCallback((moduleKey) => {
     if (permissions === 'ALL' || isUnrestricted) return true;

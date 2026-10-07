@@ -19,6 +19,8 @@ import {
   LuCalendar as CalendarIcon
 } from 'react-icons/lu';
 import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 
 export default function CanteenManagement() {
   const { userProfile } = useAuth();
@@ -61,6 +63,9 @@ export default function CanteenManagement() {
   useEffect(() => {
     fetchRequests();
   }, [fetchRequests]);
+
+  // Live data synchronization for canteen meal requests and approvals
+  useLiveDataRefresh(fetchRequests, [fetchRequests], 'canteen');
 
   // Fetch auxiliary Students and Classes via REST API if schoolId exists
   useEffect(() => {
@@ -111,6 +116,7 @@ export default function CanteenManagement() {
     setUpdatingId(requestId);
     try {
       await updateCanteenRequestStatus(requestId, { status: newStatus });
+      notifyDataChanged('canteen');
       toast.success(`Request status updated to ${newStatus}`);
       await fetchRequests();
     } catch (error) {

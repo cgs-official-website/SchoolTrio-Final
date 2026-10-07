@@ -8,6 +8,7 @@ import { listSubjects } from '../../api/subjects';
 import { bulkUpsertAssessmentGrades } from '../../api/assessments';
 import { getReportCardTemplate } from '../../api/reportCardTemplates';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 import { 
   LuFileText as FileText, 
   LuPlus as Plus, 
@@ -136,6 +137,7 @@ export default function ExamManagement() {
     try {
       await updateExamStatus(examId, newStatus);
       toast.success(`Exam marked as ${newStatus}!`);
+      notifyDataChanged('exams');
       await fetchExams();
       if (viewingProgressExam?.id === examId) {
         setViewingProgressExam(prev => prev ? { ...prev, status: newStatus } : null);
@@ -257,6 +259,7 @@ export default function ExamManagement() {
       await createExam(payload);
       await fetchExams();
       toast.success("Exam created with automated subject assessments!");
+      notifyDataChanged('exams');
       setShowCreateModal(false);
       setNewExam({
         name: '',
@@ -370,6 +373,8 @@ export default function ExamManagement() {
       });
 
       toast.success("Marks successfully updated with audit log override!");
+      notifyDataChanged('exams');
+      notifyDataChanged('marks');
       setOverrideModal({ isOpen: false, student: null, assessment: null, currentMarks: '', newMarks: '', reason: '' });
       if (selectedExamId && selectedClassId) {
         await generateReportCard();
@@ -450,6 +455,8 @@ export default function ExamManagement() {
           ? `Successfully published ${count} report card${count === 1 ? '' : 's'}! Parents can now view them.`
           : "Report cards published successfully! Parents can now view them."
       );
+      notifyDataChanged('exams');
+      notifyDataChanged('marks');
     } catch (error) {
       console.error("Error publishing report cards:", error);
       toast.dismiss(loadingToast);

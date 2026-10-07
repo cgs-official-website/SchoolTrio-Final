@@ -157,126 +157,167 @@ export default function AdminOverview() {
     }
   };
 
+  // Targeted Fetch Callbacks for Live Synchronization
+  const fetchStudentsCount = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      const res = await listStudents({ limit: 1 });
+      const count = res?.pagination?.total ?? (Array.isArray(res?.data) ? res.data.length : 0);
+      setStats(prev => ({ ...prev, students: count }));
+    } catch (err) {
+      console.error('[AdminOverview] Error fetching students count:', err);
+    }
+  }, [schoolId]);
+
+  const fetchStaffCount = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      const res = await listStaff({ limit: 1 });
+      const count = res?.pagination?.total ?? (Array.isArray(res?.data) ? res.data.length : 0);
+      setStats(prev => ({ ...prev, staff: count }));
+    } catch (err) {
+      console.error('[AdminOverview] Error fetching staff count:', err);
+    }
+  }, [schoolId]);
+
+  const fetchClassesCount = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      const res = await listClasses({ limit: 100 });
+      const classesData = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+      const totalActiveClasses = classesData.reduce((acc, c) => {
+        if (Array.isArray(c.sections) && c.sections.length > 0) {
+          return acc + c.sections.length;
+        }
+        return acc + 1;
+      }, 0);
+      setStats(prev => ({ ...prev, classes: totalActiveClasses }));
+    } catch (err) {
+      console.error('[AdminOverview] Error fetching classes count:', err);
+    }
+  }, [schoolId]);
+
+  const fetchNoticesData = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      const res = await listNotices({ limit: 10 });
+      const noticesData = Array.isArray(res?.data) ? res.data : [];
+      setStats(prev => ({ ...prev, notices: noticesData.length }));
+      setRecentNotices(noticesData.slice(0, 3));
+    } catch (err) {
+      console.error('[AdminOverview] Error fetching notices data:', err);
+    }
+  }, [schoolId]);
+
+  const fetchPayrollStats = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      const res = await listPayroll({ limit: 50 });
+      const payrollData = Array.isArray(res?.data) ? res.data : [];
+      const currentMonth = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+      const isProcessed = payrollData.some(p => p.month === currentMonth || p.period === currentMonth);
+      setSystemStatus(prev => ({
+        ...prev,
+        payrollProcessed: isProcessed,
+        payrollActive: payrollData.length > 0
+      }));
+    } catch (err) {
+      console.error('[AdminOverview] Error fetching payroll stats:', err);
+    }
+  }, [schoolId]);
+
+  const fetchInvoiceStats = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      const res = await getInvoiceStats();
+      const statsData = res?.data || res || {};
+      const expected = Number(statsData.totalExpected ?? statsData.expected ?? 0);
+      const collected = Number(statsData.collectedAmount ?? statsData.collected ?? 0);
+      const outstanding = Number(statsData.outstandingAmount ?? statsData.outstanding ?? 0);
+      const pct = Number(statsData.collectionPercentage ?? statsData.feeCollectedPct) || (expected > 0 ? Math.round((collected / expected) * 100) : 0);
+      const hasFees = expected > 0 || collected > 0 || outstanding > 0;
+      setSystemStatus(prev => ({ ...prev, feeCollectedPct: pct, feesActive: hasFees }));
+    } catch (err) {
+      console.error('[AdminOverview] Error fetching invoice stats:', err);
+    }
+  }, [schoolId]);
+
+  const fetchAttendanceAlerts = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      const res = await notificationsApi.listNotifications({
+        type: 'attendance_pending',
+        unread: true,
+        limit: 50
+      });
+      const list = Array.isArray(res?.data) ? res.data : [];
+      list.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
+      setPendingAttendanceAlerts(list);
+    } catch (error) {
+      console.error('[AdminOverview] Error fetching pending attendance alerts from REST:', error);
+    }
+  }, [schoolId]);
+
+  const fetchCalendarEvents = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const res = await calendarApi.listEvents({ startDate: todayStr });
+      const list = Array.isArray(res?.data) ? res.data : [];
+      setSystemStatus(prev => ({ ...prev, activeEvents: list.length }));
+    } catch (error) {
+      console.error('[AdminOverview] Error fetching calendar events from REST:', error);
+    }
+  }, [schoolId]);
+
+  // Initial load
   useEffect(() => {
     if (!schoolId) return;
 
     let isMounted = true;
     setLoading(true);
 
-    const fetchOverviewStats = async () => {
-      try {
-        const [studentsRes, staffRes, classesRes, noticesRes, payrollRes] = await Promise.allSettled([
-          listStudents({ limit: 1 }),
-          listStaff({ limit: 1 }),
-          listClasses({ limit: 100 }),
-          listNotices({ limit: 10 }),
-          listPayroll({ limit: 50 })
-        ]);
-
-        if (!isMounted) return;
-
-        const studentCount = studentsRes.status === 'fulfilled' ? (studentsRes.value?.pagination?.total ?? (Array.isArray(studentsRes.value?.data) ? studentsRes.value.data.length : 0)) : 0;
-        const staffCount = staffRes.status === 'fulfilled' ? (staffRes.value?.pagination?.total ?? (Array.isArray(staffRes.value?.data) ? staffRes.value.data.length : 0)) : 0;
-        const classesData = classesRes.status === 'fulfilled' && Array.isArray(classesRes.value?.data) ? classesRes.value.data : (classesRes.status === 'fulfilled' && Array.isArray(classesRes.value) ? classesRes.value : []);
-        
-        // Calculate total active classes by counting flattened active sections (matching Class Management)
-        const totalActiveClasses = classesData.reduce((acc, c) => {
-          if (Array.isArray(c.sections) && c.sections.length > 0) {
-            return acc + c.sections.length;
-          }
-          return acc + 1;
-        }, 0);
-
-        const noticesData = noticesRes.status === 'fulfilled' && Array.isArray(noticesRes.value?.data) ? noticesRes.value.data : [];
-        const payrollData = payrollRes.status === 'fulfilled' && Array.isArray(payrollRes.value?.data) ? payrollRes.value.data : [];
-
-        setStats(prev => ({
-          ...prev,
-          students: studentCount,
-          staff: staffCount,
-          classes: totalActiveClasses,
-          notices: noticesData.length
-        }));
-
-        setRecentNotices(noticesData.slice(0, 3));
-
-        const currentMonth = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
-        const isProcessed = payrollData.some(p => p.month === currentMonth || p.period === currentMonth);
-        setSystemStatus(prev => ({
-          ...prev,
-          payrollProcessed: isProcessed,
-          payrollActive: payrollData.length > 0
-        }));
-      } catch (err) {
-        console.error('[AdminOverview] Error fetching stats from REST:', err);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+    Promise.allSettled([
+      fetchStudentsCount(),
+      fetchStaffCount(),
+      fetchClassesCount(),
+      fetchNoticesData(),
+      fetchPayrollStats(),
+      fetchInvoiceStats(),
+      fetchAttendanceAlerts(),
+      fetchCalendarEvents()
+    ]).finally(() => {
+      if (isMounted) {
+        setLoading(false);
       }
-    };
-
-    fetchOverviewStats();
-
-    // Authoritative REST Institutional Fee Statistics
-    getInvoiceStats()
-      .then((res) => {
-        if (!isMounted) return;
-        const statsData = res?.data || res || {};
-        const expected = Number(statsData.totalExpected ?? statsData.expected ?? 0);
-        const collected = Number(statsData.collectedAmount ?? statsData.collected ?? 0);
-        const outstanding = Number(statsData.outstandingAmount ?? statsData.outstanding ?? 0);
-        const pct = Number(statsData.collectionPercentage ?? statsData.feeCollectedPct) || (expected > 0 ? Math.round((collected / expected) * 100) : 0);
-        const hasFees = expected > 0 || collected > 0 || outstanding > 0;
-        setSystemStatus(prev => ({ ...prev, feeCollectedPct: pct, feesActive: hasFees }));
-      })
-      .catch((err) => {
-        console.error('[AdminOverview] Error fetching invoice stats:', err);
-      });
-
-    // Authoritative REST Pending Attendance Alerts
-    const fetchAttendanceAlerts = async () => {
-      try {
-        const res = await notificationsApi.listNotifications({
-          type: 'attendance_pending',
-          unread: true,
-          limit: 50
-        });
-        if (!isMounted) return;
-        const list = Array.isArray(res?.data) ? res.data : [];
-        list.sort((a, b) => {
-          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return dateB - dateA;
-        });
-        if (!isMounted) return;
-        setPendingAttendanceAlerts(list);
-      } catch (error) {
-        console.error("Error fetching pending attendance alerts from REST:", error);
-      }
-    };
-
-    fetchAttendanceAlerts();
-
-    // Authoritative REST Academic Calendar active events
-    const fetchCalendarEvents = async () => {
-      try {
-        const todayStr = new Date().toISOString().split('T')[0];
-        const res = await calendarApi.listEvents({ startDate: todayStr });
-        if (!isMounted) return;
-        const list = Array.isArray(res?.data) ? res.data : [];
-        setSystemStatus(prev => ({ ...prev, activeEvents: list.length }));
-      } catch (error) {
-        console.error('[AdminOverview] Error fetching calendar events from REST:', error);
-      }
-    };
-
-    fetchCalendarEvents();
+    });
 
     return () => {
       isMounted = false;
     };
-  }, [schoolId]);
+  }, [
+    schoolId,
+    fetchStudentsCount,
+    fetchStaffCount,
+    fetchClassesCount,
+    fetchNoticesData,
+    fetchPayrollStats,
+    fetchInvoiceStats,
+    fetchAttendanceAlerts,
+    fetchCalendarEvents
+  ]);
+
+  useLiveDataRefresh(fetchStudentsCount, [fetchStudentsCount], 'students');
+  useLiveDataRefresh(fetchStaffCount, [fetchStaffCount], 'staff');
+  useLiveDataRefresh(fetchClassesCount, [fetchClassesCount], 'classes');
+  useLiveDataRefresh(fetchNoticesData, [fetchNoticesData], 'notices');
+  useLiveDataRefresh(fetchCalendarEvents, [fetchCalendarEvents], 'calendar');
+  useLiveDataRefresh(fetchInvoiceStats, [fetchInvoiceStats], ['fees', 'invoices']);
+  useLiveDataRefresh(fetchAttendanceAlerts, [fetchAttendanceAlerts], 'attendance');
 
   if (loading) {
     return (

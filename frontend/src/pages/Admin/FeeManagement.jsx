@@ -190,6 +190,8 @@ export default function FeeManagement() {
       }
 
       await loadInvoicesAndStats();
+      notifyDataChanged('fees');
+      notifyDataChanged('invoices');
       setShowCreateModal(false);
       setNewFee({ name: '', amount: '', dueDate: new Date().toISOString().split('T')[0], classId: '', collectionPeriodId: '', collectionPeriodName: '', customData: {} });
     } catch (error) {
@@ -211,6 +213,8 @@ export default function FeeManagement() {
         remarks: 'Recorded by Admin'
       });
       toast.success("Payment recorded successfully!");
+      notifyDataChanged('fees');
+      notifyDataChanged('invoices');
       await loadInvoicesAndStats();
     } catch (error) {
       console.error("Error recording payment:", error);
@@ -228,6 +232,8 @@ export default function FeeManagement() {
       } else {
         toast.success("All enrolled students in this class already have invoices.");
       }
+      notifyDataChanged('fees');
+      notifyDataChanged('invoices');
       await loadInvoicesAndStats();
     } catch (err) {
       console.error("Failed to sync invoices:", err);
@@ -245,6 +251,8 @@ export default function FeeManagement() {
       setDeletingId(feeStructureId);
       await feesApi.deleteFeeStructure(feeStructureId);
       toast.success("Fee structure deleted successfully.");
+      notifyDataChanged('fees');
+      notifyDataChanged('invoices');
       await loadInvoicesAndStats();
     } catch (err) {
       console.error("Failed to delete fee structure:", err);

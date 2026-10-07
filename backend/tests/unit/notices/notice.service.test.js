@@ -437,7 +437,12 @@ describe('Unit: Notice Service Tests — Backend Notice Domain', () => {
 
   describe('5. recordNoticeView', () => {
     it('records read receipt and flags alreadyViewed status', async () => {
-      noticeRepository.findStaffProfileByUserId.mockResolvedValue({ assignedClassId: CLASS_ID });
+      noticeRepository.findStaffProfileByUserId.mockResolvedValue({
+        id: 'staff-1',
+        name: 'Edna Krabappel',
+        assignedClassId: CLASS_ID,
+        staffType: 'teaching'
+      });
       noticeRepository.recordNoticeView.mockResolvedValue({
         notice: {
           ...MOCK_NOTICE,
@@ -461,12 +466,113 @@ describe('Unit: Notice Service Tests — Backend Notice Domain', () => {
         NOTICE_ID,
         expect.objectContaining({
           uid: TEACHER_USER_ID,
+          name: 'Edna Krabappel',
           role: 'teacher',
           classId: CLASS_ID
         })
       );
       expect(result.alreadyViewed).toBe(false);
       expect(result.notice.viewedBy.length).toBe(1);
+      expect(result.notice.viewedBy[0].name).toBe('Edna Krabappel');
+    });
+  });
+
+  describe('6. resolveViewerIdentity & batchEnrichNoticeViewers Forensic Tests', () => {
+    it('resolves staff display name from StaffProfile (firstName + lastName or name)', async () => {
+      noticeRepository.findStaffProfileByUserId.mockResolvedValue({
+        id: 'staff-1',
+        userId: TEACHER_USER_ID,
+        firstName: 'John',
+        lastName: 'Kumar',
+        staffType: 'teaching',
+        designation: 'Senior Teacher'
+      });
+
+      const identity = await noticeService.resolveViewerIdentity(SCHOOL_ID, TEACHER_USER_ID, {
+        userId: TEACHER_USER_ID,
+        systemRole: 'TEACHER'
+      });
+
+      expect(identity.name).toBe('John Kumar');
+      expect(identity.role).toBe('Senior Teacher');
+    });
+
+    it('resolves staff display name from customData if standard fields are empty', async () => {
+      noticeRepository.findStaffProfileByUserId.mockResolvedValue({
+        id: 'staff-2',
+        userId: TEACHER_USER_ID,
+        name: null,
+        customData: { firstName: 'Priya', lastName: 'Sharma' },
+        staffType: 'teaching'
+      });
+
+      const identity = await noticeService.resolveViewerIdentity(SCHOOL_ID, TEACHER_USER_ID, {
+        userId: TEACHER_USER_ID,
+        systemRole: 'TEACHER'
+      });
+
+      expect(identity.name).toBe('Priya Sharma');
+      expect(identity.role).toBe('Teacher');
+    });
+
+    it('batch enriches historical notices with generic "User" into real Staff names without N+1 queries', async () => {
+      const historicalNotice = {
+        ...MOCK_NOTICE,
+        viewedBy: [
+          { uid: 'user-staff-1', name: 'User', role: 'teacher', viewedAt: '2026-10-07T10:00:00Z' },
+          { uid: 'user-staff-2', name: 'User', role: 'teacher', viewedAt: '2026-10-07T10:05:00Z' }
+        ]
+      };
+
+      noticeRepository.findStaffProfilesByUserIds.mockResolvedValue([
+        { userId: 'user-staff-1', name: 'John Kumar', staffType: 'teaching' },
+        { userId: 'user-staff-2', name: 'Priya Sharma', staffType: 'teaching' }
+      ]);
+      noticeRepository.findParentProfilesByUserIds.mockResolvedValue([]);
+      noticeRepository.findStudentsByUserIds.mockResolvedValue([]);
+      noticeRepository.findUsersByIds.mockResolvedValue([]);
+
+      const enriched = await noticeService.batchEnrichNoticeViewers(SCHOOL_ID, [historicalNotice]);
+
+      expect(noticeRepository.findStaffProfilesByUserIds).toHaveBeenCalledTimes(1);
+      expect(noticeRepository.findStaffProfilesByUserIds).toHaveBeenCalledWith(
+        SCHOOL_ID,
+        expect.arrayContaining(['user-staff-1', 'user-staff-2'])
+      );
+
+      const viewers = enriched[0].viewedBy;
+      expect(viewers[0].name).toBe('John Kumar');
+      expect(viewers[1].name).toBe('Priya Sharma');
+    });
+
+    it('resolves individual distinct names when multiple staff view the same Global Notice', async () => {
+      const globalNotice = {
+        ...MOCK_NOTICE,
+        viewedBy: [
+          { uid: 'uid-1', name: 'User', role: 'teacher' },
+          { uid: 'uid-2', name: 'User', role: 'teacher' },
+          { uid: 'uid-3', name: 'User', role: 'staff' }
+        ]
+      };
+
+      noticeRepository.findStaffProfilesByUserIds.mockResolvedValue([
+        { userId: 'uid-1', firstName: 'John', lastName: 'Kumar', designation: 'Math Teacher' },
+        { userId: 'uid-2', firstName: 'Priya', lastName: 'S', designation: 'Science Teacher' },
+        { userId: 'uid-3', firstName: 'Arun', lastName: 'Raj', designation: 'Librarian' }
+      ]);
+      noticeRepository.findParentProfilesByUserIds.mockResolvedValue([]);
+      noticeRepository.findStudentsByUserIds.mockResolvedValue([]);
+      noticeRepository.findUsersByIds.mockResolvedValue([]);
+
+      const enriched = await noticeService.batchEnrichNoticeViewers(SCHOOL_ID, [globalNotice]);
+      const viewers = enriched[0].viewedBy;
+
+      expect(viewers[0].name).toBe('John Kumar');
+      expect(viewers[0].role).toBe('Math Teacher');
+      expect(viewers[1].name).toBe('Priya S');
+      expect(viewers[1].role).toBe('Science Teacher');
+      expect(viewers[2].name).toBe('Arun Raj');
+      expect(viewers[2].role).toBe('Librarian');
     });
   });
 });

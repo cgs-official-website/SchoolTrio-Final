@@ -140,12 +140,145 @@ export async function findStaffProfileByUserId(schoolId, userId, tx = prisma) {
       userId: true,
       assignedClassId: true,
       name: true,
+      staffType: true,
+      designation: true,
       customData: true,
       headedClasses: {
         select: {
           id: true
         }
       }
+    }
+  });
+}
+
+/**
+ * Finds parent profile by user ID for tenant.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} userId - Parent User UUID
+ * @param {Object} [tx=prisma] - Transaction client
+ * @returns {Promise<Object|null>}
+ */
+export async function findParentProfileByUserId(schoolId, userId, tx = prisma) {
+  return tx.parentProfile.findFirst({
+    where: {
+      schoolId,
+      userId
+    },
+    select: {
+      id: true,
+      schoolId: true,
+      userId: true,
+      name: true
+    }
+  });
+}
+
+/**
+ * Finds staff profiles by user IDs for tenant in batch.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Array<string>} userIds - User UUIDs
+ * @param {Object} [tx=prisma] - Transaction client
+ * @returns {Promise<Array<Object>>}
+ */
+export async function findStaffProfilesByUserIds(schoolId, userIds, tx = prisma) {
+  if (!userIds || userIds.length === 0) return [];
+  const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
+  return tx.staffProfile.findMany({
+    where: {
+      schoolId,
+      userId: { in: uniqueIds }
+    },
+    select: {
+      id: true,
+      schoolId: true,
+      userId: true,
+      assignedClassId: true,
+      name: true,
+      staffType: true,
+      designation: true,
+      customData: true
+    }
+  });
+}
+
+/**
+ * Finds parent profiles by user IDs for tenant in batch.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Array<string>} userIds - User UUIDs
+ * @param {Object} [tx=prisma] - Transaction client
+ * @returns {Promise<Array<Object>>}
+ */
+export async function findParentProfilesByUserIds(schoolId, userIds, tx = prisma) {
+  if (!userIds || userIds.length === 0) return [];
+  const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
+  return tx.parentProfile.findMany({
+    where: {
+      schoolId,
+      userId: { in: uniqueIds }
+    },
+    select: {
+      id: true,
+      schoolId: true,
+      userId: true,
+      name: true
+    }
+  });
+}
+
+/**
+ * Finds students by user IDs or student IDs for tenant in batch.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Array<string>} userOrStudentIds - User or Student UUIDs
+ * @param {Object} [tx=prisma] - Transaction client
+ * @returns {Promise<Array<Object>>}
+ */
+export async function findStudentsByUserIds(schoolId, userOrStudentIds, tx = prisma) {
+  if (!userOrStudentIds || userOrStudentIds.length === 0) return [];
+  const uniqueIds = Array.from(new Set(userOrStudentIds.filter(Boolean)));
+  return tx.student.findMany({
+    where: {
+      schoolId,
+      OR: [
+        { id: { in: uniqueIds } },
+        { userId: { in: uniqueIds } }
+      ]
+    },
+    select: {
+      id: true,
+      userId: true,
+      schoolId: true,
+      classId: true,
+      firstName: true,
+      lastName: true
+    }
+  });
+}
+
+/**
+ * Finds users by IDs for tenant in batch.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Array<string>} userIds - User UUIDs
+ * @param {Object} [tx=prisma] - Transaction client
+ * @returns {Promise<Array<Object>>}
+ */
+export async function findUsersByIds(schoolId, userIds, tx = prisma) {
+  if (!userIds || userIds.length === 0) return [];
+  const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
+  return tx.user.findMany({
+    where: {
+      id: { in: uniqueIds },
+      schoolId
+    },
+    select: {
+      id: true,
+      email: true,
+      systemRole: true
     }
   });
 }
@@ -162,10 +295,14 @@ export async function findStudentByUserId(schoolId, userId, tx = prisma) {
   return tx.student.findFirst({
     where: {
       schoolId,
-      userId
+      OR: [
+        { userId },
+        { id: userId }
+      ]
     },
     select: {
       id: true,
+      userId: true,
       schoolId: true,
       classId: true,
       firstName: true,

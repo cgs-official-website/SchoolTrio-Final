@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getStudentReportCards } from '../../api/reportCards';
 import { adaptReportCards } from '../../utils/reportCardAdapter';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { LuFileSpreadsheet as FileIcon, LuPrinter as Printer, LuArrowLeft as ArrowLeft, LuCalendar as Calendar, LuAward as Award } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 
@@ -17,12 +18,46 @@ export default function ParentGrades() {
   const [reportCards, setReportCards] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
 
+  const mountedRef = useRef(true);
+  const currentStudentRef = useRef(studentId);
+
   useEffect(() => {
     setSelectedReport(null);
   }, [location.pathname]);
 
+  const fetchReportCards = useCallback(async (targetStudentId, silent = false) => {
+    if (!targetStudentId) {
+      setReportCards([]);
+      setLoading(false);
+      return;
+    }
+
+    if (!silent) setLoading(true);
+
+    try {
+      const res = await getStudentReportCards(targetStudentId, { limit: 50, sortBy: 'publishedAt', sortOrder: 'desc' });
+      if (!mountedRef.current || currentStudentRef.current !== targetStudentId) return;
+
+      const rawList = res?.data || [];
+      const adaptedList = adaptReportCards(rawList);
+      adaptedList.sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+      setReportCards(adaptedList);
+    } catch (error) {
+      if (mountedRef.current && currentStudentRef.current === targetStudentId) {
+        console.error("Error fetching report cards:", error);
+        toast.error(error.message || "Failed to load report cards.");
+        setReportCards([]);
+      }
+    } finally {
+      if (mountedRef.current && currentStudentRef.current === targetStudentId) {
+        if (!silent) setLoading(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
-    let isMounted = true;
+    mountedRef.current = true;
+    currentStudentRef.current = studentId;
 
     if (!studentId) {
       setReportCards([]);
@@ -30,30 +65,22 @@ export default function ParentGrades() {
       return;
     }
 
-    setLoading(true);
     setSelectedReport(null);
-
-    getStudentReportCards(studentId, { limit: 50, sortBy: 'publishedAt', sortOrder: 'desc' })
-      .then((res) => {
-        if (!isMounted) return;
-        const rawList = res?.data || [];
-        const adaptedList = adaptReportCards(rawList);
-        adaptedList.sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
-        setReportCards(adaptedList);
-        setLoading(false);
-      })
-      .catch((error) => {
-        if (!isMounted) return;
-        console.error("Error fetching report cards:", error);
-        toast.error(error.message || "Failed to load report cards.");
-        setReportCards([]);
-        setLoading(false);
-      });
+    fetchReportCards(studentId, false);
 
     return () => {
-      isMounted = false;
+      mountedRef.current = false;
     };
-  }, [studentId]);
+  }, [studentId, fetchReportCards]);
+
+  // Live data synchronization for exams / report cards
+  const handleLiveRefresh = useCallback(() => {
+    if (studentId) {
+      fetchReportCards(studentId, true);
+    }
+  }, [fetchReportCards, studentId]);
+
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], ['exams', 'marks']);
 
   if (loading) {
     return (

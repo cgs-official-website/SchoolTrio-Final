@@ -7,6 +7,7 @@ import { homeworkApi } from '../api/homework';
 import { leavesApi } from '../api/leaves';
 import { canteenApi } from '../api/canteen';
 import { complaintsApi } from '../api/complaints';
+import { LIVE_DATA_EVENT, LIVE_DATA_CHANNEL, LIVE_DATA_STORAGE_KEY } from '../utils/liveData';
 
 const NotificationContext = createContext();
 
@@ -194,7 +195,44 @@ export const NotificationProvider = ({ children }) => {
       }
     };
 
-    fetchComplaintsPending();
+    const handleLiveDataUpdate = (entity) => {
+      if (!isMounted) return;
+      if (entity === 'notices' || entity === 'all') fetchNoticeUnread();
+      if (entity === 'homework' || entity === 'all') fetchHomeworkUnread();
+      if (entity === 'leaves' || entity === 'leave' || entity === 'all') fetchLeavesPending();
+      if (entity === 'canteen' || entity === 'all') fetchCanteenPending();
+      if (entity === 'complaints' || entity === 'all') fetchComplaintsPending();
+      if (entity === 'chats' || entity === 'all') fetchChatUnread();
+      if (entity === 'notifications' || entity === 'all') fetchNotificationUnread();
+    };
+
+    const handleCustomEvent = (event) => {
+      const updatedEntity = event.detail?.entity || 'all';
+      handleLiveDataUpdate(updatedEntity);
+    };
+    window.addEventListener(LIVE_DATA_EVENT, handleCustomEvent);
+
+    let bc = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        bc = new BroadcastChannel(LIVE_DATA_CHANNEL);
+        bc.onmessage = (msgEvent) => {
+          const updatedEntity = msgEvent.data?.entity || 'all';
+          handleLiveDataUpdate(updatedEntity);
+        };
+      } catch {}
+    }
+
+    const handleStorage = (storageEvent) => {
+      if (storageEvent.key === LIVE_DATA_STORAGE_KEY && storageEvent.newValue) {
+        try {
+          const data = JSON.parse(storageEvent.newValue);
+          const updatedEntity = data?.entity || 'all';
+          handleLiveDataUpdate(updatedEntity);
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
 
     const handleFocus = () => {
       if (!isMounted) return;
@@ -214,8 +252,15 @@ export const NotificationProvider = ({ children }) => {
 
     return () => {
       isMounted = false;
+      window.removeEventListener(LIVE_DATA_EVENT, handleCustomEvent);
+      window.removeEventListener('storage', handleStorage);
       window.removeEventListener('visibilitychange', handleFocus);
       window.removeEventListener('focus', handleFocus);
+      if (bc) {
+        try {
+          bc.close();
+        } catch {}
+      }
     };
   }, [schoolId, role, currentUser, userProfile?.id, userProfile?.uid, userProfile?.userId]);
 

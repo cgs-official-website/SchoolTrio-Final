@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { listStudents } from '../../api/students';
 import { 
@@ -10,6 +10,8 @@ import {
 } from '../../api/assessments';
 import { publishReportCards } from '../../api/reportCards';
 import { listExams } from '../../api/exams';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../../utils/liveData';
 import { LuPlus as Plus, LuFileText as FileText, LuCircleCheck as CheckCircle2, LuSave as Save, LuX as X, LuBookOpen as BookOpen, LuGraduationCap as GraduationCap, LuPrinter as Printer, LuSend as Send, LuLock as Lock } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 import { jsPDF } from 'jspdf';
@@ -51,7 +53,7 @@ export default function Grades() {
 
   const [publishing, setPublishing] = useState(false);
 
-  const fetchExams = async () => {
+  const fetchExams = useCallback(async () => {
     try {
       const res = await listExams();
       if (mountedRef.current) {
@@ -60,9 +62,9 @@ export default function Grades() {
     } catch (error) {
       console.error("Error fetching exams for teacher linking:", error);
     }
-  };
+  }, []);
 
-  const fetchAssessments = async (targetClassId) => {
+  const fetchAssessments = useCallback(async (targetClassId) => {
     try {
       const res = await listAssessments({ classId: targetClassId, limit: 100 });
       const items = res?.data || [];
@@ -84,7 +86,17 @@ export default function Grades() {
         setLoading(false);
       }
     }
-  };
+  }, []);
+
+  // Live data synchronization for exams and marks
+  const handleLiveRefresh = useCallback(() => {
+    fetchExams();
+    if (classId) {
+      fetchAssessments(classId);
+    }
+  }, [fetchExams, fetchAssessments, classId]);
+
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], ['exams', 'marks']);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -117,7 +129,7 @@ export default function Grades() {
     return () => {
       mountedRef.current = false;
     };
-  }, [schoolId, classId]);
+  }, [schoolId, classId, fetchExams, fetchAssessments]);
 
   // Handle auto-selecting the first assessment when data is ready
   useEffect(() => {
@@ -214,6 +226,8 @@ export default function Grades() {
       setShowCreateModal(false);
       setNewAssessment({ title: '', date: new Date().toISOString().split('T')[0], totalMarks: 100, examId: '' });
       toast.success("Assessment created successfully!");
+      notifyDataChanged('exams');
+      notifyDataChanged('marks');
       
       // Auto-select the newly created assessment
       handleSelectAssessment(createdAssessment);
@@ -307,6 +321,8 @@ export default function Grades() {
       setInitialGrades({ ...grades });
       setSuccessMsg(isDraft ? 'Draft saved successfully!' : 'Marks submitted to Admin successfully!');
       toast.success(isDraft ? 'Draft saved!' : 'Marks submitted!');
+      notifyDataChanged('exams');
+      notifyDataChanged('marks');
       setTimeout(() => setSuccessMsg(''), 4000);
       
       // Update active assessment status locally
@@ -417,6 +433,8 @@ export default function Grades() {
       await publishReportCards({ classId });
       toast.dismiss(loadingToast);
       toast.success("Report cards published to parent portal successfully!");
+      notifyDataChanged('exams');
+      notifyDataChanged('marks');
     } catch (error) {
       console.error("Error publishing report cards:", error);
       toast.dismiss(loadingToast);
