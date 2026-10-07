@@ -286,6 +286,11 @@ export async function findStaffProfileByUserId(schoolId, userId, tx = prisma) {
       schoolId,
       userId
     },
-    select: { id: true, assignedClassId: true }
+    select: {
+      id: true,
+      name: true,
+      assignedClassId: true,
+      customData: true
+    }
   });
 }

@@ -132,7 +132,34 @@ describe('Assessment Service Unit Tests', () => {
       expect(result.assessments.length).toBe(2);
     });
 
-    it('throws ForbiddenError if teacher attempts to query another class', async () => {
+    it('allows subject-assigned teacher to query class assessments for their subject', async () => {
+      assessmentRepository.findStaffProfileByUserId.mockResolvedValue({
+        id: 'staff-1',
+        assignedClassId: null,
+        customData: {
+          assignments: {
+            assignedSubjectIds: [subjectId]
+          }
+        }
+      });
+      assessmentRepository.findAssessments.mockResolvedValue({
+        items: [{ id: assessmentId, classId: classIdA, subjectId }],
+        total: 1
+      });
+
+      const result = await assessmentService.listAssessments(schoolId, { classId: classIdA }, teacherActor);
+      expect(result.assessments.length).toBe(1);
+      expect(assessmentRepository.findAssessments).toHaveBeenCalledWith(
+        schoolId,
+        expect.objectContaining({
+          classId: classIdA,
+          subjectId: { in: [subjectId] }
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it('throws ForbiddenError if teacher attempts to query another class when explicit classes are assigned', async () => {
       assessmentRepository.findStaffProfileByUserId.mockResolvedValue({
         id: 'staff-1',
         assignedClassId: classIdA

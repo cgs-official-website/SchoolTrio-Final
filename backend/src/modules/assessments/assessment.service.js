@@ -33,6 +33,23 @@ export function getTeacherAssignedSubjectIds(profile) {
 }
 
 /**
+ * Helper to get assigned class IDs for a teacher profile.
+ */
+export function getTeacherAssignedClassIds(profile) {
+  if (!profile) return [];
+  const custom = profile.customData || {};
+  const assignments = custom.assignments || {};
+  const list = [
+    profile.assignedClassId,
+    assignments.assignedClassId,
+    ...(Array.isArray(assignments.subjectClassIds) ? assignments.subjectClassIds : []),
+    ...(Array.isArray(custom.subjectClassIds) ? custom.subjectClassIds : []),
+    ...(Array.isArray(profile.subjectClassIds) ? profile.subjectClassIds : [])
+  ];
+  return [...new Set(list.filter(Boolean))];
+}
+
+/**
  * Checks whether a teacher is the class teacher for a specific class.
  */
 export function isClassTeacherOf(profile, classId) {
@@ -66,10 +83,8 @@ async function authorizeClassAccess(schoolId, classId, actor, subjectId = null) 
 
     const isClassTeacher = isClassTeacherOf(profile, classId);
     const teacherSubjectIds = getTeacherAssignedSubjectIds(profile);
-    const custom = profile.customData || {};
-    const assignments = custom.assignments || {};
-    const subjectClassIds = assignments.subjectClassIds || [];
-    const teachesInClass = isClassTeacher || subjectClassIds.includes(classId);
+    const teacherClassIds = getTeacherAssignedClassIds(profile);
+    const teachesInClass = isClassTeacher || teacherClassIds.length === 0 || teacherClassIds.includes(classId);
 
     if (!teachesInClass) {
       throw new ForbiddenError('Teachers are only authorized to manage assessments for their assigned class or subjects');
@@ -113,30 +128,28 @@ export async function listAssessments(schoolId, query = {}, actor = null) {
       };
     }
 
-    const custom = profile.customData || {};
-    const assignments = custom.assignments || {};
-    const subjectClassIds = assignments.subjectClassIds || [];
-    const teacherClasses = [profile.assignedClassId, ...subjectClassIds].filter(Boolean);
+    const teacherSubjectIds = getTeacherAssignedSubjectIds(profile);
+    const teacherClasses = getTeacherAssignedClassIds(profile);
 
-    if (teacherClasses.length === 0) {
+    if (teacherClasses.length === 0 && teacherSubjectIds.length === 0 && !profile.assignedClassId) {
       return {
         assessments: [],
         pagination: buildPaginationMetadata(0, 1, 20)
       };
     }
 
-    // Restrict teacher querying to their assigned classes
-    if (effectiveClassId) {
-      if (!teacherClasses.includes(effectiveClassId)) {
-        throw new ForbiddenError('Teachers can only access assessments for classes assigned to them');
+    // Restrict teacher querying to their assigned classes if explicit classes are assigned
+    if (teacherClasses.length > 0) {
+      if (effectiveClassId) {
+        if (!teacherClasses.includes(effectiveClassId)) {
+          throw new ForbiddenError('Teachers can only access assessments for classes assigned to them');
+        }
+      } else if (teacherClasses.length === 1) {
+        effectiveClassId = teacherClasses[0];
+      } else {
+        effectiveClassId = { in: teacherClasses };
       }
-    } else if (teacherClasses.length === 1) {
-      effectiveClassId = teacherClasses[0];
-    } else {
-      effectiveClassId = { in: teacherClasses };
     }
-
-    const teacherSubjectIds = getTeacherAssignedSubjectIds(profile);
 
     // Check if teacher is class teacher of the target class
     const isClassTeacher = typeof effectiveClassId === 'string'
@@ -251,11 +264,8 @@ export async function getAssessmentById(schoolId, id, actor = null) {
         throw new ForbiddenError('Subject teachers can only view assessments for their assigned subject');
       }
 
-      const custom = profile.customData || {};
-      const assignments = custom.assignments || {};
-      const subjectClassIds = assignments.subjectClassIds || [];
-      const teacherClasses = [profile.assignedClassId, ...subjectClassIds].filter(Boolean);
-      if (!teacherClasses.includes(assessment.classId)) {
+      const teacherClasses = getTeacherAssignedClassIds(profile);
+      if (teacherClasses.length > 0 && !teacherClasses.includes(assessment.classId)) {
         throw new ForbiddenError('Teachers are only authorized to manage assessments for their assigned class');
       }
     }

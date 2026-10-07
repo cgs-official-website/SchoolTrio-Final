@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { listStudents } from '../../api/students';
 import { 
@@ -10,8 +10,11 @@ import {
 } from '../../api/assessments';
 import { publishReportCards } from '../../api/reportCards';
 import { listExams } from '../../api/exams';
+import { listClasses } from '../../api/classes';
+import { listSubjects } from '../../api/subjects';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { notifyDataChanged } from '../../utils/liveData';
+import { sortClassesAscending } from '../../utils/classSorting';
 import { LuPlus as Plus, LuFileText as FileText, LuCircleCheck as CheckCircle2, LuSave as Save, LuX as X, LuBookOpen as BookOpen, LuGraduationCap as GraduationCap, LuPrinter as Printer, LuSend as Send, LuLock as Lock } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 import { jsPDF } from 'jspdf';
@@ -20,32 +23,72 @@ import autoTable from 'jspdf-autotable';
 export default function Grades() {
   const { userProfile } = useAuth();
   const schoolId = userProfile?.schoolId;
-  const initialClassId = userProfile?.assignedClassId || 
-    userProfile?.customData?.assignments?.subjectClassIds?.[0] || 
-    userProfile?.staffProfile?.customData?.assignments?.subjectClassIds?.[0] || null;
 
-  const [selectedClassId, setSelectedClassId] = useState(initialClassId);
-  const classId = selectedClassId;
-
-  // Extract all teacher assigned classes and subjects
-  const teacherSubjectIds = [
+  // Extract all teacher assigned subjects
+  const teacherSubjectIds = useMemo(() => [
     ...(Array.isArray(userProfile?.customData?.assignments?.assignedSubjectIds) ? userProfile.customData.assignments.assignedSubjectIds : []),
     ...(Array.isArray(userProfile?.staffProfile?.customData?.assignments?.assignedSubjectIds) ? userProfile.staffProfile.customData.assignments.assignedSubjectIds : []),
     ...(Array.isArray(userProfile?.assignedSubjectIds) ? userProfile.assignedSubjectIds : []),
     ...(Array.isArray(userProfile?.customData?.assignedSubjectIds) ? userProfile.customData.assignedSubjectIds : [])
-  ];
+  ].filter(Boolean), [userProfile]);
 
-  
-  const assignedClassesList = [
-    userProfile?.assignedClassId ? { id: userProfile.assignedClassId, name: userProfile.assignedClass?.name || 'Assigned Class (Class Teacher)', isClassTeacher: true } : null,
-    ...(Array.isArray(userProfile?.customData?.assignments?.subjectClassIds) ? userProfile.customData.assignments.subjectClassIds.map(id => ({ id, name: `Subject Class (${id.substring(0, 8)})`, isClassTeacher: false })) : []),
-    ...(Array.isArray(userProfile?.staffProfile?.customData?.assignments?.subjectClassIds) ? userProfile.staffProfile.customData.assignments.subjectClassIds.map(id => ({ id, name: `Subject Class (${id.substring(0, 8)})`, isClassTeacher: false })) : [])
-  ].filter(Boolean);
+  // Extract all teacher assigned classes
+  const teacherClassIds = useMemo(() => [
+    userProfile?.assignedClassId,
+    userProfile?.staffProfile?.assignedClassId,
+    userProfile?.customData?.assignments?.assignedClassId,
+    userProfile?.staffProfile?.customData?.assignments?.assignedClassId,
+    ...(Array.isArray(userProfile?.customData?.assignments?.subjectClassIds) ? userProfile.customData.assignments.subjectClassIds : []),
+    ...(Array.isArray(userProfile?.staffProfile?.customData?.assignments?.subjectClassIds) ? userProfile.staffProfile.customData.assignments.subjectClassIds : []),
+    ...(Array.isArray(userProfile?.customData?.subjectClassIds) ? userProfile.customData.subjectClassIds : []),
+    ...(Array.isArray(userProfile?.subjectClassIds) ? userProfile.subjectClassIds : [])
+  ].filter(Boolean), [userProfile]);
 
-  // Deduplicate classes
-  const uniqueClasses = Array.from(new Map(assignedClassesList.map(c => [c.id, c])).values());
+  const [allClasses, setAllClasses] = useState([]);
+  const [allSubjects, setAllSubjects] = useState([]);
 
-  const isClassTeacher = Boolean(userProfile?.assignedClassId && userProfile?.assignedClassId === classId);
+  // Compute available classes for the teacher with proper names
+  const availableClasses = useMemo(() => {
+    if (allClasses.length > 0) {
+      if (teacherClassIds.length > 0) {
+        const filtered = allClasses.filter(c => teacherClassIds.includes(c.id));
+        if (filtered.length > 0) return filtered;
+      }
+      return allClasses;
+    }
+
+    // Fallback before classes list loads
+    const fallbackList = [
+      userProfile?.assignedClassId ? { id: userProfile.assignedClassId, name: userProfile.assignedClass?.name || 'Assigned Class' } : null,
+      ...(Array.isArray(userProfile?.customData?.assignments?.subjectClassIds) ? userProfile.customData.assignments.subjectClassIds.map(id => ({ id, name: `Class (${id.substring(0, 8)})` })) : []),
+      ...(Array.isArray(userProfile?.staffProfile?.customData?.assignments?.subjectClassIds) ? userProfile.staffProfile.customData.assignments.subjectClassIds.map(id => ({ id, name: `Class (${id.substring(0, 8)})` })) : [])
+    ].filter(Boolean);
+
+    return Array.from(new Map(fallbackList.map(c => [c.id, c])).values());
+  }, [allClasses, teacherClassIds, userProfile]);
+
+  const initialClassId = userProfile?.assignedClassId || 
+    userProfile?.customData?.assignments?.subjectClassIds?.[0] || 
+    userProfile?.staffProfile?.customData?.assignments?.subjectClassIds?.[0] || 
+    availableClasses[0]?.id || null;
+
+  const [selectedClassId, setSelectedClassId] = useState(initialClassId);
+  const classId = selectedClassId;
+
+  // Ensure selectedClassId stays valid when availableClasses populate
+  useEffect(() => {
+    if (availableClasses.length > 0) {
+      if (!selectedClassId || !availableClasses.some(c => c.id === selectedClassId)) {
+        setSelectedClassId(availableClasses[0].id);
+      }
+    }
+  }, [availableClasses, selectedClassId]);
+
+  const isClassTeacher = Boolean(
+    (userProfile?.assignedClassId && userProfile?.assignedClassId === classId) ||
+    (userProfile?.customData?.assignments?.assignedClassId && userProfile.customData.assignments.assignedClassId === classId) ||
+    (userProfile?.staffProfile?.customData?.assignments?.assignedClassId && userProfile.staffProfile.customData.assignments.assignedClassId === classId)
+  );
 
   const [students, setStudents] = useState([]);
   const [assessments, setAssessments] = useState([]);
@@ -78,6 +121,31 @@ export default function Grades() {
   });
 
   const [publishing, setPublishing] = useState(false);
+
+  const fetchMetadata = useCallback(async () => {
+    try {
+      const [examsRes, classesRes, subjectsRes] = await Promise.all([
+        listExams(),
+        listClasses({ limit: 100 }),
+        listSubjects({ limit: 100 })
+      ]);
+      if (mountedRef.current) {
+        setExams(examsRes?.data || []);
+        if (classesRes?.data) {
+          setAllClasses(sortClassesAscending(classesRes.data));
+        } else if (Array.isArray(classesRes)) {
+          setAllClasses(sortClassesAscending(classesRes));
+        }
+        if (subjectsRes?.data) {
+          setAllSubjects(subjectsRes.data);
+        } else if (Array.isArray(subjectsRes)) {
+          setAllSubjects(subjectsRes);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching metadata for grades:", error);
+    }
+  }, []);
 
   const fetchExams = useCallback(async () => {
     try {
@@ -114,25 +182,27 @@ export default function Grades() {
     }
   }, []);
 
-  // Live data synchronization for exams and marks
+  // Live data synchronization for exams, classes, subjects, and marks
   const handleLiveRefresh = useCallback(() => {
-    fetchExams();
+    fetchMetadata();
     if (classId) {
       fetchAssessments(classId);
     }
-  }, [fetchExams, fetchAssessments, classId]);
+  }, [fetchMetadata, fetchAssessments, classId]);
 
-  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], ['exams', 'marks']);
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], ['exams', 'marks', 'classes', 'subjects', 'staff']);
 
   useEffect(() => {
     mountedRef.current = true;
     currentClassIdRef.current = classId;
 
-    if (!schoolId || !classId) return;
+    if (!schoolId) return;
+
+    fetchMetadata();
+
+    if (!classId) return;
 
     setLoading(true);
-
-    fetchExams();
     fetchAssessments(classId);
 
     const fetchStudentsData = async (targetClassId) => {
@@ -493,7 +563,7 @@ export default function Grades() {
               ? 'Class Teacher View: Full class progress overview & subject mark entry.'
               : 'Subject Teacher View: Log student performance for your assigned subject.'}
           </p>
-          {uniqueClasses.length > 1 && (
+          {availableClasses.length > 0 && (
             <div className="mt-3 flex items-center gap-2">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Class:</label>
               <select
@@ -501,8 +571,10 @@ export default function Grades() {
                 onChange={(e) => setSelectedClassId(e.target.value)}
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
               >
-                {uniqueClasses.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                {availableClasses.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} {userProfile?.assignedClassId === c.id ? '(Class Teacher)' : ''}
+                  </option>
                 ))}
               </select>
             </div>
@@ -869,6 +941,25 @@ export default function Grades() {
                       className={`w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900 ${newAssessment.examId ? 'opacity-50 cursor-not-allowed bg-slate-50 dark:bg-slate-800' : ''}`}
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Subject</label>
+                  <select 
+                    value={newAssessment.subjectId || ''}
+                    onChange={(e) => setNewAssessment(prev => ({ ...prev, subjectId: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
+                  >
+                    <option value="">-- Select Subject (Optional) --</option>
+                    {(teacherSubjectIds.length > 0 && allSubjects.length > 0
+                      ? allSubjects.filter(s => teacherSubjectIds.includes(s.id))
+                      : allSubjects
+                    ).map(sub => (
+                      <option key={sub.id} value={sub.id}>
+                        {sub.name} {sub.code ? `(${sub.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>

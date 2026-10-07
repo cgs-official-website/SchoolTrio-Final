@@ -260,6 +260,42 @@ describe('Assessment Grade Service Unit Tests (Phase 4C.7-B Batch 1)', () => {
       expect(result.marksObtained).toBe(48.0);
     });
 
+    it('allows subject-only teacher to update marks for their subject without class restrictions', async () => {
+      const subjectAssessment = {
+        ...mockAssessment,
+        subjectId: 'subject-science-uuid'
+      };
+      assessmentGradeRepository.findAssessmentForGradeOperation.mockResolvedValue(subjectAssessment);
+      assessmentGradeRepository.findStaffProfileByUserId.mockResolvedValue({
+        id: 'staff-1',
+        assignedClassId: null,
+        customData: {
+          assignments: {
+            assignedSubjectIds: ['subject-science-uuid']
+          }
+        }
+      });
+      assessmentGradeRepository.findStudentForGradeOperation.mockResolvedValue(mockStudent1);
+      assessmentGradeRepository.upsertGrade.mockResolvedValue({
+        id: 'grade-1',
+        schoolId,
+        assessmentId,
+        studentId: student1Id,
+        marksObtained: 48.0,
+        grade: null,
+        student: mockStudent1
+      });
+
+      const result = await assessmentGradeService.upsertSingleGrade(
+        schoolId,
+        assessmentId,
+        student1Id,
+        { marksObtained: 48 },
+        teacherActor
+      );
+      expect(result.marksObtained).toBe(48.0);
+    });
+
     it('allows mark equal to totalMarks (e.g. 50 out of 50)', async () => {
       assessmentGradeRepository.findAssessmentForGradeOperation.mockResolvedValue(mockAssessment); // totalMarks = 50
       assessmentGradeRepository.findStaffProfileByUserId.mockResolvedValue({

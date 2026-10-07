@@ -67,6 +67,23 @@ export function getTeacherAssignedSubjectIds(profile) {
 }
 
 /**
+ * Helper to get assigned class IDs for a teacher profile.
+ */
+export function getTeacherAssignedClassIds(profile) {
+  if (!profile) return [];
+  const custom = profile.customData || {};
+  const assignments = custom.assignments || {};
+  const list = [
+    profile.assignedClassId,
+    assignments.assignedClassId,
+    ...(Array.isArray(assignments.subjectClassIds) ? assignments.subjectClassIds : []),
+    ...(Array.isArray(custom.subjectClassIds) ? custom.subjectClassIds : []),
+    ...(Array.isArray(profile.subjectClassIds) ? profile.subjectClassIds : [])
+  ];
+  return [...new Set(list.filter(Boolean))];
+}
+
+/**
  * Checks whether a teacher is the class teacher for a specific class.
  */
 export function isClassTeacherOf(profile, classId) {
@@ -113,13 +130,12 @@ async function authorizeTeacherGradeReadAccess(schoolId, assessmentClassId, subj
 
     // Subject Teacher can view assessments for their assigned subject in classes they teach
     const teacherSubjectIds = getTeacherAssignedSubjectIds(profile);
-    const custom = profile.customData || {};
-    const assignments = custom.assignments || {};
-    const subjectClassIds = assignments.subjectClassIds || [];
+    const teacherClassIds = getTeacherAssignedClassIds(profile);
 
-    const matchesSubject = !assessmentSubjectId || teacherSubjectIds.includes(assessmentSubjectId);
-    const matchesClassOrSection = subjectClassIds.includes(assessmentClassId) || 
-      (assessmentSectionId && subjectClassIds.includes(assessmentSectionId));
+    const matchesSubject = !assessmentSubjectId || teacherSubjectIds.length === 0 || teacherSubjectIds.includes(assessmentSubjectId);
+    const matchesClassOrSection = teacherClassIds.length === 0 || 
+      teacherClassIds.includes(assessmentClassId) || 
+      (assessmentSectionId && teacherClassIds.includes(assessmentSectionId));
 
     if (matchesSubject && matchesClassOrSection) {
       return;
@@ -160,11 +176,10 @@ async function authorizeTeacherGradeMutationAccess(schoolId, assessmentClassId, 
 
     const isClassTeacher = isClassTeacherOf(profile, assessmentClassId);
     const teacherSubjectIds = getTeacherAssignedSubjectIds(profile);
-    const custom = profile.customData || {};
-    const assignments = custom.assignments || {};
-    const subjectClassIds = assignments.subjectClassIds || [];
-    const teachesInClass = isClassTeacher || subjectClassIds.includes(assessmentClassId) || 
-      (assessmentSectionId && subjectClassIds.includes(assessmentSectionId));
+    const teacherClassIds = getTeacherAssignedClassIds(profile);
+    const teachesInClass = isClassTeacher || teacherClassIds.length === 0 || 
+      teacherClassIds.includes(assessmentClassId) || 
+      (assessmentSectionId && teacherClassIds.includes(assessmentSectionId));
 
     if (!teachesInClass) {
       throw new ForbiddenError('You are only authorized to enter marks for subjects and classes assigned to you');
