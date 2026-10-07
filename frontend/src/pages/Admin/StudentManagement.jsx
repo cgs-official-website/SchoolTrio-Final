@@ -238,13 +238,15 @@ export default function StudentManagement() {
     getStudentAttendance(selectedStudentToView.id, { filter: 'monthly' })
       .then((res) => {
         if (!isMounted) return;
-        if (res?.cumulativeStat) {
-          setStudentStats(res.cumulativeStat);
+        const stat = res?.data?.cumulativeStat || res?.cumulativeStat;
+        if (stat) {
+          setStudentStats(stat);
         } else {
           setStudentStats(null);
         }
-        if (Array.isArray(res?.timeline)) {
-          setStudentHistory(res.timeline);
+        const timeline = res?.data?.timeline || res?.timeline;
+        if (Array.isArray(timeline)) {
+          setStudentHistory(timeline);
         } else {
           setStudentHistory([]);
         }

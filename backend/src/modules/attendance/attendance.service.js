@@ -724,11 +724,21 @@ export async function getStudentAttendance(schoolId, studentId, query = {}, requ
 
   const academicYear = await resolveAcademicYear(schoolId, query.academicYear);
 
-  const [records, total, cumulativeStat] = await Promise.all([
+  let [records, total, cumulativeStat] = await Promise.all([
     attendanceRepository.findRecordsByStudent(schoolId, studentId, options),
     attendanceRepository.countRecordsByStudent(schoolId, studentId, options),
     attendanceRepository.findAttendanceStat(schoolId, studentId, academicYear)
   ]);
+
+  if (!cumulativeStat) {
+    const dynamicStat = await attendanceRepository.aggregateStudentRecords(schoolId, studentId);
+    if (dynamicStat && dynamicStat.totalDays > 0) {
+      cumulativeStat = {
+        academicYear,
+        ...dynamicStat
+      };
+    }
+  }
 
   return {
     student,

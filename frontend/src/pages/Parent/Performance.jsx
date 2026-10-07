@@ -35,7 +35,7 @@ export default function Performance() {
       if (!mountedRef.current || currentStudentRef.current !== targetStudentId) {
         return;
       }
-      const stat = res?.cumulativeStat;
+      const stat = res?.data?.cumulativeStat || res?.cumulativeStat;
       if (stat) {
         setAttendanceStats({
           total: Number(stat.totalDays) || 0,

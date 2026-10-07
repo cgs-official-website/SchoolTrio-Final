@@ -27,7 +27,7 @@ export default function ParentAttendance() {
       const res = await getStudentAttendance(targetStudentId, { filter: currentFilter, limit: 100 });
       if (!mountedRef.current || currentStudentRef.current !== targetStudentId) return;
 
-      const rawTimeline = res?.timeline || [];
+      const rawTimeline = res?.data?.timeline || res?.timeline || (Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []));
       const records = rawTimeline.map(item => ({
         id: item.id,
         date: item.session?.date || item.date || '',

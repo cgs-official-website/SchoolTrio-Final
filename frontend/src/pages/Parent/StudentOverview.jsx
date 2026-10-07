@@ -119,7 +119,7 @@ export default function StudentOverview() {
       const res = await getStudentAttendance(targetStudentId, { filter: 'all', limit: 1 });
       if (!mountedRef.current || currentStudentRef.current !== targetStudentId) return;
 
-      const stat = res?.cumulativeStat;
+      const stat = res?.data?.cumulativeStat || res?.cumulativeStat;
       if (stat) {
         setAttendanceStats({
           total: Number(stat.totalDays) || 0,
