@@ -431,21 +431,7 @@ describe('Unit: Class & Section Service Layer — Phase 4C.2-A.2.2 (AuditLog Int
       expect(auditSpy).not.toHaveBeenCalled();
     });
 
-    it('rejects deletion when Class has assigned Students and produces no AuditLog', async () => {
-      vi.spyOn(classRepository, 'findClassById').mockResolvedValue({ id: CLASS_ID, name: 'Grade 10' });
-      vi.spyOn(classRepository, 'countClassDependencies').mockResolvedValue({
-        ...zeroClassDependencies,
-        students: 5
-      });
-      const auditSpy = vi.spyOn(auditRepository, 'createAuditLog');
-
-      await expect(classService.deleteClass(SCHOOL_ID, CLASS_ID)).rejects.toThrow(
-        'Cannot delete class with assigned students'
-      );
-      expect(auditSpy).not.toHaveBeenCalled();
-    });
-
-    it('successfully deletes class and records canonical DELETE_CLASS AuditLog', async () => {
+    it('successfully deletes class, unassigns students, cascades records, and records DELETE_CLASS AuditLog', async () => {
       const existing = {
         id: CLASS_ID,
         name: 'Grade 10',
@@ -456,8 +442,21 @@ describe('Unit: Class & Section Service Layer — Phase 4C.2-A.2.2 (AuditLog Int
       };
 
       vi.spyOn(classRepository, 'findClassById').mockResolvedValue(existing);
-      vi.spyOn(classRepository, 'countClassDependencies').mockResolvedValue(zeroClassDependencies);
       vi.spyOn(prisma, '$transaction').mockImplementation(async (callback) => callback(prisma));
+      vi.spyOn(prisma.student, 'updateMany').mockResolvedValue({ count: 5 });
+      vi.spyOn(prisma.staffProfile, 'updateMany').mockResolvedValue({ count: 1 });
+      vi.spyOn(prisma.assessmentGrade, 'deleteMany').mockResolvedValue({ count: 10 });
+      vi.spyOn(prisma.assessment, 'deleteMany').mockResolvedValue({ count: 2 });
+      vi.spyOn(prisma.attendanceRecord, 'deleteMany').mockResolvedValue({ count: 50 });
+      vi.spyOn(prisma.attendanceSession, 'deleteMany').mockResolvedValue({ count: 5 });
+      vi.spyOn(prisma.absenteeFlag, 'deleteMany').mockResolvedValue({ count: 0 });
+      vi.spyOn(prisma.homeworkSubmission, 'deleteMany').mockResolvedValue({ count: 0 });
+      vi.spyOn(prisma.homeworkAssignment, 'deleteMany').mockResolvedValue({ count: 0 });
+      vi.spyOn(prisma.timetablePeriod, 'deleteMany').mockResolvedValue({ count: 0 });
+      vi.spyOn(prisma.lessonPlan, 'deleteMany').mockResolvedValue({ count: 0 });
+      vi.spyOn(prisma.academicResource, 'deleteMany').mockResolvedValue({ count: 0 });
+      vi.spyOn(prisma.invoice, 'deleteMany').mockResolvedValue({ count: 0 });
+      vi.spyOn(prisma.feeStructure, 'deleteMany').mockResolvedValue({ count: 0 });
       vi.spyOn(classRepository, 'updateStaffAssignedClass').mockResolvedValue({});
       vi.spyOn(classRepository, 'deleteSectionsByClassId').mockResolvedValue({ count: 1 });
       vi.spyOn(classRepository, 'deleteClass').mockResolvedValue({ id: CLASS_ID });
@@ -555,27 +554,17 @@ describe('Unit: Class & Section Service Layer — Phase 4C.2-A.2.2 (AuditLog Int
       expect(auditSpy).not.toHaveBeenCalled();
     });
 
-    it('rejects section deletion when section has assigned Students and produces no AuditLog', async () => {
-      vi.spyOn(classRepository, 'findClassById').mockResolvedValue({ id: CLASS_ID, name: 'Grade 10' });
-      vi.spyOn(classRepository, 'findSectionById').mockResolvedValue({ id: SECTION_ID, name: 'A' });
-      vi.spyOn(classRepository, 'countSectionDependencies').mockResolvedValue({
-        ...zeroSectionDependencies,
-        students: 15
-      });
-      const auditSpy = vi.spyOn(auditRepository, 'createAuditLog');
-
-      await expect(classService.deleteSection(SCHOOL_ID, CLASS_ID, SECTION_ID)).rejects.toThrow(
-        'Cannot delete section with assigned students'
-      );
-
-      expect(auditSpy).not.toHaveBeenCalled();
-    });
-
-    it('successfully deletes section and records DELETE_SECTION AuditLog', async () => {
+    it('successfully deletes section, unassigns students from section, and records DELETE_SECTION AuditLog', async () => {
       const classRecord = { id: CLASS_ID, name: 'Grade 10' };
       vi.spyOn(classRepository, 'findClassById').mockResolvedValue(classRecord);
       vi.spyOn(classRepository, 'findSectionById').mockResolvedValue({ id: SECTION_ID, name: 'A' });
-      vi.spyOn(classRepository, 'countSectionDependencies').mockResolvedValue(zeroSectionDependencies);
+      vi.spyOn(prisma, '$transaction').mockImplementation(async (callback) => callback(prisma));
+      vi.spyOn(prisma.student, 'updateMany').mockResolvedValue({ count: 15 });
+      vi.spyOn(prisma.assessmentGrade, 'deleteMany').mockResolvedValue({ count: 10 });
+      vi.spyOn(prisma.assessment, 'deleteMany').mockResolvedValue({ count: 2 });
+      vi.spyOn(prisma.attendanceRecord, 'deleteMany').mockResolvedValue({ count: 50 });
+      vi.spyOn(prisma.attendanceSession, 'deleteMany').mockResolvedValue({ count: 5 });
+      vi.spyOn(prisma.timetablePeriod, 'deleteMany').mockResolvedValue({ count: 0 });
       vi.spyOn(classRepository, 'deleteSection').mockResolvedValue({ id: SECTION_ID });
       const auditSpy = vi.spyOn(auditRepository, 'createAuditLog').mockResolvedValue({});
 

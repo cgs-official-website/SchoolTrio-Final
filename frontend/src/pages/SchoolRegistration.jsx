@@ -181,21 +181,16 @@ export default function SchoolRegistration() {
         }
       };
 
-      await registerSchool(payload);
+      const res = await registerSchool(payload);
+      const registeredSchool = res?.data?.school || {};
 
-      // Authenticate session so user remains on Pending Approval screen without redirecting to login
-      if (loginWithCredentials) {
-        try {
-          await loginWithCredentials({
-            identifier: payload.admin.email,
-            password: payload.admin.password
-          });
-        } catch (authErr) {
-          console.warn('[SchoolRegistration] Automatic session establishment deferred:', authErr);
+      navigate('/admin/pending', {
+        state: {
+          schoolName: formData.schoolName.trim(),
+          schoolCode: registeredSchool.code || payload.code,
+          status: registeredSchool.status || 'pending'
         }
-      }
-
-      navigate('/admin/pending');
+      });
     } catch (err) {
       console.error('[SchoolRegistration] Error:', err);
       setError(err.message || "Registration failed. Please try again.");

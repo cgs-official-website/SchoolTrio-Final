@@ -13,8 +13,26 @@ import { HTTP_STATUS } from '../../config/constants.js';
 export async function listClasses(req, res, next) {
   try {
     const schoolId = req.tenant.schoolId;
+    if (req.query.assignedOnly === 'true') {
+      const classes = await classService.getMyTeacherClasses(schoolId, req.user || req.auth);
+      return ApiResponse.paginated(res, classes, { total: classes.length, page: 1, limit: classes.length || 20, totalPages: 1, hasNextPage: false, hasPrevPage: false }, 'Teacher assigned classes retrieved successfully');
+    }
     const { classes, pagination } = await classService.listClasses(schoolId, req.query);
     return ApiResponse.paginated(res, classes, pagination, 'Classes retrieved successfully');
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/v1/classes/my-classes
+ * Lists only the classes and sections assigned to the authenticated teacher/user.
+ */
+export async function getMyClasses(req, res, next) {
+  try {
+    const schoolId = req.tenant.schoolId;
+    const classes = await classService.getMyTeacherClasses(schoolId, req.user || req.auth);
+    return ApiResponse.success(res, classes, 'Teacher assigned classes retrieved successfully');
   } catch (err) {
     next(err);
   }
@@ -27,7 +45,7 @@ export async function listClasses(req, res, next) {
 export async function getClass(req, res, next) {
   try {
     const schoolId = req.tenant.schoolId;
-    const classRecord = await classService.getClassById(schoolId, req.params.id);
+    const classRecord = await classService.getClassById(schoolId, req.params.id, req.user || req.auth);
     return ApiResponse.success(res, classRecord, 'Class retrieved successfully');
   } catch (err) {
     next(err);

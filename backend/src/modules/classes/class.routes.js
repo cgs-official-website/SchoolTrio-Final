@@ -33,6 +33,15 @@ router.post(
   classController.bulkImportClasses
 );
 
+// List assigned classes for the authenticated teacher/user
+router.get(
+  '/my-classes',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('classes', 'read'),
+  classController.getMyClasses
+);
+
 // Get single class by ID
 router.get(
   '/:id',

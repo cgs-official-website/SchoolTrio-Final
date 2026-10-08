@@ -72,15 +72,28 @@ export const login = async ({ identifier, password, ipAddress = null, deviceInfo
 
     // 5. Tenant eligibility check for institutional users
     if (single.schoolId && single.school) {
-      if (single.school.status === 'suspended') {
+      const schoolStatus = String(single.school.status || '').toLowerCase();
+      if (schoolStatus === 'suspended') {
         throw new ForbiddenError(
           'School tenant account is suspended. Please contact platform support.',
           ERROR_CODES.TENANT_ACCESS_ERROR
         );
       }
-      if (single.school.status === 'pending' && single.systemRole !== SYSTEM_ROLES.SCHOOL_ADMIN) {
+      if (schoolStatus === 'pending') {
         throw new ForbiddenError(
           'School tenant account is pending approval. Please contact platform support.',
+          ERROR_CODES.TENANT_ACCESS_ERROR
+        );
+      }
+      if (schoolStatus === 'rejected') {
+        throw new ForbiddenError(
+          'School registration has been rejected. Please contact platform support.',
+          ERROR_CODES.TENANT_ACCESS_ERROR
+        );
+      }
+      if (schoolStatus !== 'approved' && schoolStatus !== 'active') {
+        throw new ForbiddenError(
+          'School tenant account is not active. Please contact platform support.',
           ERROR_CODES.TENANT_ACCESS_ERROR
         );
       }
@@ -118,15 +131,28 @@ export const login = async ({ identifier, password, ipAddress = null, deviceInfo
     }
 
     if (user.schoolId && user.school) {
-      if (user.school.status === 'suspended') {
+      const schoolStatus = String(user.school.status || '').toLowerCase();
+      if (schoolStatus === 'suspended') {
         throw new ForbiddenError(
           'School tenant account is suspended. Please contact platform support.',
           ERROR_CODES.TENANT_ACCESS_ERROR
         );
       }
-      if (user.school.status === 'pending' && user.systemRole !== SYSTEM_ROLES.SCHOOL_ADMIN) {
+      if (schoolStatus === 'pending') {
         throw new ForbiddenError(
           'School tenant account is pending approval. Please contact platform support.',
+          ERROR_CODES.TENANT_ACCESS_ERROR
+        );
+      }
+      if (schoolStatus === 'rejected') {
+        throw new ForbiddenError(
+          'School registration has been rejected. Please contact platform support.',
+          ERROR_CODES.TENANT_ACCESS_ERROR
+        );
+      }
+      if (schoolStatus !== 'approved' && schoolStatus !== 'active') {
+        throw new ForbiddenError(
+          'School tenant account is not active. Please contact platform support.',
           ERROR_CODES.TENANT_ACCESS_ERROR
         );
       }
@@ -190,6 +216,35 @@ export const refresh = async ({ rawRefreshToken, ipAddress = null, deviceInfo = 
       'Your account has been deactivated. Please contact administrator.',
       ERROR_CODES.ACCOUNT_DISABLED
     );
+  }
+
+  // Tenant eligibility check
+  if (user.schoolId && user.school) {
+    const schoolStatus = String(user.school.status || '').toLowerCase();
+    if (schoolStatus === 'suspended') {
+      throw new ForbiddenError(
+        'School tenant account is suspended. Please contact platform support.',
+        ERROR_CODES.TENANT_ACCESS_ERROR
+      );
+    }
+    if (schoolStatus === 'pending') {
+      throw new ForbiddenError(
+        'School tenant account is pending approval. Please contact platform support.',
+        ERROR_CODES.TENANT_ACCESS_ERROR
+      );
+    }
+    if (schoolStatus === 'rejected') {
+      throw new ForbiddenError(
+        'School registration has been rejected. Please contact platform support.',
+        ERROR_CODES.TENANT_ACCESS_ERROR
+      );
+    }
+    if (schoolStatus !== 'approved' && schoolStatus !== 'active') {
+      throw new ForbiddenError(
+        'School tenant account is not active. Please contact platform support.',
+        ERROR_CODES.TENANT_ACCESS_ERROR
+      );
+    }
   }
 
   // 3. Issue new minimal-claim access token

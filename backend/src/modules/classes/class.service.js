@@ -6,8 +6,10 @@ import {
   NotFoundError,
   ConflictError,
   RelationshipConflictError,
-  TenantAccessError
+  TenantAccessError,
+  ForbiddenError
 } from '../../utils/app-error.js';
+import { SYSTEM_ROLES } from '../../config/constants.js';
 import { parsePagination, buildPaginationMetadata } from '../../utils/pagination.js';
 
 /**
@@ -22,6 +24,243 @@ import { parsePagination, buildPaginationMetadata } from '../../utils/pagination
  * - Bi-directional atomic Class Teacher synchronization
  * - Non-blocking canonical AuditLog generation for mutations
  */
+
+/**
+ * Resolves all class and section assignments for a given teacher/staff member.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} userId - User UUID
+ * @returns {Promise<{ staffProfile: Object|null, wholeClassIds: Set<string>, sectionIds: Set<string> }>}
+ */
+export async function getTeacherAssignments(schoolId, userId) {
+  if (!schoolId || !userId) {
+    return {
+      staffProfile: null,
+      wholeClassIds: new Set(),
+      sectionIds: new Set()
+    };
+  }
+
+  const staffProfile = await prisma.staffProfile.findFirst({
+    where: { schoolId, userId },
+    include: {
+      headedClasses: {
+        select: { id: true }
+      }
+    }
+  });
+
+  if (!staffProfile) {
+    return {
+      staffProfile: null,
+      wholeClassIds: new Set(),
+      sectionIds: new Set()
+    };
+  }
+
+  const wholeClassIds = new Set();
+  const sectionIds = new Set();
+  const rawUnitIds = new Set();
+
+  // 1. Headed classes are whole-class assignments
+  if (Array.isArray(staffProfile.headedClasses)) {
+    for (const hc of staffProfile.headedClasses) {
+      if (hc.id) wholeClassIds.add(hc.id);
+    }
+  }
+
+  // 2. assignedClassId in customData or direct column
+  const primaryAssignedUnitId = staffProfile.customData?.assignments?.assignedClassId || staffProfile.assignedClassId;
+  if (primaryAssignedUnitId && typeof primaryAssignedUnitId === 'string') {
+    rawUnitIds.add(primaryAssignedUnitId);
+  }
+
+  // 3. subjectClassIds in customData
+  const subjectClassIds = staffProfile.customData?.assignments?.subjectClassIds;
+  if (Array.isArray(subjectClassIds)) {
+    for (const id of subjectClassIds) {
+      if (id && typeof id === 'string') {
+        rawUnitIds.add(id);
+      }
+    }
+  }
+
+  // 4. Timetable periods for this staff profile
+  const timetablePeriods = await prisma.timetablePeriod.findMany({
+    where: { schoolId, teacherId: staffProfile.id },
+    select: { classId: true, sectionId: true }
+  });
+
+  for (const tp of timetablePeriods) {
+    if (tp.sectionId) {
+      sectionIds.add(tp.sectionId);
+    } else if (tp.classId) {
+      wholeClassIds.add(tp.classId);
+    }
+  }
+
+  // Resolve rawUnitIds against Section and Class in a single batch
+  if (rawUnitIds.size > 0) {
+    const rawIdsArr = Array.from(rawUnitIds);
+    const [matchingSections, matchingClasses] = await Promise.all([
+      prisma.section.findMany({
+        where: { schoolId, id: { in: rawIdsArr } },
+        select: { id: true, classId: true }
+      }),
+      prisma.class.findMany({
+        where: { schoolId, id: { in: rawIdsArr } },
+        select: { id: true }
+      })
+    ]);
+
+    for (const s of matchingSections) {
+      sectionIds.add(s.id);
+    }
+    for (const c of matchingClasses) {
+      wholeClassIds.add(c.id);
+    }
+  }
+
+  return {
+    staffProfile,
+    wholeClassIds,
+    sectionIds
+  };
+}
+
+/**
+ * Verifies if a teacher has access to a specific class.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} userId - User UUID
+ * @param {string} classId - Class UUID
+ * @returns {Promise<{ allowed: boolean, allowedSectionIds: Set<string>|null }>}
+ */
+export async function verifyTeacherClassAccess(schoolId, userId, classId) {
+  const { staffProfile, wholeClassIds, sectionIds } = await getTeacherAssignments(schoolId, userId);
+  if (!staffProfile) {
+    return { allowed: false, allowedSectionIds: null };
+  }
+
+  if (wholeClassIds.has(classId)) {
+    return { allowed: true, allowedSectionIds: null };
+  }
+
+  if (sectionIds.size > 0) {
+    const matchingSections = await prisma.section.findMany({
+      where: { schoolId, classId, id: { in: Array.from(sectionIds) } },
+      select: { id: true }
+    });
+    if (matchingSections.length > 0) {
+      return {
+        allowed: true,
+        allowedSectionIds: new Set(matchingSections.map(s => s.id))
+      };
+    }
+  }
+
+  return { allowed: false, allowedSectionIds: null };
+}
+
+/**
+ * Retrieves classes and sections assigned to the logged-in teacher.
+ * If the user is an admin/superadmin, returns all classes for the tenant.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Object} actor - Authenticated user context ({ id, systemRole, schoolId })
+ * @param {Object} [query={}] - Optional query filters
+ * @returns {Promise<Array>}
+ */
+export async function getMyTeacherClasses(schoolId, actor, query = {}) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required to retrieve classes');
+  }
+
+  const isTeacher = actor?.systemRole === SYSTEM_ROLES.TEACHER;
+
+  // Non-teachers (e.g. Admins, SuperAdmins, Principals) see all classes
+  if (!isTeacher) {
+    const { classes } = await listClasses(schoolId, query);
+    return classes;
+  }
+
+  const { staffProfile, wholeClassIds, sectionIds } = await getTeacherAssignments(schoolId, actor.id);
+  if (!staffProfile || (wholeClassIds.size === 0 && sectionIds.size === 0)) {
+    return [];
+  }
+
+  // Find parent classes for any section-level assignments
+  let sectionClassIds = new Set();
+  if (sectionIds.size > 0) {
+    const sectionRecords = await prisma.section.findMany({
+      where: { schoolId, id: { in: Array.from(sectionIds) } },
+      select: { id: true, classId: true }
+    });
+    sectionClassIds = new Set(sectionRecords.map(s => s.classId));
+  }
+
+  const targetClassIds = Array.from(new Set([...wholeClassIds, ...sectionClassIds]));
+  if (targetClassIds.length === 0) {
+    return [];
+  }
+
+  const classes = await prisma.class.findMany({
+    where: {
+      schoolId,
+      id: { in: targetClassIds },
+      ...(query.search ? { name: { contains: query.search.trim(), mode: 'insensitive' } } : {}),
+      ...(query.categoryId ? { categoryId: query.categoryId.trim() } : {})
+    },
+    include: {
+      category: {
+        select: { id: true, name: true, displayOrder: true }
+      },
+      classTeacher: {
+        select: {
+          id: true,
+          name: true,
+          employeeId: true,
+          designation: true,
+          staffType: true,
+          email: true,
+          phone: true
+        }
+      },
+      sections: {
+        select: {
+          id: true,
+          name: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: {
+            select: { students: true }
+          }
+        },
+        orderBy: { name: 'asc' }
+      },
+      _count: {
+        select: { students: true, sections: true }
+      }
+    },
+    orderBy: [
+      { gradeLevel: 'asc' },
+      { name: 'asc' }
+    ]
+  });
+
+  // Filter sections for each class according to teacher's explicit assignment scope
+  for (const classRecord of classes) {
+    if (!wholeClassIds.has(classRecord.id)) {
+      // Teacher only has section-specific assignment for this class
+      classRecord.sections = (classRecord.sections || []).filter(sec => sectionIds.has(sec.id));
+      if (classRecord._count) {
+        classRecord._count.sections = classRecord.sections.length;
+      }
+    }
+  }
+
+  return classes;
+}
 
 /**
  * Lists classes with pagination, searching, and filtering.
@@ -65,9 +304,10 @@ export async function listClasses(schoolId, query = {}) {
  *
  * @param {string} schoolId - Tenant UUID
  * @param {string} classId - Class UUID
+ * @param {Object} [actor] - Context of requesting user
  * @returns {Promise<Object>}
  */
-export async function getClassById(schoolId, classId) {
+export async function getClassById(schoolId, classId, actor = null) {
   if (!schoolId) {
     throw new TenantAccessError('Tenant context required to retrieve class');
   }
@@ -75,6 +315,19 @@ export async function getClassById(schoolId, classId) {
   const classRecord = await classRepository.findClassById(schoolId, classId);
   if (!classRecord) {
     throw new NotFoundError('Class');
+  }
+
+  if (actor && actor.systemRole === SYSTEM_ROLES.TEACHER) {
+    const authResult = await verifyTeacherClassAccess(schoolId, actor.id, classId);
+    if (!authResult.allowed) {
+      throw new ForbiddenError('You are not authorized to access this class');
+    }
+    if (authResult.allowedSectionIds && classRecord.sections) {
+      classRecord.sections = classRecord.sections.filter(s => authResult.allowedSectionIds.has(s.id));
+      if (classRecord._count) {
+        classRecord._count.sections = classRecord.sections.length;
+      }
+    }
   }
 
   return classRecord;
@@ -350,40 +603,117 @@ export async function deleteClass(schoolId, classId, actor = null) {
     throw new NotFoundError('Class');
   }
 
-  // Check all blocking dependencies
-  const deps = await classRepository.countClassDependencies(schoolId, classId);
-
-  if (deps.students > 0) {
-    throw new ConflictError('Cannot delete class with assigned students');
-  }
-  if (deps.attendanceSessions > 0) {
-    throw new ConflictError('Cannot delete class with historical attendance records');
-  }
-  if (deps.timetablePeriods > 0) {
-    throw new ConflictError('Cannot delete class with active timetable schedules');
-  }
-  if (deps.feeStructures > 0) {
-    throw new ConflictError('Cannot delete class with associated fee structures');
-  }
-  if (deps.assessments > 0) {
-    throw new ConflictError('Cannot delete class with examination assessments');
-  }
-  if (deps.homeworkAssignments > 0) {
-    throw new ConflictError('Cannot delete class with active homework assignments');
-  }
-
-  // Safe transactional deletion
+  // Safe transactional deletion with student unassignment and cascade cleanup
   try {
     await prisma.$transaction(async (tx) => {
-      // Clear class teacher link on StaffProfile if one was assigned
+      // 1. Unassign all students currently assigned to this class
+      if (tx.student?.updateMany) {
+        await tx.student.updateMany({
+          where: { schoolId, classId },
+          data: { classId: null, sectionId: null }
+        });
+      }
+
+      // 2. Clear class teacher links on StaffProfile if any
+      if (tx.staffProfile?.updateMany) {
+        await tx.staffProfile.updateMany({
+          where: { schoolId, assignedClassId: classId },
+          data: { assignedClassId: null }
+        });
+      }
+
       if (existingClass.classTeacherId) {
         await classRepository.updateStaffAssignedClass(schoolId, existingClass.classTeacherId, null, tx);
       }
 
-      // Delete child sections
+      // 3. Clean up exam assessment grades & assessments for this class
+      if (tx.assessmentGrade?.deleteMany) {
+        await tx.assessmentGrade.deleteMany({
+          where: {
+            schoolId,
+            assessment: { classId }
+          }
+        });
+      }
+      if (tx.assessment?.deleteMany) {
+        await tx.assessment.deleteMany({
+          where: { schoolId, classId }
+        });
+      }
+
+      // 4. Clean up attendance records & attendance sessions for this class
+      if (tx.attendanceRecord?.deleteMany) {
+        await tx.attendanceRecord.deleteMany({
+          where: {
+            schoolId,
+            session: { classId }
+          }
+        });
+      }
+      if (tx.attendanceSession?.deleteMany) {
+        await tx.attendanceSession.deleteMany({
+          where: { schoolId, classId }
+        });
+      }
+
+      // 5. Clean up absentee flags, homework, timetable, lesson plans, academic resources
+      if (tx.absenteeFlag?.deleteMany) {
+        await tx.absenteeFlag.deleteMany({
+          where: { schoolId, classId }
+        });
+      }
+
+      if (tx.homeworkSubmission?.deleteMany) {
+        await tx.homeworkSubmission.deleteMany({
+          where: {
+            schoolId,
+            homework: { classId }
+          }
+        });
+      }
+      if (tx.homeworkAssignment?.deleteMany) {
+        await tx.homeworkAssignment.deleteMany({
+          where: { schoolId, classId }
+        });
+      }
+
+      if (tx.timetablePeriod?.deleteMany) {
+        await tx.timetablePeriod.deleteMany({
+          where: { schoolId, classId }
+        });
+      }
+
+      if (tx.lessonPlan?.deleteMany) {
+        await tx.lessonPlan.deleteMany({
+          where: { schoolId, classId }
+        });
+      }
+
+      if (tx.academicResource?.deleteMany) {
+        await tx.academicResource.deleteMany({
+          where: { schoolId, classId }
+        });
+      }
+
+      // 6. Clean up invoices referencing fee structures for this class, then fee structures
+      if (tx.invoice?.deleteMany) {
+        await tx.invoice.deleteMany({
+          where: {
+            schoolId,
+            feeStructure: { classId }
+          }
+        });
+      }
+      if (tx.feeStructure?.deleteMany) {
+        await tx.feeStructure.deleteMany({
+          where: { schoolId, classId }
+        });
+      }
+
+      // 7. Delete child sections
       await classRepository.deleteSectionsByClassId(schoolId, classId, tx);
 
-      // Delete the class
+      // 8. Delete the class
       await classRepository.deleteClass(schoolId, classId, tx);
     });
   } catch (error) {
@@ -567,21 +897,56 @@ export async function deleteSection(schoolId, classId, sectionId, actor = null) 
     throw new NotFoundError('Section');
   }
 
-  // Check all blocking dependencies for section
-  const deps = await classRepository.countSectionDependencies(schoolId, sectionId);
-
-  if (deps.students > 0) {
-    throw new ConflictError('Cannot delete section with assigned students');
-  }
-  if (deps.attendanceSessions > 0) {
-    throw new ConflictError('Cannot delete section with historical attendance records');
-  }
-  if (deps.timetablePeriods > 0) {
-    throw new ConflictError('Cannot delete section with active timetable schedules');
-  }
-
   try {
-    await classRepository.deleteSection(schoolId, sectionId);
+    await prisma.$transaction(async (tx) => {
+      // 1. Unassign students from this section (retaining their classId)
+      if (tx.student?.updateMany) {
+        await tx.student.updateMany({
+          where: { schoolId, sectionId },
+          data: { sectionId: null }
+        });
+      }
+
+      // 2. Clean up assessment grades & assessments for this section
+      if (tx.assessmentGrade?.deleteMany) {
+        await tx.assessmentGrade.deleteMany({
+          where: {
+            schoolId,
+            assessment: { sectionId }
+          }
+        });
+      }
+      if (tx.assessment?.deleteMany) {
+        await tx.assessment.deleteMany({
+          where: { schoolId, sectionId }
+        });
+      }
+
+      // 3. Clean up attendance records & attendance sessions for this section
+      if (tx.attendanceRecord?.deleteMany) {
+        await tx.attendanceRecord.deleteMany({
+          where: {
+            schoolId,
+            session: { sectionId }
+          }
+        });
+      }
+      if (tx.attendanceSession?.deleteMany) {
+        await tx.attendanceSession.deleteMany({
+          where: { schoolId, sectionId }
+        });
+      }
+
+      // 4. Clean up timetable periods for this section
+      if (tx.timetablePeriod?.deleteMany) {
+        await tx.timetablePeriod.deleteMany({
+          where: { schoolId, sectionId }
+        });
+      }
+
+      // 5. Delete the section
+      await classRepository.deleteSection(schoolId, sectionId, tx);
+    });
   } catch (error) {
     if (error.code === 'P2003') {
       throw new ConflictError('Cannot delete section because related records depend on it');

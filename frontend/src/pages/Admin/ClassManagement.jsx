@@ -271,17 +271,20 @@ export default function ClassManagement() {
         await deleteClass(item.classId);
         toast.success("Class deleted successfully");
       }
+      notifyDataChanged('classes');
       await fetchData();
     } catch (error) {
       console.error("Error deleting class:", error);
-      if (error.response?.status === 409) {
-        toast.error(error.response?.data?.message || "Cannot delete class because students or dependencies are currently assigned.");
-      } else if (error.response?.status === 403) {
-        toast.error("You do not have permission to delete this class.");
-      } else if (error.response?.status === 404) {
-        toast.error("Class not found.");
+      const status = error.status || error.response?.status;
+      const message = error.message || error.response?.data?.message;
+      if (status === 409) {
+        toast.error(message || "Cannot delete class because students or dependencies are currently assigned.");
+      } else if (status === 403) {
+        toast.error(message || "You do not have permission to delete this class.");
+      } else if (status === 404) {
+        toast.error(message || "Class or section not found.");
       } else {
-        toast.error(error.response?.data?.message || "Failed to delete class.");
+        toast.error(message || "Failed to delete class.");
       }
     } finally {
       setConfirmModalState({ isOpen: false, item: null });
@@ -299,9 +302,10 @@ export default function ClassManagement() {
       toast.success("Category added successfully");
       const catRes = await listClassCategories();
       setCategories(Array.isArray(catRes?.data) ? catRes.data : []);
+      notifyDataChanged('classes');
     } catch (error) {
       console.error("Error adding category:", error);
-      const msg = error.response?.data?.message || error.message || "Failed to add category";
+      const msg = error.message || error.response?.data?.message || "Failed to add category";
       toast.error(msg);
     }
   };
@@ -312,12 +316,15 @@ export default function ClassManagement() {
       toast.success("Category deleted");
       const catRes = await listClassCategories();
       setCategories(Array.isArray(catRes?.data) ? catRes.data : []);
+      notifyDataChanged('classes');
     } catch (error) {
       console.error("Error deleting category:", error);
-      if (error.response?.status === 409) {
-        toast.error(error.response?.data?.message || "Cannot delete category in use by existing classes.");
+      const status = error.status || error.response?.status;
+      const message = error.message || error.response?.data?.message;
+      if (status === 409) {
+        toast.error(message || "Cannot delete category in use by existing classes.");
       } else {
-        toast.error(error.response?.data?.message || "Failed to delete category");
+        toast.error(message || "Failed to delete category");
       }
     }
   };
@@ -835,8 +842,8 @@ export default function ClassManagement() {
         isOpen={confirmModalState.isOpen}
         onClose={() => setConfirmModalState({ isOpen: false, item: null })}
         onConfirm={executeDelete}
-        title="Delete Class"
-        message="Are you sure you want to delete this class? Make sure no students are currently assigned to it."
+        title={confirmModalState.item?.sectionId && rawClasses.find(c => c.id === confirmModalState.item?.classId)?.sections?.length > 1 ? "Delete Section" : "Delete Class"}
+        message={confirmModalState.item?.sectionId && rawClasses.find(c => c.id === confirmModalState.item?.classId)?.sections?.length > 1 ? "Are you sure you want to delete this section? Make sure no students are currently assigned to it." : "Are you sure you want to delete this class? Make sure no students are currently assigned to it."}
         confirmText="Delete"
         type="danger"
       />

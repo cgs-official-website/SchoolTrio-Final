@@ -12,6 +12,9 @@ export const listClassesSchema = {
     hasTeacher: z.enum(['true', 'false'], {
       errorMap: () => ({ message: 'hasTeacher must be either "true" or "false"' })
     }).optional(),
+    assignedOnly: z.enum(['true', 'false'], {
+      errorMap: () => ({ message: 'assignedOnly must be either "true" or "false"' })
+    }).optional(),
     page: z.coerce.number().int().min(1, 'Page must be at least 1').optional(),
     limit: z.coerce.number().int().min(1, 'Limit must be at least 1').max(100, 'Limit cannot exceed 100').optional(),
     sort: z.string().trim().max(50).optional(),

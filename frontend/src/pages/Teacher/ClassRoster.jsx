@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getStaffMe } from '../../api/staff';
-import { getClass, listClasses } from '../../api/classes';
+import { getClass, listClasses, listMyClasses } from '../../api/classes';
 import { listStudents } from '../../api/students';
 import { listAttendanceSessions, getAttendanceSession } from '../../api/attendance';
 import { listRoutes } from '../../api/transport';
@@ -23,17 +23,20 @@ export default function ClassRoster() {
     if (!schoolId) return;
     let isMounted = true;
 
-    // Load available school classes for dropdown selection
-    listClasses({ limit: 100 })
+    // Load assigned classes for dropdown selection
+    listMyClasses()
       .then(res => {
         if (!isMounted) return;
         const classes = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
         setClassList(classes);
-        if (!classId && classes.length > 0) {
-          setClassId(userProfile?.assignedClassId || classes[0].id);
+        if (classes.length > 0) {
+          const matching = classes.find(c => c.id === userProfile?.assignedClassId);
+          setClassId(matching ? matching.id : classes[0].id);
+        } else {
+          setClassId(null);
         }
       })
-      .catch(err => console.error('Error fetching classes list in ClassRoster:', err));
+      .catch(err => console.error('Error fetching teacher classes list in ClassRoster:', err));
 
     const fetchStaffAssignment = async () => {
       try {
@@ -41,7 +44,7 @@ export default function ClassRoster() {
         if (!isMounted) return;
         const profile = res?.data || res;
         if (profile?.assignedClassId) {
-          setClassId(profile.assignedClassId);
+          setClassId(prev => (prev || profile.assignedClassId));
         }
       } catch (err) {
         console.error('Error fetching staff assignment in ClassRoster:', err);

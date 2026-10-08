@@ -56,6 +56,12 @@ describe('POST /api/v1/auth/login Integration', () => {
       email: mockUser.email,
       schoolId: mockUser.schoolId,
       systemRole: mockUser.systemRole,
+      school: {
+        id: mockUser.school.id,
+        name: mockUser.school.name,
+        code: mockUser.school.code,
+        status: mockUser.school.status
+      },
       roleAssignments: [],
       staffProfile: null,
       parentProfile: null
@@ -73,7 +79,7 @@ describe('POST /api/v1/auth/login Integration', () => {
     const refreshCookie = cookies.find((c) => c.startsWith('sms_refresh_token='));
     expect(refreshCookie).toBeDefined();
     expect(refreshCookie).toContain('HttpOnly');
-    expect(refreshCookie).toContain('SameSite=Strict');
+    expect(refreshCookie).toContain('SameSite=Lax');
   });
 
   it('rejects unknown email with generic 401 UNAUTHORIZED (prevents enumeration)', async () => {
@@ -140,6 +146,54 @@ describe('POST /api/v1/auth/login Integration', () => {
     expect(res.status).toBe(403);
     expect(res.body.success).toBe(false);
     expect(res.body.error.code).toBe('ACCOUNT_DISABLED');
+  });
+
+  it('rejects login when associated school is pending approval with 403 TENANT_ACCESS_ERROR', async () => {
+    const pendingSchoolUser = {
+      ...mockUser,
+      school: {
+        ...mockUser.school,
+        status: 'pending'
+      }
+    };
+    vi.spyOn(authRepository, 'findUserByEmail').mockResolvedValue(pendingSchoolUser);
+    vi.spyOn(passwordService, 'isLockedPassword').mockReturnValue(false);
+
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({
+        identifier: mockUser.email,
+        password: 'ValidPassword123!'
+      });
+
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe('TENANT_ACCESS_ERROR');
+    expect(res.body.error.message).toContain('pending approval');
+  });
+
+  it('rejects login when associated school is suspended with 403 TENANT_ACCESS_ERROR', async () => {
+    const suspendedSchoolUser = {
+      ...mockUser,
+      school: {
+        ...mockUser.school,
+        status: 'suspended'
+      }
+    };
+    vi.spyOn(authRepository, 'findUserByEmail').mockResolvedValue(suspendedSchoolUser);
+    vi.spyOn(passwordService, 'isLockedPassword').mockReturnValue(false);
+
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({
+        identifier: mockUser.email,
+        password: 'ValidPassword123!'
+      });
+
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe('TENANT_ACCESS_ERROR');
+    expect(res.body.error.message).toContain('suspended');
   });
 
   it('rejects missing or empty request fields with 400 VALIDATION_ERROR', async () => {

@@ -40,6 +40,20 @@ export async function listClasses(query = {}) {
 }
 
 /**
+ * Lists assigned classes and sections for the authenticated teacher/staff member.
+ * Calls GET /api/v1/classes/my-classes.
+ *
+ * @param {Object} [query={}] - Query options (search, categoryId)
+ * @returns {Promise<{ success: boolean, data: Array<Object>, pagination?: Object, message?: string }>}
+ */
+export async function listMyClasses(query = {}) {
+  const qs = buildQueryString(query);
+  return apiClient(`/api/v1/classes/my-classes${qs}`, {
+    method: 'GET'
+  });
+}
+
+/**
  * Retrieves a single class by UUID within tenant scope.
  * Calls GET /api/v1/classes/:id.
  *

@@ -198,6 +198,7 @@ function App() {
 
             {/* School Admin Routes */}
             <Route path="/admin/pending" element={<PendingApproval />} />
+            <Route path="/pending-approval" element={<PendingApproval />} />
             <Route 
               path="/admin" 
               element={
