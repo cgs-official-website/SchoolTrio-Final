@@ -1,4 +1,4 @@
-import { AUTH_CONSTANTS, ERROR_CODES } from '../../config/constants.js';
+import { AUTH_CONSTANTS, ERROR_CODES, SYSTEM_ROLES } from '../../config/constants.js';
 import { UnauthorizedError, ForbiddenError } from '../../utils/app-error.js';
 import * as authRepository from './auth.repository.js';
 import { verifyPassword, isLockedPassword, hashPassword, validatePasswordPolicy } from './password.service.js';
@@ -78,7 +78,7 @@ export const login = async ({ identifier, password, ipAddress = null, deviceInfo
           ERROR_CODES.TENANT_ACCESS_ERROR
         );
       }
-      if (single.school.status === 'pending') {
+      if (single.school.status === 'pending' && single.systemRole !== SYSTEM_ROLES.SCHOOL_ADMIN) {
         throw new ForbiddenError(
           'School tenant account is pending approval. Please contact platform support.',
           ERROR_CODES.TENANT_ACCESS_ERROR
@@ -124,7 +124,7 @@ export const login = async ({ identifier, password, ipAddress = null, deviceInfo
           ERROR_CODES.TENANT_ACCESS_ERROR
         );
       }
-      if (user.school.status === 'pending') {
+      if (user.school.status === 'pending' && user.systemRole !== SYSTEM_ROLES.SCHOOL_ADMIN) {
         throw new ForbiddenError(
           'School tenant account is pending approval. Please contact platform support.',
           ERROR_CODES.TENANT_ACCESS_ERROR
@@ -156,6 +156,7 @@ export const login = async ({ identifier, password, ipAddress = null, deviceInfo
       email: user.email,
       schoolId: user.schoolId,
       systemRole: user.systemRole,
+      school: user.school || null,
       roleAssignments: user.roleAssignments || [],
       staffProfile: user.staffProfile || null,
       parentProfile: user.parentProfile || null
@@ -207,6 +208,7 @@ export const refresh = async ({ rawRefreshToken, ipAddress = null, deviceInfo = 
       email: user.email,
       schoolId: user.schoolId,
       systemRole: user.systemRole,
+      school: user.school || null,
       roleAssignments: user.roleAssignments || [],
       staffProfile: user.staffProfile || null,
       parentProfile: user.parentProfile || null
@@ -352,7 +354,7 @@ export const firebaseExchange = async ({
         ERROR_CODES.TENANT_SUSPENDED
       );
     }
-    if (user.school.status === 'pending') {
+    if (user.school.status === 'pending' && user.systemRole !== SYSTEM_ROLES.SCHOOL_ADMIN) {
       throw new ForbiddenError(
         'School tenant account is pending approval. Please contact platform support.',
         ERROR_CODES.TENANT_ACCESS_ERROR

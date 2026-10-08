@@ -19,6 +19,11 @@ export default function LoginPage() {
   // Redirect if already logged in
   useEffect(() => {
     if (currentUser && userProfile) {
+      const schoolStatus = String(userProfile.schoolStatus || userProfile.school?.status || '').toLowerCase();
+      if (schoolStatus === 'pending') {
+        navigate('/admin/pending');
+        return;
+      }
       redirectBasedOnRole(userProfile.role, userProfile.loginPanel);
     }
   }, [currentUser, userProfile, navigate]);
@@ -95,6 +100,12 @@ export default function LoginPage() {
       
       const effectiveProfile = profile || userProfile || user;
       if (effectiveProfile) {
+        const schoolStatus = String(effectiveProfile.schoolStatus || effectiveProfile.school?.status || '').toLowerCase();
+        if (schoolStatus === 'pending') {
+          navigate('/admin/pending');
+          return;
+        }
+
         setSuccess(true);
         setTimeout(() => {
           redirectBasedOnRole(effectiveProfile.role, effectiveProfile.loginPanel);

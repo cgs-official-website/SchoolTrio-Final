@@ -5,9 +5,11 @@ import { LuCheck as Check, LuShieldCheck as ShieldCheck, LuArrowRight as ArrowRi
 import { FiLoader as Loader } from 'react-icons/fi';
 import { getPublicPlans } from '../api/billing';
 import { registerSchool } from '../api/registration';
+import { useAuth } from '../context/AuthContext';
 
 export default function SchoolRegistration() {
   const navigate = useNavigate();
+  const { loginWithCredentials } = useAuth();
   const [searchParams] = useSearchParams();
   const reducedMotion = useReducedMotion();
   const selectedPlanId = searchParams.get('plan') || 'free';
@@ -180,6 +182,18 @@ export default function SchoolRegistration() {
       };
 
       await registerSchool(payload);
+
+      // Authenticate session so user remains on Pending Approval screen without redirecting to login
+      if (loginWithCredentials) {
+        try {
+          await loginWithCredentials({
+            identifier: payload.admin.email,
+            password: payload.admin.password
+          });
+        } catch (authErr) {
+          console.warn('[SchoolRegistration] Automatic session establishment deferred:', authErr);
+        }
+      }
 
       navigate('/admin/pending');
     } catch (err) {

@@ -143,8 +143,11 @@ export function normalizeReportCardTemplate(config) {
     return null;
   }
   return {
-    themeColor: config.themeColor || '#3b82f6',
+    themeColor: config.themeColor || '#c99bc1',
+    rawHtmlTemplate: config.rawHtmlTemplate || null,
+    originalDocxName: config.originalDocxName || null,
     header: {
+      schoolName: config.header?.schoolName || '',
       showLogo: config.header?.showLogo ?? true,
       showAddress: config.header?.showAddress ?? true,
       showPhone: config.header?.showPhone ?? true,
@@ -161,15 +164,18 @@ export function normalizeReportCardTemplate(config) {
     },
     grading: {
       style: config.grading?.style || 'marks_and_grades',
+      columns: Array.isArray(config.grading?.columns) && config.grading.columns.length > 0
+        ? [...config.grading.columns]
+        : null,
       showTotal: config.grading?.showTotal ?? true,
       showPercentage: config.grading?.showPercentage ?? true,
       showRank: config.grading?.showRank ?? false
     },
     footer: {
-      signatures: Array.isArray(config.footer?.signatures)
+      signatures: Array.isArray(config.footer?.signatures) && config.footer.signatures.length > 0
         ? [...config.footer.signatures]
         : ['Class Teacher', 'Principal', 'Parent'],
-      gradingScaleText: config.footer?.gradingScaleText || '',
+      gradingScaleText: config.footer?.gradingScaleText ?? '',
       remarks: config.footer?.remarks ?? true
     }
   };

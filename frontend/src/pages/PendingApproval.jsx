@@ -6,49 +6,68 @@ import { LuClock as Clock, LuRefreshCcw as RefreshCcw, LuLogOut as LogOut } from
 import toast from 'react-hot-toast';
 
 export default function PendingApproval() {
-  const { userProfile, logoutUser } = useAuth();
+  const { userProfile, logoutUser, updateProfileData } = useAuth();
   const [status, setStatus] = useState('pending');
   const navigate = useNavigate();
 
   const [checking, setChecking] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
-  const checkStatus = async () => {
+  const checkStatus = async (isManual = false) => {
+    if (redirecting) return;
+
     // Immediate bypass if current user profile already indicates approved/active
-    const profileSchoolStatus = String(userProfile?.schoolStatus || '').toLowerCase();
+    const profileSchoolStatus = String(userProfile?.schoolStatus || userProfile?.school?.status || '').toLowerCase();
     if (profileSchoolStatus === 'approved' || profileSchoolStatus === 'active') {
+      setRedirecting(true);
       navigate('/admin');
       return;
     }
 
-    setChecking(true);
+    if (isManual) setChecking(true);
     try {
       const res = await authApi.getMe();
-      const school = res?.data?.user?.school || res?.data?.school;
-      const currentStatus = school?.status || 'pending';
+      const userData = res?.data?.user || res?.data;
+      const school = userData?.school || res?.data?.school;
+      const currentStatus = school?.status || userData?.schoolStatus || 'pending';
       setStatus(currentStatus);
       const normalized = String(currentStatus).toLowerCase();
       if (normalized === 'approved' || normalized === 'active') {
+        setRedirecting(true);
+        if (updateProfileData) {
+          await updateProfileData();
+        }
+        toast.success("School approved! Redirecting to dashboard...");
         navigate('/admin');
-      } else {
-        toast.success("Status checked dynamically!");
+        return;
+      } else if (isManual) {
+        toast.info("Status is still pending SuperAdmin review.");
       }
     } catch (error) {
       console.error("Error checking status:", error);
-      if (error?.status === 401) {
+      // Only navigate to login if explicitly unauthenticated without any cached profile
+      if (error?.status === 401 && !userProfile) {
         navigate('/login');
       }
     } finally {
-      setChecking(false);
+      if (isManual) setChecking(false);
     }
   };
 
   useEffect(() => {
-    checkStatus();
-  }, [userProfile]);
+    checkStatus(false);
+
+    // Poll every 4 seconds to automatically transition to dashboard as soon as SuperAdmin approves
+    const pollInterval = setInterval(() => {
+      checkStatus(false);
+    }, 4000);
+
+    return () => clearInterval(pollInterval);
+  }, [userProfile, redirecting]);
 
   const handleLogout = async () => {
     await logoutUser();
-    navigate('/');
+    navigate('/login');
   };
 
   return (
@@ -73,7 +92,7 @@ export default function PendingApproval() {
 
         <div className="flex gap-4 justify-center">
           <button 
-            onClick={checkStatus}
+            onClick={() => checkStatus(true)}
             disabled={checking}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors font-medium disabled:opacity-50"
           >

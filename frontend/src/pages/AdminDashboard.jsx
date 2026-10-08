@@ -2,6 +2,7 @@ import React, { useEffect, useState, Suspense } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { LuBookOpen as BookOpen, LuUsers as Users, LuLogOut as LogOut, LuLayoutDashboard as LayoutDashboard, LuLink as LinkIcon, LuSettings as Settings, LuCreditCard as CreditCard, LuGraduationCap as GraduationCap, LuCalendar as Calendar, LuBus as Bus, LuLibrary as Library, LuFileText as FileText, LuBell as Bell, LuKey as Key, LuMenu as Menu, LuX as X, LuBuilding2 as Building2, LuCheck as CheckSquare, LuHouse as Home, LuPackage as PackageIcon, LuBriefcase as Briefcase, LuChartBar as BarChart2, LuHeartPulse as HeartPulse, LuCircleAlert as AlertCircle, LuFiles as Files, LuChevronDown as ChevronDown, LuChevronRight as ChevronRight, LuShield as Shield, LuLayoutGrid as LayoutGrid, LuMessageSquare as MessageSquare, LuCoffee as Coffee } from 'react-icons/lu';
 import { useAuth } from '../context/AuthContext';
+import { authApi } from '../api/auth';
 import usePermissions from '../hooks/usePermissions';
 import { getSchoolSettings, getSidebarSettings } from '../api/settings';
 import { listCustomModules } from '../api/customModules';
@@ -48,7 +49,7 @@ export const allNavItems = [
 ];
 
 export default function AdminDashboard() {
-  const { userProfile, logoutUser } = useAuth();
+  const { userProfile, logoutUser, updateProfileData } = useAuth();
   const { permissions, canRead } = usePermissions();
   const { unreadCounts, clearBadge } = useNotifications();
   const navigate = useNavigate();
@@ -69,8 +70,22 @@ export default function AdminDashboard() {
       // If auth is still loading or userProfile not yet available, wait
       if (!userProfile) return;
 
-      // Authoritative school status check: only redirect if school status is explicitly pending
-      const schoolStatus = String(userProfile.schoolStatus || '').toLowerCase();
+      // Authoritative school status check:
+      let schoolStatus = String(userProfile.schoolStatus || '').toLowerCase();
+      if (schoolStatus === 'pending') {
+        try {
+          const meRes = await authApi.getMe();
+          const freshData = meRes?.data?.user || meRes?.data;
+          const freshSchoolStatus = String(freshData?.school?.status || freshData?.schoolStatus || '').toLowerCase();
+          if (freshSchoolStatus === 'approved' || freshSchoolStatus === 'active') {
+            schoolStatus = freshSchoolStatus;
+            if (updateProfileData) updateProfileData();
+          }
+        } catch {
+          // ignore error
+        }
+      }
+
       if (schoolStatus === 'pending') {
         navigate('/admin/pending');
         return;

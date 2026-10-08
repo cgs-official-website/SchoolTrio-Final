@@ -166,4 +166,80 @@ describe('ParentGrades Component (Forensic Fix & Active Child Resolution)', () =
     const adapted = adapterModule.adaptReportCards([]);
     expect(adapted).toEqual([]);
   });
+
+  // 4. Template parity & Customization Tests
+  it('normalizes published template config with custom themeColor, schoolName, rawHtmlTemplate, and custom columns', () => {
+    const publishedConfig = {
+      themeColor: '#7c3aed',
+      rawHtmlTemplate: '<div class="custom-word-doc">School Annual Report</div>',
+      originalDocxName: 'CBSE_Format_2026.docx',
+      header: {
+        schoolName: 'Global Heritage Academy',
+        title: 'ANNUAL EXAMINATION 2026',
+        subtitle: 'Official Performance Card',
+        showLogo: true,
+        showAddress: true
+      },
+      studentFields: {
+        admissionNo: true,
+        dob: true,
+        fatherName: true,
+        motherName: false,
+        attendance: true
+      },
+      grading: {
+        style: 'marks_and_grades',
+        columns: ['Subject', 'Periodic Test (20)', 'Half Yearly (80)', 'Total (100)', 'Grade'],
+        showTotal: true,
+        showPercentage: true
+      },
+      footer: {
+        signatures: ['Evaluator', 'Headmistress', 'Guardian'],
+        gradingScaleText: 'A1: 91-100 | A2: 81-90 | B1: 71-80',
+        remarks: true
+      }
+    };
+
+    const normalized = adapterModule.normalizeReportCardTemplate(publishedConfig);
+
+    expect(normalized.themeColor).toBe('#7c3aed');
+    expect(normalized.rawHtmlTemplate).toContain('School Annual Report');
+    expect(normalized.originalDocxName).toBe('CBSE_Format_2026.docx');
+    expect(normalized.header.schoolName).toBe('Global Heritage Academy');
+    expect(normalized.header.title).toBe('ANNUAL EXAMINATION 2026');
+    expect(normalized.studentFields.motherName).toBe(false);
+    expect(normalized.grading.columns).toEqual(['Subject', 'Periodic Test (20)', 'Half Yearly (80)', 'Total (100)', 'Grade']);
+    expect(normalized.footer.signatures).toEqual(['Evaluator', 'Headmistress', 'Guardian']);
+    expect(normalized.footer.gradingScaleText).toBe('A1: 91-100 | A2: 81-90 | B1: 71-80');
+    expect(normalized.footer.remarks).toBe(true);
+  });
+
+  it('preserves report template snapshot and calculation metadata in adaptReportCard', () => {
+    const cardDto = {
+      id: 'rc-full-meta',
+      marksData: {
+        studentName: 'Aarav Sharma',
+        className: 'Class 8-B',
+        marks: {
+          'sub-1': { title: 'Mathematics', obtained: 95, max: 100, grade: 'A1' }
+        },
+        reportTemplate: {
+          themeColor: '#059669',
+          header: { schoolName: 'Greenwood International', title: 'TERM REPORT' }
+        }
+      },
+      grades: { totalObtained: 95, totalMax: 100, percentage: 95.0, overallGrade: 'A1' },
+      publishedAt: '2026-10-01T12:00:00Z'
+    };
+
+    const adapted = adapterModule.adaptReportCard(cardDto);
+
+    expect(adapted.studentName).toBe('Aarav Sharma');
+    expect(adapted.className).toBe('Class 8-B');
+    expect(adapted.totalObtained).toBe(95);
+    expect(adapted.totalMax).toBe(100);
+    expect(adapted.percentage).toBe(95.0);
+    expect(adapted.reportTemplate.themeColor).toBe('#059669');
+    expect(adapted.reportTemplate.header.schoolName).toBe('Greenwood International');
+  });
 });
