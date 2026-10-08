@@ -47,7 +47,8 @@ export const envSchema = z.object({
     .default('false'),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
-  SMTP_FROM: z.string().default('School Management System <noreply@schoolmanagement.com>')
+  SMTP_FROM: z.string().default('School Management System <noreply@schoolmanagement.com>'),
+  FRONTEND_URL: z.string().default('http://localhost:5173')
 });
 
 

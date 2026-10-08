@@ -243,14 +243,10 @@ export async function findStudentsByUserIds(schoolId, userOrStudentIds, tx = pri
   return tx.student.findMany({
     where: {
       schoolId,
-      OR: [
-        { id: { in: uniqueIds } },
-        { userId: { in: uniqueIds } }
-      ]
+      id: { in: uniqueIds }
     },
     select: {
       id: true,
-      userId: true,
       schoolId: true,
       classId: true,
       firstName: true,
@@ -284,10 +280,10 @@ export async function findUsersByIds(schoolId, userIds, tx = prisma) {
 }
 
 /**
- * Finds student profile by user ID for tenant.
+ * Finds student profile by user ID or student ID for tenant.
  *
  * @param {string} schoolId - Tenant UUID
- * @param {string} userId - Student User UUID
+ * @param {string} userId - Student ID
  * @param {Object} [tx=prisma] - Transaction client
  * @returns {Promise<Object|null>}
  */
@@ -295,14 +291,10 @@ export async function findStudentByUserId(schoolId, userId, tx = prisma) {
   return tx.student.findFirst({
     where: {
       schoolId,
-      OR: [
-        { userId },
-        { id: userId }
-      ]
+      id: userId
     },
     select: {
       id: true,
-      userId: true,
       schoolId: true,
       classId: true,
       firstName: true,
