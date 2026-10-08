@@ -30,7 +30,7 @@ import {
 import toast from 'react-hot-toast';
 import ReportTemplateBuilder from './ReportTemplateBuilder';
 import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
-import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
+import { sortClassesAscending, formatClassSection, flattenClassesWithSections } from '../../utils/classSorting';
 
 export default function ExamManagement() {
   const { userProfile } = useAuth();
@@ -40,6 +40,7 @@ export default function ExamManagement() {
   const [activeTab, setActiveTab] = useState('manage'); // 'manage' | 'reports'
   const [exams, setExams] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [selectedReportUnitId, setSelectedReportUnitId] = useState('');
   const [loading, setLoading] = useState(true);
 
   // Manage Exams State
@@ -390,13 +391,24 @@ export default function ExamManagement() {
     }
   };
 
+  const selectableReportClassOptions = useMemo(() => {
+    return flattenClassesWithSections(classes);
+  }, [classes]);
+
+  const selectedReportUnit = useMemo(() => {
+    return selectableReportClassOptions.find(u => u.id === selectedReportUnitId) || null;
+  }, [selectableReportClassOptions, selectedReportUnitId]);
+
   const generateReportCard = async () => {
-    if (!selectedExamId || !selectedClassId) return;
+    const classId = selectedReportUnit?.classId || selectedClassId;
+    const sectionId = selectedReportUnit?.sectionId || null;
+    if (!selectedExamId || !classId) return;
     
     setGeneratingReport(true);
     try {
       const res = await previewReportCards({
-        classId: selectedClassId,
+        classId,
+        ...(sectionId ? { sectionId } : {}),
         examId: selectedExamId
       });
 
@@ -421,7 +433,7 @@ export default function ExamManagement() {
       setReportData({
         students,
         assessments,
-        className: previewData.className || classes.find(c => c.id === selectedClassId)?.className || classes.find(c => c.id === selectedClassId)?.name || '',
+        className: previewData.className || selectedReportUnit?.label || classes.find(c => c.id === classId)?.name || '',
         examName: previewData.examName || exams.find(e => e.id === selectedExamId)?.name || ''
       });
     } catch (error) {
@@ -435,7 +447,9 @@ export default function ExamManagement() {
   const [publishing, setPublishing] = useState(false);
 
   const handlePublishReportCards = async () => {
-    if (!reportData || !reportTemplate) {
+    const classId = selectedReportUnit?.classId || selectedClassId;
+    const sectionId = selectedReportUnit?.sectionId || null;
+    if (!reportData || !reportTemplate || !classId) {
       toast.error("Please generate report card data and customize/publish a template first.");
       return;
     }
@@ -444,7 +458,8 @@ export default function ExamManagement() {
     const loadingToast = toast.loading("Publishing report cards to parent portal...");
     try {
       const res = await publishReportCards({
-        classId: selectedClassId,
+        classId,
+        ...(sectionId ? { sectionId } : {}),
         examId: selectedExamId
       });
 
@@ -660,20 +675,27 @@ export default function ExamManagement() {
                 <div className="flex-1 w-full">
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Class</label>
                   <select 
-                    value={selectedClassId}
+                    value={selectedReportUnitId}
                     onChange={(e) => {
-                      setSelectedClassId(e.target.value);
+                      const newUnitId = e.target.value;
+                      setSelectedReportUnitId(newUnitId);
+                      const unit = selectableReportClassOptions.find(u => u.id === newUnitId);
+                      setSelectedClassId(unit?.classId || '');
                       setReportData(null);
                     }}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200! bg-white! text-black! focus:ring-2 focus:ring-primary-500"
                   >
                     <option value="" className="text-black bg-white dark:bg-slate-900">-- Choose Class --</option>
-                    {classes.map(c => <option key={c.id} value={c.id} className="text-black bg-white dark:bg-slate-900">{formatClassSection(c)}</option>)}
+                    {selectableReportClassOptions.map(opt => (
+                      <option key={opt.id} value={opt.id} className="text-black bg-white dark:bg-slate-900">
+                        {opt.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <button 
                   onClick={generateReportCard}
-                  disabled={!selectedExamId || !selectedClassId || generatingReport}
+                  disabled={!selectedExamId || (!selectedReportUnitId && !selectedClassId) || generatingReport}
                   className="px-4 py-2 bg-primary-600 text-white text-sm font-semibold rounded-xl hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 h-11 shrink-0 w-full md:w-auto"
                 >
                   {generatingReport ? <Loader2 size={18} className="animate-spin" /> : <FileBarChart size={18} />}

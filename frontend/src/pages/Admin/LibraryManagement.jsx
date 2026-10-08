@@ -17,7 +17,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
 import { uploadCustomDataFiles } from '../../utils/cloudinary';
 import usePermissions from '../../hooks/usePermissions';
-import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
+import { sortClassesAscending, formatClassSection, flattenClassesWithSections } from '../../utils/classSorting';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { notifyDataChanged } from '../../utils/liveData';
 
@@ -92,19 +92,20 @@ export default function LibraryManagement() {
 
   const [issuingBook, setIssuingBook] = useState(false);
   const [issueData, setIssueData] = useState({
-    bookId: '', classId: '', studentId: '', dueDate: ''
+    bookId: '', classId: '', sectionId: '', studentId: '', dueDate: ''
   });
 
   const allCategories = Array.from(new Set([...DEFAULT_CATEGORIES, ...customCategories])).sort();
 
   const filteredStudentsForIssue = issueData.classId
-    ? students.filter(s => 
-        s.classId === issueData.classId ||
-        s.class === issueData.classId ||
-        (classes.find(c => c.id === issueData.classId) && 
-          (s.className === formatClassSection(classes.find(c => c.id === issueData.classId)) ||
-           s.class === classes.find(c => c.id === issueData.classId).name))
-      )
+    ? students.filter(s => {
+        const matchesClass = s.classId === issueData.classId || s.class === issueData.classId;
+        if (!matchesClass) return false;
+        if (issueData.sectionId) {
+          return s.sectionId === issueData.sectionId || s.section === issueData.sectionId;
+        }
+        return true;
+      })
     : students;
 
   const loadLibraryData = React.useCallback(async () => {
@@ -706,14 +707,21 @@ export default function LibraryManagement() {
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Class</label>
                       <select
-                        value={issueData.classId}
-                        onChange={(e) => setIssueData({ ...issueData, classId: e.target.value, studentId: '' })}
+                        value={issueData.sectionId ? `${issueData.classId}:${issueData.sectionId}` : (issueData.classId ? `${issueData.classId}:all` : '')}
+                        onChange={(e) => {
+                          const opt = flattenClassesWithSections(classes).find(c => c.key === e.target.value || c.id === e.target.value);
+                          if (opt) {
+                            setIssueData({ ...issueData, classId: opt.classId, sectionId: opt.sectionId || '', studentId: '' });
+                          } else {
+                            setIssueData({ ...issueData, classId: '', sectionId: '', studentId: '' });
+                          }
+                        }}
                         className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900 font-medium text-slate-700 dark:text-slate-200"
                       >
                         <option value="">All Classes / Select Class...</option>
-                        {classes.map(c => (
-                          <option key={c.id} value={c.id}>
-                            {formatClassSection(c)}
+                        {flattenClassesWithSections(classes).map(c => (
+                          <option key={c.key} value={c.key}>
+                            {c.label}
                           </option>
                         ))}
                       </select>

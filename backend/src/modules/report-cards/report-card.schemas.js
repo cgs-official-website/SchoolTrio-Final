@@ -12,6 +12,7 @@ const uuidSchema = z.string().trim().uuid({ message: 'Invalid UUID format' });
 export const generateReportCardPreviewSchema = {
   body: z.object({
     classId: uuidSchema,
+    sectionId: uuidSchema.optional().nullable(),
     examId: uuidSchema.optional().nullable()
   })
 };
@@ -20,6 +21,7 @@ export const generateReportCardPreviewSchema = {
 export const publishReportCardsSchema = {
   body: z.object({
     classId: uuidSchema,
+    sectionId: uuidSchema.optional().nullable(),
     examId: uuidSchema.optional().nullable(),
     studentIds: z.array(uuidSchema).min(1, 'studentIds array cannot be empty if provided').optional()
   })

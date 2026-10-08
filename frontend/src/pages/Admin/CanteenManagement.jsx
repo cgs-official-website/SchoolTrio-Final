@@ -150,11 +150,15 @@ export default function CanteenManagement() {
         const student = req.student || studentMap[req.studentId];
         const studentClass = student?.class ? student.class : (student ? classMap[student.classId] : null);
         const resolvedDateStr = getReqDateStr(req);
+        const studentSec = student?.section?.name || student?.sectionName || (typeof student?.section === 'string' ? student.section : null);
+        const formattedStudentClass = studentClass
+          ? (studentSec ? `${studentClass.name} - Section ${studentSec}` : formatClassSection(studentClass))
+          : (student?.classId || 'N/A');
         return {
           ...req,
           studentName: req.student?.name || student?.name || (student?.firstName ? `${student.firstName} ${student.lastName || ''}`.trim() : 'Unknown Student'),
           admissionNumber: req.student?.admissionNumber || student?.admissionNumber || 'N/A',
-          className: req.student?.className || (studentClass ? formatClassSection(studentClass) : (student?.classId || 'N/A')),
+          className: req.student?.className || formattedStudentClass,
           resolvedDateStr
         };
       })

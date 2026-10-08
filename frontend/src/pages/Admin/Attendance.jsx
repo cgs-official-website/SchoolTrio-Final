@@ -27,7 +27,7 @@ import {
 } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
-import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
+import { sortClassesAscending, formatClassSection, flattenClassesWithSections } from '../../utils/classSorting';
 import { notifyDataChanged } from '../../utils/liveData';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
@@ -39,6 +39,7 @@ export default function Attendance() {
   const [selectedSession, setSelectedSession] = useState('FN');
   const [classes, setClasses] = useState([]);
   const [selectedClassId, setSelectedClassId] = useState('');
+  const [selectedSectionId, setSelectedSectionId] = useState(null);
 
   const [students, setStudents] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -79,12 +80,14 @@ export default function Attendance() {
   // Request race protection refs
   const mountedRef = useRef(true);
   const currentClassRef = useRef(selectedClassId);
+  const currentSectionRef = useRef(selectedSectionId);
   const currentDateRef = useRef(selectedDate);
   const currentSessionRef = useRef(selectedSession);
   const currentTabRef = useRef(activeTab);
 
   useEffect(() => {
     currentClassRef.current = selectedClassId;
+    currentSectionRef.current = selectedSectionId;
     currentDateRef.current = selectedDate;
     currentSessionRef.current = selectedSession;
     currentTabRef.current = activeTab;
@@ -125,8 +128,10 @@ export default function Attendance() {
       const rawClasses = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
       const sortedClasses = sortClassesAscending(rawClasses);
       setClasses(sortedClasses);
-      if (sortedClasses.length > 0 && !selectedClassId) {
-        setSelectedClassId(sortedClasses[0].id);
+      const flattened = flattenClassesWithSections(sortedClasses);
+      if (flattened.length > 0 && !selectedClassId) {
+        setSelectedClassId(flattened[0].classId);
+        setSelectedSectionId(flattened[0].sectionId || null);
       }
     } catch (err) {
       if (mountedRef.current) {
@@ -143,22 +148,26 @@ export default function Attendance() {
   // ============================================================
   // 2. LOAD STUDENT ROSTER FOR SELECTED CLASS (REST)
   // ============================================================
-  const fetchRoster = useCallback(async (targetClassId) => {
+  const fetchRoster = useCallback(async (targetClassId, targetSectionId) => {
     if (!targetClassId) {
       setStudents([]);
       return;
     }
 
     try {
-      const stuRes = await listStudents({
+      const studentQuery = {
         classId: targetClassId,
         status: 'Active',
         limit: 100,
         sort: 'firstName',
         order: 'asc'
-      });
+      };
+      if (targetSectionId) {
+        studentQuery.sectionId = targetSectionId;
+      }
+      const stuRes = await listStudents(studentQuery);
 
-      if (!mountedRef.current || currentClassRef.current !== targetClassId) return;
+      if (!mountedRef.current || currentClassRef.current !== targetClassId || currentSectionRef.current !== (targetSectionId || null)) return;
       const rawStudents = Array.isArray(stuRes?.data) ? stuRes.data : (Array.isArray(stuRes) ? stuRes : []);
       const sortedStudents = [...rawStudents].sort((a, b) =>
         (a.firstName || '').localeCompare(b.firstName || '')
@@ -174,14 +183,14 @@ export default function Attendance() {
 
   useEffect(() => {
     if (selectedClassId) {
-      fetchRoster(selectedClassId);
+      fetchRoster(selectedClassId, selectedSectionId);
     }
-  }, [selectedClassId, fetchRoster]);
+  }, [selectedClassId, selectedSectionId, fetchRoster]);
 
   // ============================================================
   // 3. LOAD DAILY ATTENDANCE SESSION (REST)
   // ============================================================
-  const fetchDailySession = useCallback(async (targetClassId, targetDate, targetSession, silent = false) => {
+  const fetchDailySession = useCallback(async (targetClassId, targetSectionId, targetDate, targetSession, silent = false) => {
     if (!targetClassId || !targetDate) {
       setAttendanceRecords({});
       setExistingSessionId(null);
@@ -191,12 +200,16 @@ export default function Attendance() {
 
     if (!silent) setLoading(true);
     try {
-      const res = await listAttendanceSessions({
+      const sessionQuery = {
         classId: targetClassId,
         date: targetDate,
         session: targetSession,
         limit: 1
-      });
+      };
+      if (targetSectionId) {
+        sessionQuery.sectionId = targetSectionId;
+      }
+      const res = await listAttendanceSessions(sessionQuery);
 
       if (
         !mountedRef.current ||
@@ -289,9 +302,9 @@ export default function Attendance() {
 
   useEffect(() => {
     if (activeTab === 'marking' && viewMode === 'daily' && selectedClassId && students.length > 0) {
-      fetchDailySession(selectedClassId, selectedDate, selectedSession, false);
+      fetchDailySession(selectedClassId, selectedSectionId, selectedDate, selectedSession, false);
     }
-  }, [activeTab, viewMode, selectedClassId, selectedDate, selectedSession, students, fetchDailySession]);
+  }, [activeTab, viewMode, selectedClassId, selectedSectionId, selectedDate, selectedSession, students, fetchDailySession]);
 
   // ============================================================
   // 4. LOAD DASHBOARD OVERVIEW METRICS (REST)
@@ -528,7 +541,7 @@ export default function Attendance() {
       } else {
         const payload = {
           classId: selectedClassId,
-          sectionId: selectedClass?.sectionId || undefined,
+          sectionId: selectedSectionId || selectedClass?.sectionId || undefined,
           date: selectedDate,
           session: selectedSession,
           records: formattedRecords
@@ -1139,8 +1152,8 @@ export default function Attendance() {
                   className="border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 font-semibold py-2 px-3 bg-white dark:bg-slate-900 shadow-sm outline-none text-xs"
                 >
                   <option value="all">All Classes</option>
-                  {classes.map(cls => (
-                    <option key={cls.id} value={cls.id}>{formatClassSection(cls)}</option>
+                  {flattenClassesWithSections(classes).map(cls => (
+                    <option key={cls.key} value={cls.key}>{cls.label}</option>
                   ))}
                 </select>
                 <button
@@ -1176,7 +1189,12 @@ export default function Attendance() {
                   </thead>
                   <tbody>
                     {absenteeFlags
-                      .filter(f => filterClassId === 'all' || f.classId === filterClassId)
+                      .filter(f => {
+                        if (filterClassId === 'all') return true;
+                        const opt = flattenClassesWithSections(classes).find(o => o.key === filterClassId);
+                        if (!opt) return f.classId === filterClassId;
+                        return f.classId === opt.classId && (!opt.sectionId || f.sectionId === opt.sectionId);
+                      })
                       .map((flag) => (
                         <tr key={flag.id} className="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/50">
                           <td className="p-4 text-slate-600 dark:text-slate-300 font-medium pl-6">{flag.rollNumber || '-'}</td>
@@ -1209,13 +1227,19 @@ export default function Attendance() {
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
               <select
-                value={selectedClassId}
-                onChange={(e) => setSelectedClassId(e.target.value)}
+                value={selectedSectionId ? `${selectedClassId}:${selectedSectionId}` : (selectedClassId ? `${selectedClassId}:all` : '')}
+                onChange={(e) => {
+                  const opt = flattenClassesWithSections(classes).find(c => c.key === e.target.value || c.id === e.target.value);
+                  if (opt) {
+                    setSelectedClassId(opt.classId);
+                    setSelectedSectionId(opt.sectionId || null);
+                  }
+                }}
                 className="border-slate-200 dark:border-slate-700 rounded-xl focus:ring-primary-500 text-slate-700 dark:text-slate-200 font-semibold py-2.5 pl-4 pr-10 bg-white dark:bg-slate-900 shadow-sm outline-none text-sm w-full sm:w-auto"
               >
                 <option value="" disabled>Select Class</option>
-                {classes.map(cls => (
-                  <option key={cls.id} value={cls.id}>{formatClassSection(cls)}</option>
+                {flattenClassesWithSections(classes).map(cls => (
+                  <option key={cls.key} value={cls.key}>{cls.label}</option>
                 ))}
               </select>
               <select

@@ -184,7 +184,7 @@ async function assertReportCardFinalizedForStudents(schoolId, reportCard, actor)
  *   studentCards: Array<Object>
  * }>}
  */
-async function aggregateReportCardData(schoolId, classId, examId = null, targetStudentIds = null, actor = null) {
+async function aggregateReportCardData(schoolId, classId, examId = null, targetStudentIds = null, actor = null, sectionId = null) {
   if (!schoolId) {
     throw new TenantAccessError('Tenant context required');
   }
@@ -248,8 +248,12 @@ async function aggregateReportCardData(schoolId, classId, examId = null, targetS
   const attendanceStartDate = exam?.startDate || academicYearStartDate;
   const attendanceEndDate = exam?.endDate || todayDate;
 
-  // 6. Fetch Enrolled Students
-  const allStudents = await findStudents(schoolId, { classId, take: 500 });
+  // 6. Fetch Enrolled Students (scoped to section if provided)
+  const allStudents = await findStudents(schoolId, { 
+    classId, 
+    ...(sectionId ? { sectionId } : {}), 
+    take: 500 
+  });
   let studentsToProcess = allStudents;
 
   if (targetStudentIds && Array.isArray(targetStudentIds) && targetStudentIds.length > 0) {
@@ -405,7 +409,7 @@ async function aggregateReportCardData(schoolId, classId, examId = null, targetS
  * @returns {Promise<Object>}
  */
 export async function generateReportCardPreview(schoolId, input = {}, actor = null) {
-  const { classId, examId } = input;
+  const { classId, sectionId, examId } = input;
   if (!classId) {
     throw new ValidationError('classId is required');
   }
@@ -415,7 +419,8 @@ export async function generateReportCardPreview(schoolId, input = {}, actor = nu
     classId,
     examId || null,
     null,
-    actor
+    actor,
+    sectionId || null
   );
 
   return {
@@ -455,12 +460,12 @@ export async function generateReportCardPreview(schoolId, input = {}, actor = nu
  * Emits post-commit non-blocking audit logging.
  *
  * @param {string} schoolId - Tenant school UUID
- * @param {Object} input - { classId, examId, studentIds }
+ * @param {Object} input - { classId, sectionId, examId, studentIds }
  * @param {Object} [actor=null] - Authenticated user identity
  * @returns {Promise<{ publishedCount: number, reportCards: Array<Object> }>}
  */
 export async function publishReportCards(schoolId, input = {}, actor = null) {
-  const { classId, examId, studentIds } = input;
+  const { classId, sectionId, examId, studentIds } = input;
   if (!classId) {
     throw new ValidationError('classId is required');
   }
@@ -470,7 +475,8 @@ export async function publishReportCards(schoolId, input = {}, actor = null) {
     classId,
     examId || null,
     studentIds || null,
-    actor
+    actor,
+    sectionId || null
   );
 
   if (studentCards.length === 0) {

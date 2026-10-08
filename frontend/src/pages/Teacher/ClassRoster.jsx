@@ -10,12 +10,13 @@ import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { isMale, isFemale, normalizeGender } from '../../utils/genderUtils';
-import { formatClassSection, getSectionName } from '../../utils/classSorting';
+import { formatClassSection, getSectionName, flattenClassesWithSections } from '../../utils/classSorting';
 
 export default function ClassRoster() {
   const { userProfile } = useAuth();
   const schoolId = userProfile?.schoolId;
   const [classId, setClassId] = useState(userProfile?.assignedClassId || null);
+  const [sectionId, setSectionId] = useState(null);
   const [classList, setClassList] = useState([]);
   const navigate = useNavigate();
 
@@ -29,11 +30,15 @@ export default function ClassRoster() {
         if (!isMounted) return;
         const classes = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
         setClassList(classes);
-        if (classes.length > 0) {
-          const matching = classes.find(c => c.id === userProfile?.assignedClassId);
-          setClassId(matching ? matching.id : classes[0].id);
+        const flattened = flattenClassesWithSections(classes);
+        if (flattened.length > 0) {
+          const matching = flattened.find(c => c.classId === userProfile?.assignedClassId);
+          const initial = matching || flattened[0];
+          setClassId(initial.classId);
+          setSectionId(initial.sectionId || null);
         } else {
           setClassId(null);
+          setSectionId(null);
         }
       })
       .catch(err => console.error('Error fetching teacher classes list in ClassRoster:', err));
@@ -156,9 +161,11 @@ export default function ClassRoster() {
 
     const fetchClassAndStudents = async () => {
       try {
+        const studentParams = { classId, limit: 100 };
+        if (sectionId) studentParams.sectionId = sectionId;
         const [classRes, studentsRes] = await Promise.all([
           getClass(classId),
-          listStudents({ classId, limit: 100 })
+          listStudents(studentParams)
         ]);
         if (!isMounted) return;
         const classData = classRes?.data || classRes;
@@ -187,7 +194,9 @@ export default function ClassRoster() {
     let isAttendanceMounted = true;
     const loadTodayAttendance = async () => {
       try {
-        const res = await listAttendanceSessions({ classId, date: todayDate, limit: 10 });
+        const attParams = { classId, date: todayDate, limit: 10 };
+        if (sectionId) attParams.sectionId = sectionId;
+        const res = await listAttendanceSessions(attParams);
         if (!isAttendanceMounted) return;
         const sessions = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
         const todaySession = sessions.find(s => s.session === 'FN') || sessions[0];
@@ -217,7 +226,7 @@ export default function ClassRoster() {
       isMounted = false;
       isAttendanceMounted = false;
     };
-  }, [schoolId, classId, todayDate]);
+  }, [schoolId, classId, sectionId, todayDate]);
 
   const filteredStudents = students.filter(student => {
     const fullName = `${student.firstName} ${student.lastName}`.toLowerCase();
@@ -235,6 +244,11 @@ export default function ClassRoster() {
      if (attendanceRecords[student.id] === 'Present') presentCount++;
      if (attendanceRecords[student.id] === 'Absent') absentCount++;
   });
+
+  const flattenedClassOptions = flattenClassesWithSections(classList);
+  const currentSelectedKey = sectionId ? `${classId}:${sectionId}` : `${classId}:all`;
+  const currentOption = flattenedClassOptions.find(o => o.key === currentSelectedKey) 
+    || flattenedClassOptions.find(o => o.classId === classId);
 
   if (loading) {
     return (
@@ -273,7 +287,7 @@ export default function ClassRoster() {
             </h1>
             <div className="flex flex-wrap items-center gap-3">
               <p className="text-slate-300 text-lg">
-                {classDetails ? formatClassSection(classDetails) : 'Loading Class...'}
+                {currentOption ? currentOption.label : (classDetails ? formatClassSection(classDetails) : 'Loading Class...')}
               </p>
               {classDetails?.classTeacher?.name && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-primary-500/30 text-white border border-primary-400/40 backdrop-blur-sm">
@@ -283,17 +297,23 @@ export default function ClassRoster() {
             </div>
           </div>
 
-          {classList.length > 0 && (
+          {flattenedClassOptions.length > 0 && (
             <div className="w-full md:w-auto">
               <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-1">Select Class</label>
               <select
-                value={classId || ''}
-                onChange={(e) => setClassId(e.target.value)}
+                value={currentOption?.key || ''}
+                onChange={(e) => {
+                  const opt = flattenedClassOptions.find(c => c.key === e.target.value || c.id === e.target.value);
+                  if (opt) {
+                    setClassId(opt.classId);
+                    setSectionId(opt.sectionId || null);
+                  }
+                }}
                 className="w-full md:w-auto px-4 py-2.5 bg-white/10 text-white rounded-xl border border-white/20 font-bold text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 backdrop-blur-sm"
               >
-                {classList.map((c) => (
-                  <option key={c.id} value={c.id} className="text-slate-900 bg-white">
-                    {formatClassSection(c)}
+                {flattenedClassOptions.map((c) => (
+                  <option key={c.key} value={c.key} className="text-slate-900 bg-white">
+                    {c.label}
                   </option>
                 ))}
               </select>

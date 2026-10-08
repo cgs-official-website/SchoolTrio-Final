@@ -1,11 +1,18 @@
 /**
+ * src/utils/classSorting.js
+ *
+ * Canonical utility module for Class and Section normalization, sorting, formatting,
+ * and flattening into individual class-section selection units.
+ */
+
+/**
  * Extracts a normalized section name string from any class or section representation.
  * Handles:
  *  - string: 'A' -> 'A'
  *  - object section: { name: 'A' } or { code: 'A' } -> 'A'
  *  - class object with section: { section: 'A' } or { section: { name: 'A' } } -> 'A'
  *  - class object with sections array: { sections: [{ name: 'A' }] } -> 'A'
- *  - class object with multiple sections: { sections: [{ name: 'A' }, { name: 'B' }] } -> 'A, B'
+ *  - class object with multiple sections: { sections: [{ name: 'A' }, { name: 'B' }] } -> 'A, B' (for parent-class summaries)
  *  - class object with sectionName: { sectionName: 'A' } -> 'A'
  *
  * @param {string|Object} classOrSection
@@ -54,9 +61,9 @@ export const getSectionName = (classOrSection) => {
 /**
  * Formats a class and its section for consistent presentation across the UI.
  * Examples:
- *  - { name: 'I Standard', sections: [{ name: 'A' }] } -> "I Standard - Section A"
- *  - { name: 'I Standard', section: 'A' } -> "I Standard - Section A"
- *  - { name: 'I Standard', sections: [] } -> "I Standard"
+ *  - { name: 'Class 10', section: 'A' } -> "Class 10 - Section A"
+ *  - { name: 'Grade 7', sections: [{ name: 'A' }] } -> "Grade 7 - Section A"
+ *  - { name: 'Class 10', sections: [] } -> "Class 10"
  *
  * @param {string|Object} c - Class record or string
  * @returns {string} Formatted class and section string
@@ -145,5 +152,116 @@ export const sortSectionsAscending = (sections = []) => {
   });
 };
 
-export default sortClassesAscending;
+/**
+ * Flattens hierarchical Class records into individual Class + Section selectable units.
+ * Every option preserves:
+ *  - id: stable composite or section UUID identifier
+ *  - key: unique key for React rendering
+ *  - value: selection identifier
+ *  - classId: UUID of parent Class
+ *  - sectionId: UUID of Section (or null if class has no sections)
+ *  - name / className: Parent Class Name (e.g. "Grade 7")
+ *  - section / sectionName: Section Name (e.g. "A")
+ *  - label: Formatted individual label (e.g. "Grade 7 - Section A")
+ *  - rawClass: Original parent class object
+ *  - rawSection: Original section object (if available)
+ *
+ * Natural sorting is applied in ascending order.
+ *
+ * @param {Array<Object>} classes - Array of Class objects
+ * @returns {Array<Object>} Flat array of individual class-section selection objects
+ */
+export const flattenClassesWithSections = (classes = []) => {
+  if (!Array.isArray(classes)) return [];
+  const list = [];
 
+  for (const c of classes) {
+    if (!c) continue;
+    const classId = c.id || c.classId || '';
+    const className = (c.name || c.className || c.title || '').toString().trim();
+
+    if (Array.isArray(c.sections) && c.sections.length > 0) {
+      for (const s of c.sections) {
+        if (!s) continue;
+        const secId = typeof s === 'object' && s.id ? s.id : null;
+        const secName = typeof s === 'object' ? (s.name || s.code || '').toString().trim() : String(s).trim();
+        const unitId = secId ? `${classId}_${secId}` : (secName ? `${classId}_${secName}` : classId);
+        const label = secName ? formatClassSection({ name: className, section: secName }) : className;
+
+        list.push({
+          id: unitId,
+          key: `${classId}:${secId || secName}`,
+          value: unitId,
+          classId,
+          sectionId: secId,
+          name: className,
+          className,
+          section: secName,
+          sectionName: secName,
+          label,
+          rawClass: c,
+          rawSection: typeof s === 'object' ? s : null
+        });
+      }
+    } else if (typeof c.section === 'string' && c.section.includes(',')) {
+      const splitSecs = c.section.split(',').map(s => s.trim()).filter(Boolean);
+      for (const secName of splitSecs) {
+        const unitId = `${classId}_${secName}`;
+        const label = formatClassSection({ name: className, section: secName });
+        list.push({
+          id: unitId,
+          key: `${classId}:${secName}`,
+          value: unitId,
+          classId,
+          sectionId: null,
+          name: className,
+          className,
+          section: secName,
+          sectionName: secName,
+          label,
+          rawClass: c,
+          rawSection: null
+        });
+      }
+    } else if (c.section) {
+      const secName = typeof c.section === 'object' ? (c.section.name || c.section.code || '').toString().trim() : String(c.section).trim();
+      const secId = c.sectionId || (typeof c.section === 'object' ? c.section.id : null);
+      const unitId = secId ? `${classId}_${secId}` : (secName ? `${classId}_${secName}` : classId);
+      const label = secName ? formatClassSection({ name: className, section: secName }) : className;
+
+      list.push({
+        id: unitId,
+        key: `${classId}:${secId || secName}`,
+        value: unitId,
+        classId,
+        sectionId: secId,
+        name: className,
+        className,
+        section: secName,
+        sectionName: secName,
+        label,
+        rawClass: c,
+        rawSection: typeof c.section === 'object' ? c.section : null
+      });
+    } else {
+      list.push({
+        id: classId,
+        key: classId,
+        value: classId,
+        classId,
+        sectionId: null,
+        name: className,
+        className,
+        section: '',
+        sectionName: '',
+        label: className,
+        rawClass: c,
+        rawSection: null
+      });
+    }
+  }
+
+  return sortClassesAscending(list);
+};
+
+export default sortClassesAscending;
