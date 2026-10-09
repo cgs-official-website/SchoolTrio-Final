@@ -306,6 +306,8 @@ export async function batchEnrichNoticeViewers(schoolId, notices) {
 
         return {
           ...v,
+          studentName: resolvedStudent?.name || v.studentName,
+          parentName: resolved?.name || v.parentName,
           name: name || 'Staff Member',
           role: role || 'Member',
           classId: classId || ''

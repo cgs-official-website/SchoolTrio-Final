@@ -483,22 +483,25 @@ export default function TeacherNoticeboard() {
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {selectedViewers.map((viewer, index) => (
-                    <div key={index} className="p-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors">
-                      <div>
-                        <div className="font-bold text-slate-900 dark:text-white">{viewer.name || viewer.userName || 'Staff Member'}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 capitalize">{viewer.role || 'Member'} {viewer.classId ? `- Class: ${classesMap[viewer.classId] || viewer.classId}` : ''}</div>
-                      </div>
-                      {viewer.viewedAt && (
-                        <div className="text-xs text-slate-400 dark:text-slate-500 text-right">
-                          <span>Viewed</span>
-                          <div className="font-medium text-slate-600 dark:text-slate-300">
-                            {new Date(viewer.viewedAt).toLocaleDateString()} {new Date(viewer.viewedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </div>
+                  {selectedViewers.map((viewer, index) => {
+                    const displayName = viewer.studentName || (viewer.role?.toLowerCase() === 'parent' && viewer.name?.match(/\(([^)]+)\)$/)?.[1]?.trim()) || viewer.name || viewer.userName || 'Staff Member';
+                    return (
+                      <div key={index} className="p-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors">
+                        <div>
+                          <div className="font-bold text-slate-900 dark:text-white">{displayName}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 capitalize">{viewer.role || 'Member'} {viewer.classId ? `- Class: ${classesMap[viewer.classId] || viewer.classId}` : ''}</div>
                         </div>
-                      )}
-                    </div>
-                  ))}
+                        {viewer.viewedAt && (
+                          <div className="text-xs text-slate-400 dark:text-slate-500 text-right">
+                            <span>Viewed</span>
+                            <div className="font-medium text-slate-600 dark:text-slate-300">
+                              {new Date(viewer.viewedAt).toLocaleDateString()} {new Date(viewer.viewedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

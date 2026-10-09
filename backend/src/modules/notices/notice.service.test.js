@@ -540,4 +540,114 @@ describe('Noticeboard Read Receipts - Multi-Student Parent Account (BUG-01)', ()
     expect(nishaReceipt.name).toBe('Bala A (Nisha A)');
     expect(nishaReceipt.studentName).toBe('Nisha A');
   });
+
+  it('17 (Admin Popup Fix): batchEnrichNoticeViewers preserves studentName, parentName, and handles multi-student separate rows', async () => {
+    const rawNotices = [
+      {
+        id: noticeGlobalId,
+        schoolId,
+        title: 'Sports Day Announcement',
+        viewedBy: [
+          {
+            uid: parentUserId,
+            studentId: balaStudentId,
+            studentName: 'Bala A',
+            parentName: 'Bala A',
+            role: 'parent',
+            classId: class10Id,
+            viewedAt: '2026-10-09T10:00:00.000Z'
+          },
+          {
+            uid: parentUserId,
+            studentId: nishaStudentId,
+            studentName: 'Nisha A',
+            parentName: 'Bala A',
+            role: 'parent',
+            classId: class8Id,
+            viewedAt: '2026-10-09T10:00:00.000Z'
+          },
+          {
+            uid: 'staff-user-1',
+            name: 'Sarah Connor',
+            role: 'teacher',
+            classId: class10Id,
+            viewedAt: '2026-10-09T10:05:00.000Z'
+          },
+          {
+            uid: 'student-user-1',
+            name: 'David Miller',
+            role: 'student',
+            classId: class8Id,
+            viewedAt: '2026-10-09T10:10:00.000Z'
+          }
+        ]
+      }
+    ];
+
+    noticeRepository.findStaffProfilesByUserIds.mockResolvedValue([]);
+    noticeRepository.findParentProfilesByUserIds.mockResolvedValue([]);
+    noticeRepository.findStudentsByUserIds.mockResolvedValue([
+      { id: balaStudentId, firstName: 'Bala', lastName: 'A', classId: class10Id },
+      { id: nishaStudentId, firstName: 'Nisha', lastName: 'A', classId: class8Id }
+    ]);
+    noticeRepository.findUsersByIds.mockResolvedValue([]);
+
+    const enriched = await noticeService.batchEnrichNoticeViewers(schoolId, rawNotices);
+    const viewers = enriched[0].viewedBy;
+
+    // 1. Two separate rows for siblings under the same parent
+    expect(viewers).toHaveLength(4);
+
+    // 2. Parent-linked receipt with parentName: Bala A, studentName: Nisha A
+    const nishaReceipt = viewers.find((v) => v.studentId === nishaStudentId);
+    expect(nishaReceipt).toBeDefined();
+    expect(nishaReceipt.studentName).toBe('Nisha A');
+    expect(nishaReceipt.parentName).toBe('Bala A');
+
+    // 3. Parent-linked receipt with parentName: Bala A, studentName: Bala A
+    const balaReceipt = viewers.find((v) => v.studentId === balaStudentId);
+    expect(balaReceipt).toBeDefined();
+    expect(balaReceipt.studentName).toBe('Bala A');
+
+    // 4. Staff receipt retains staff name
+    const staffReceipt = viewers.find((v) => v.uid === 'staff-user-1');
+    expect(staffReceipt.name).toBe('Sarah Connor');
+    expect(staffReceipt.role).toBe('teacher');
+
+    // 5. Student-owned receipt retains student name
+    const studentReceipt = viewers.find((v) => v.uid === 'student-user-1');
+    expect(studentReceipt.name).toBe('David Miller');
+    expect(studentReceipt.role).toBe('student');
+
+    // 6. Admin popup display resolver formula verification:
+    // displayName = viewer.studentName || (viewer.role === 'parent' && viewer.name.match(/\(([^)]+)\)$/)?.[1]) || viewer.name || viewer.userName || 'Staff Member'
+    const resolveAdminDisplayName = (viewer) => {
+      return (
+        viewer.studentName ||
+        (viewer.role?.toLowerCase() === 'parent' && viewer.name?.match(/\(([^)]+)\)$/)?.[1]?.trim()) ||
+        viewer.name ||
+        viewer.userName ||
+        'Staff Member'
+      );
+    };
+
+    expect(resolveAdminDisplayName(nishaReceipt)).toBe('Nisha A');
+    expect(resolveAdminDisplayName(balaReceipt)).toBe('Bala A');
+    expect(resolveAdminDisplayName(staffReceipt)).toBe('Sarah Connor');
+    expect(resolveAdminDisplayName(studentReceipt)).toBe('David Miller');
+
+    // 7. Legacy fallback check without studentName
+    const legacyParentReceipt = {
+      role: 'parent',
+      name: 'bala a (nisha a)'
+    };
+    expect(resolveAdminDisplayName(legacyParentReceipt)).toBe('nisha a');
+
+    const legacySingleNameParentReceipt = {
+      role: 'parent',
+      name: 'Bala A'
+    };
+    expect(resolveAdminDisplayName(legacySingleNameParentReceipt)).toBe('Bala A');
+  });
 });
+
