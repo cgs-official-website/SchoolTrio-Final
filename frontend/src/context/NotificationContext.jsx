@@ -48,7 +48,7 @@ export const NotificationProvider = ({ children }) => {
       noticesApi.listNotices({ limit: 100 }).then(res => {
         const notices = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
         notices.forEach(n => {
-          const alreadyViewed = n.viewedBy?.some(v => v.uid === currentUserId || v.userId === currentUserId);
+          const alreadyViewed = n.viewedBy?.some(v => v && (v.uid === currentUserId || v.userId === currentUserId || v.parentUserId === currentUserId));
           if (!alreadyViewed && n.id) {
             noticesApi.markNoticeViewed(n.id).catch(() => {});
           }

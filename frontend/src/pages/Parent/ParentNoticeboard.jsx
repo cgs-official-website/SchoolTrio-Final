@@ -24,7 +24,7 @@ export default function ParentNoticeboard() {
   const markUnreadAsViewed = useCallback((noticesList) => {
     if (!currentUserId || !noticesList || !Array.isArray(noticesList)) return;
     noticesList.forEach((notice) => {
-      const alreadyViewed = notice.viewedBy?.some((v) => v.uid === currentUserId || v.userId === currentUserId);
+      const alreadyViewed = notice.viewedBy?.some((v) => v && (v.uid === currentUserId || v.userId === currentUserId || v.parentUserId === currentUserId));
       if (!alreadyViewed && notice.id) {
         noticesApi.markNoticeViewed(notice.id).catch(() => {});
       }

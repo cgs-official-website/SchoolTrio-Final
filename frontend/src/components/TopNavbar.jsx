@@ -55,8 +55,8 @@ export default function TopNavbar({ schoolName, schoolLogo, toggleSidebar, navIt
     setNotices(prev => prev.map(n => {
       if (n.id === noticeId) {
         const viewedBy = Array.isArray(n.viewedBy) ? [...n.viewedBy] : [];
-        if (!viewedBy.some(v => v.uid === currentUserId || v.userId === currentUserId)) {
-          viewedBy.push({ uid: currentUserId, userId: currentUserId, viewedAt: new Date().toISOString() });
+        if (!viewedBy.some(v => v && (v.uid === currentUserId || v.userId === currentUserId || v.parentUserId === currentUserId))) {
+          viewedBy.push({ uid: currentUserId, userId: currentUserId, parentUserId: currentUserId, viewedAt: new Date().toISOString() });
         }
         return { ...n, viewedBy };
       }
@@ -78,7 +78,7 @@ export default function TopNavbar({ schoolName, schoolLogo, toggleSidebar, navIt
   const handleMarkAllAsRead = async () => {
     clearBadge('notifications');
     clearBadge('noticeboard');
-    const unreadNotices = notices.filter(n => !n.viewedBy?.some(v => v.uid === currentUserId || v.userId === currentUserId));
+    const unreadNotices = notices.filter(n => !n.viewedBy?.some(v => v && (v.uid === currentUserId || v.userId === currentUserId || v.parentUserId === currentUserId)));
     
     // Mark unread notices on server
     unreadNotices.forEach(n => {
@@ -93,8 +93,8 @@ export default function TopNavbar({ schoolName, schoolLogo, toggleSidebar, navIt
     // Optimistically update in local state
     setNotices(prev => prev.map(n => {
       const viewedBy = Array.isArray(n.viewedBy) ? [...n.viewedBy] : [];
-      if (!viewedBy.some(v => v.uid === currentUserId || v.userId === currentUserId)) {
-        viewedBy.push({ uid: currentUserId, userId: currentUserId, viewedAt: new Date().toISOString() });
+      if (!viewedBy.some(v => v && (v.uid === currentUserId || v.userId === currentUserId || v.parentUserId === currentUserId))) {
+        viewedBy.push({ uid: currentUserId, userId: currentUserId, parentUserId: currentUserId, viewedAt: new Date().toISOString() });
       }
       return { ...n, viewedBy };
     }));

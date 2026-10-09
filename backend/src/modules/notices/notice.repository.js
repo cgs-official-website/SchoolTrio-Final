@@ -121,6 +121,57 @@ export async function findParentStudentsAndClasses(schoolId, userId, tx = prisma
 }
 
 /**
+ * Finds parent profile along with all linked children for tenant.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} userId - Parent User UUID
+ * @param {Object} [tx=prisma] - Transaction client
+ * @returns {Promise<Object|null>}
+ */
+export async function findParentWithLinkedStudents(schoolId, userId, tx = prisma) {
+  const profile = await tx.parentProfile.findFirst({
+    where: {
+      userId,
+      schoolId
+    },
+    select: {
+      id: true,
+      name: true,
+      userId: true,
+      user: {
+        select: {
+          isActive: true
+        }
+      },
+      children: {
+        where: {
+          schoolId
+        },
+        select: {
+          id: true,
+          relationship: true,
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              classId: true,
+              status: true
+            }
+          }
+        }
+      }
+    }
+  });
+
+  if (!profile || profile.user?.isActive === false) {
+    return null;
+  }
+
+  return profile;
+}
+
+/**
  * Finds staff profile by user ID for tenant.
  *
  * @param {string} schoolId - Tenant UUID
@@ -513,15 +564,19 @@ export async function deleteNotice(schoolId, noticeId, tx = prisma) {
 }
 
 /**
- * Appends a read receipt to the notice viewedBy JSON array in an idempotent, tenant-safe manner.
+ * Appends read receipt(s) to the notice viewedBy JSON array in an idempotent, tenant-safe manner.
+ * Supports a single viewer object or an array of viewer objects (e.g. for multi-student parents).
  *
  * @param {string} schoolId - Tenant UUID
  * @param {string} noticeId - Notice UUID
- * @param {Object} viewerData - { uid, name, role, classId, viewedAt }
+ * @param {Object|Array<Object>} viewerData - Single viewer object or array of viewer objects
  * @param {Object} [tx=prisma] - Transaction client
  * @returns {Promise<{ notice: Object, alreadyViewed: boolean }>}
  */
 export async function recordNoticeView(schoolId, noticeId, viewerData, tx = prisma) {
+  const viewerItems = Array.isArray(viewerData) ? viewerData : [viewerData];
+  if (viewerItems.length === 0) return null;
+
   const executeOperation = async (client) => {
     // Acquire row-level lock in PostgreSQL if supported
     let currentViewers = [];
@@ -553,11 +608,41 @@ export async function recordNoticeView(schoolId, noticeId, viewerData, tx = pris
       currentViewers = Array.isArray(notice.viewedBy) ? [...notice.viewedBy] : [];
     }
 
-    const alreadyViewed = currentViewers.some(
-      (v) => v && (v.uid === viewerData.uid || v.userId === viewerData.uid)
-    );
+    let hasNewViews = false;
 
-    if (alreadyViewed) {
+    for (const item of viewerItems) {
+      if (!item) continue;
+      const uid = item.uid || item.userId;
+      const studentId = item.studentId;
+
+      const alreadyViewed = currentViewers.some((v) => {
+        if (!v) return false;
+        const vUid = v.uid || v.userId;
+        const vParentUid = v.parentUserId;
+
+        // If item is student-specific receipt (e.g. from multi-student parent or student):
+        if (studentId) {
+          if (v.studentId && v.studentId === studentId) {
+            return vUid === uid || vParentUid === uid;
+          }
+          // Legacy check: if parent viewed with matching class and no studentId
+          if (vUid === uid && !v.studentId && item.classId && v.classId === item.classId) {
+            return true;
+          }
+          return false;
+        }
+
+        // Standard user check (Teacher, Admin, Staff, or parent without studentId)
+        return vUid === uid || (vParentUid && vParentUid === uid);
+      });
+
+      if (!alreadyViewed) {
+        currentViewers.push(item);
+        hasNewViews = true;
+      }
+    }
+
+    if (!hasNewViews) {
       const notice = await client.notice.findFirst({
         where: { id: noticeId, schoolId },
         include: {
@@ -571,8 +656,6 @@ export async function recordNoticeView(schoolId, noticeId, viewerData, tx = pris
       });
       return { notice, alreadyViewed: true };
     }
-
-    currentViewers.push(viewerData);
 
     const updatedNotice = await client.notice.update({
       where: {

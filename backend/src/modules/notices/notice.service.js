@@ -179,28 +179,32 @@ export async function batchEnrichNoticeViewers(schoolId, notices) {
   if (!notices || !Array.isArray(notices) || notices.length === 0) return notices;
 
   const userIdsToResolve = new Set();
+  const studentIdsToResolve = new Set();
+
   for (const notice of notices) {
     const viewers = Array.isArray(notice?.viewedBy) ? notice.viewedBy : [];
     for (const v of viewers) {
-      const uid = v?.uid || v?.userId;
+      if (!v) continue;
+      const uid = v.uid || v.userId || v.parentUserId;
       if (uid && (!v.name || v.name === 'User' || v.name === 'user')) {
         userIdsToResolve.add(uid);
+      }
+      if (v.studentId) {
+        studentIdsToResolve.add(v.studentId);
       }
     }
   }
 
-  if (userIdsToResolve.size === 0) return notices;
-
-  const userIdsArray = Array.from(userIdsToResolve);
-
-  const [staffProfiles, parentProfiles, students, users] = await Promise.all([
-    noticeRepository.findStaffProfilesByUserIds(schoolId, userIdsArray),
-    noticeRepository.findParentProfilesByUserIds(schoolId, userIdsArray),
-    noticeRepository.findStudentsByUserIds(schoolId, userIdsArray),
-    noticeRepository.findUsersByIds(schoolId, userIdsArray)
+  const [staffProfiles, parentProfiles, students, users, linkedStudents] = await Promise.all([
+    userIdsToResolve.size > 0 ? noticeRepository.findStaffProfilesByUserIds(schoolId, Array.from(userIdsToResolve)) : [],
+    userIdsToResolve.size > 0 ? noticeRepository.findParentProfilesByUserIds(schoolId, Array.from(userIdsToResolve)) : [],
+    userIdsToResolve.size > 0 ? noticeRepository.findStudentsByUserIds(schoolId, Array.from(userIdsToResolve)) : [],
+    userIdsToResolve.size > 0 ? noticeRepository.findUsersByIds(schoolId, Array.from(userIdsToResolve)) : [],
+    studentIdsToResolve.size > 0 ? noticeRepository.findStudentsByUserIds(schoolId, Array.from(studentIdsToResolve)) : []
   ]);
 
   const identityMap = new Map();
+  const studentMap = new Map();
 
   for (const s of (staffProfiles || [])) {
     const fn = (s.firstName || s.customData?.firstName || '').trim();
@@ -240,6 +244,19 @@ export async function batchEnrichNoticeViewers(schoolId, notices) {
     }
   }
 
+  for (const st of (linkedStudents || [])) {
+    const fn = (st.firstName || '').trim();
+    const ln = (st.lastName || '').trim();
+    const name = `${fn} ${ln}`.trim();
+    if (st.id) {
+      studentMap.set(st.id, {
+        id: st.id,
+        name,
+        classId: st.classId || ''
+      });
+    }
+  }
+
   for (const u of (users || [])) {
     if (u.id && !identityMap.has(u.id)) {
       const emailPrefix = u.email ? u.email.split('@')[0] : 'User';
@@ -256,19 +273,40 @@ export async function batchEnrichNoticeViewers(schoolId, notices) {
     if (Array.isArray(notice.viewedBy)) {
       notice.viewedBy = notice.viewedBy.map((v) => {
         if (!v) return v;
-        const uid = v.uid || v.userId;
-        if (uid && (!v.name || v.name === 'User' || v.name === 'user')) {
-          const resolved = identityMap.get(uid);
-          if (resolved) {
-            return {
-              ...v,
-              name: resolved.name,
-              role: resolved.role || v.role || 'Staff',
-              classId: v.classId || resolved.classId
-            };
+        const uid = v.uid || v.userId || v.parentUserId;
+        const resolved = uid ? identityMap.get(uid) : null;
+        const resolvedStudent = v.studentId ? studentMap.get(v.studentId) : null;
+
+        let name = v.name;
+        let role = v.role;
+        let classId = v.classId;
+
+        if (resolvedStudent) {
+          if (!classId && resolvedStudent.classId) {
+            classId = resolvedStudent.classId;
+          }
+          if (v.role === 'parent' || resolved?.role === 'Parent') {
+            const parentName = resolved?.name || (name && !name.startsWith('User') ? name.split(' (')[0] : 'Parent');
+            if (parentName && resolvedStudent.name && !name?.includes(resolvedStudent.name)) {
+              name = `${parentName} (${resolvedStudent.name})`;
+            }
           }
         }
-        return v;
+
+        if (!name || name === 'User' || name === 'user') {
+          if (resolved) {
+            name = resolved.name;
+            role = resolved.role || role || 'Staff';
+            classId = classId || resolved.classId;
+          }
+        }
+
+        return {
+          ...v,
+          name: name || 'Staff Member',
+          role: role || 'Member',
+          classId: classId || ''
+        };
       });
     }
   }
@@ -878,6 +916,7 @@ export async function deleteNotice(schoolId, noticeId, actor = {}) {
 
 /**
  * Records a viewer read receipt idempotently for the notice.
+ * Supports multi-student parent accounts by recording receipts for each eligible linked student.
  *
  * @param {string} schoolId - Tenant UUID
  * @param {string} noticeId - Notice UUID
@@ -886,17 +925,103 @@ export async function deleteNotice(schoolId, noticeId, actor = {}) {
  */
 export async function recordNoticeView(schoolId, noticeId, actor = {}) {
   const userId = actor.userId || actor.id;
-  const { name, role: resolvedRole, classId } = await resolveViewerIdentity(schoolId, userId, actor);
+  const role = (actor.systemRole || actor.role || '').toUpperCase();
 
-  const viewerData = {
-    uid: userId,
-    name,
-    role: resolvedRole.toLowerCase(),
-    classId,
-    viewedAt: new Date().toISOString()
-  };
+  const notice = await noticeRepository.findNoticeById(schoolId, noticeId);
+  if (!notice) {
+    throw new NotFoundError('Notice');
+  }
 
-  const result = await noticeRepository.recordNoticeView(schoolId, noticeId, viewerData);
+  // Verify actor visibility / authorization for this notice
+  const isVisible = await verifyNoticeVisibility(schoolId, notice, actor);
+  if (!isVisible) {
+    throw new NotFoundError('Notice');
+  }
+
+  const rawAttachments = notice.attachments || {};
+  const targetStudentIds = Array.isArray(rawAttachments.targetStudentIds)
+    ? rawAttachments.targetStudentIds
+    : [];
+
+  let viewersToRecord = [];
+
+  // 1. Check if Parent
+  const isParent = role === SYSTEM_ROLES.PARENT || role === 'PARENT' || actor.parentProfile;
+  if (isParent) {
+    const parentProfile = await noticeRepository.findParentWithLinkedStudents(schoolId, userId);
+    if (parentProfile) {
+      const allLinkedStudents = (parentProfile.children || [])
+        .map((c) => c.student)
+        .filter(Boolean);
+
+      // Determine which linked students are eligible recipients under existing notice targeting rules
+      let eligibleStudents = [];
+
+      if (notice.type === 'global') {
+        if (notice.audience === 'specific_parents') {
+          eligibleStudents = allLinkedStudents.filter((st) => targetStudentIds.includes(st.id));
+        } else {
+          // 'all', 'parents', 'students_parents' -> all linked students eligible
+          eligibleStudents = allLinkedStudents;
+        }
+      } else if (notice.type === 'class') {
+        if (notice.audience === 'specific_parents') {
+          eligibleStudents = allLinkedStudents.filter((st) => st.classId === notice.classId && targetStudentIds.includes(st.id));
+        } else {
+          eligibleStudents = allLinkedStudents.filter((st) => st.classId === notice.classId);
+        }
+      }
+
+      const now = new Date().toISOString();
+
+      if (eligibleStudents.length > 0) {
+        viewersToRecord = eligibleStudents.map((st) => {
+          const studentFullName = `${st.firstName || ''} ${st.lastName || ''}`.trim();
+          const displayName = parentProfile.name
+            ? `${parentProfile.name} (${studentFullName})`
+            : studentFullName;
+
+          return {
+            uid: userId,
+            parentUserId: userId,
+            studentId: st.id,
+            studentName: studentFullName,
+            name: displayName,
+            role: 'parent',
+            classId: st.classId || '',
+            viewedAt: now
+          };
+        });
+      } else {
+        // Fallback if parent has no linked students or none in target
+        viewersToRecord = [
+          {
+            uid: userId,
+            name: parentProfile.name || 'Parent',
+            role: 'parent',
+            classId: '',
+            viewedAt: now
+          }
+        ];
+      }
+    }
+  }
+
+  // 2. If not parent or parentProfile was not found
+  if (viewersToRecord.length === 0) {
+    const { name, role: resolvedRole, classId } = await resolveViewerIdentity(schoolId, userId, actor);
+    viewersToRecord = [
+      {
+        uid: userId,
+        name,
+        role: resolvedRole.toLowerCase(),
+        classId,
+        viewedAt: new Date().toISOString()
+      }
+    ];
+  }
+
+  const result = await noticeRepository.recordNoticeView(schoolId, noticeId, viewersToRecord);
 
   if (!result) {
     throw new NotFoundError('Notice');
