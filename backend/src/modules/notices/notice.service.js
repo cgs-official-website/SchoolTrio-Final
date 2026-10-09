@@ -285,10 +285,13 @@ export async function batchEnrichNoticeViewers(schoolId, notices) {
           if (!classId && resolvedStudent.classId) {
             classId = resolvedStudent.classId;
           }
+          const studentName = resolvedStudent.name;
           if (v.role === 'parent' || resolved?.role === 'Parent') {
-            const parentName = resolved?.name || (name && !name.startsWith('User') ? name.split(' (')[0] : 'Parent');
-            if (parentName && resolvedStudent.name && !name?.includes(resolvedStudent.name)) {
-              name = `${parentName} (${resolvedStudent.name})`;
+            const parentName = resolved?.name || v.parentName || (name && !name.startsWith('User') ? name.split(' (')[0] : 'Parent');
+            if (parentName && studentName && parentName.toLowerCase() !== studentName.toLowerCase()) {
+              name = `${parentName} (${studentName})`;
+            } else {
+              name = studentName || parentName;
             }
           }
         }
@@ -977,13 +980,16 @@ export async function recordNoticeView(schoolId, noticeId, actor = {}) {
       if (eligibleStudents.length > 0) {
         viewersToRecord = eligibleStudents.map((st) => {
           const studentFullName = `${st.firstName || ''} ${st.lastName || ''}`.trim();
-          const displayName = parentProfile.name
-            ? `${parentProfile.name} (${studentFullName})`
-            : studentFullName;
+          const parentName = (parentProfile.name || '').trim();
+          let displayName = studentFullName;
+          if (parentName && parentName.toLowerCase() !== studentFullName.toLowerCase()) {
+            displayName = `${parentName} (${studentFullName})`;
+          }
 
           return {
             uid: userId,
             parentUserId: userId,
+            parentName: parentName || 'Parent',
             studentId: st.id,
             studentName: studentFullName,
             name: displayName,

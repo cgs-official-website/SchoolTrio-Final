@@ -88,7 +88,7 @@ export const NotificationProvider = ({ children }) => {
         const notices = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
         const lastViewedNotice = localStorage.getItem('lastViewed_noticeboard') || lastViewed.noticeboard;
         const count = notices.filter((n) => {
-          const isViewed = n.viewedBy?.some((v) => v.uid === currentUserId || v.userId === currentUserId);
+          const isViewed = n.viewedBy?.some((v) => v && (v.uid === currentUserId || v.userId === currentUserId || v.parentUserId === currentUserId));
           const isOlderThanViewed = lastViewedNotice && new Date(n.createdAt) <= new Date(lastViewedNotice);
           return !isViewed && !isOlderThanViewed;
         }).length;

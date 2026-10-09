@@ -452,4 +452,92 @@ describe('Noticeboard Read Receipts - Multi-Student Parent Account (BUG-01)', ()
     expect(recordedViewers[0].studentId).toBe(balaStudentId);
     expect(recordedViewers[0].name).toBe('Arun A (Bala A)');
   });
+
+  it('16 (SB-2026-1005-04): Does not duplicate student name in brackets when parent name matches student name', async () => {
+    const parentProfileWithMatchingName = {
+      id: 'parent-profile-same-name',
+      schoolId,
+      userId: parentUserId,
+      name: 'Bala A',
+      children: [
+        {
+          id: 'link-1',
+          relationship: 'Parent',
+          student: {
+            id: balaStudentId,
+            firstName: 'Bala',
+            lastName: 'A',
+            classId: class10Id,
+            status: 'Active'
+          }
+        },
+        {
+          id: 'link-2',
+          relationship: 'Parent',
+          student: {
+            id: nishaStudentId,
+            firstName: 'Nisha',
+            lastName: 'A',
+            classId: class8Id,
+            status: 'Active'
+          }
+        }
+      ]
+    };
+
+    const globalNotice = {
+      id: noticeGlobalId,
+      schoolId,
+      title: 'School Circular',
+      content: 'General message',
+      type: 'global',
+      audience: 'parents',
+      viewedBy: []
+    };
+
+    noticeRepository.findNoticeById.mockResolvedValue(globalNotice);
+    noticeRepository.findParentStudentsAndClasses.mockResolvedValue({
+      studentIds: [balaStudentId, nishaStudentId],
+      classIds: [class10Id, class8Id]
+    });
+    noticeRepository.findParentWithLinkedStudents.mockResolvedValue(parentProfileWithMatchingName);
+    noticeRepository.recordNoticeView.mockImplementation(async (sId, nId, viewers) => {
+      return {
+        notice: {
+          ...globalNotice,
+          viewedBy: viewers
+        },
+        alreadyViewed: false
+      };
+    });
+
+    noticeRepository.findStaffProfilesByUserIds.mockResolvedValue([]);
+    noticeRepository.findParentProfilesByUserIds.mockResolvedValue([
+      { userId: parentUserId, name: 'Bala A' }
+    ]);
+    noticeRepository.findStudentsByUserIds.mockResolvedValue([
+      { id: balaStudentId, firstName: 'Bala', lastName: 'A', classId: class10Id },
+      { id: nishaStudentId, firstName: 'Nisha', lastName: 'A', classId: class8Id }
+    ]);
+    noticeRepository.findUsersByIds.mockResolvedValue([]);
+
+    const actor = {
+      userId: parentUserId,
+      systemRole: SYSTEM_ROLES.PARENT
+    };
+
+    const response = await noticeService.recordNoticeView(schoolId, noticeGlobalId, actor);
+    const recordedViewers = noticeRepository.recordNoticeView.mock.calls[0][2];
+
+    expect(recordedViewers).toHaveLength(2);
+    // Bala A should NOT be 'Bala A (Bala A)'
+    const balaReceipt = recordedViewers.find((v) => v.studentId === balaStudentId);
+    expect(balaReceipt.name).toBe('Bala A');
+    expect(balaReceipt.studentName).toBe('Bala A');
+
+    // Nisha A should be 'Bala A (Nisha A)' in global admin context
+    const nishaReceipt = recordedViewers.find((v) => v.studentId === nishaStudentId);
+    expect(nishaReceipt.name).toBe('Bala A (Nisha A)');
+    expect(nishaReceipt.studentName).toBe('Nisha A');
+  });
 });

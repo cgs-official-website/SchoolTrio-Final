@@ -11,6 +11,9 @@ export default function ParentNoticeboard() {
   const { userProfile, currentUser } = useAuth();
   const outletContext = useOutletContext();
   const activeStudentId = outletContext?.activeStudentId || userProfile?.linkedStudentId;
+  const enrolledChildren = outletContext?.enrolledChildren || _children || [];
+  const activeChild = outletContext?.activeChild || enrolledChildren.find((c) => (c.id === activeStudentId || c.studentId === activeStudentId));
+  const activeClassId = activeChild?.classId || activeChild?.class?.id;
 
   const [activeTab, setActiveTab] = useState('global');
   const [globalNotices, setGlobalNotices] = useState([]);
@@ -20,16 +23,22 @@ export default function ParentNoticeboard() {
 
   const currentUserId = userProfile?.id || userProfile?.userId || currentUser?.uid;
 
-  // Automatically mark unread notices as viewed via REST API
+  // Automatically mark unread notices as viewed via REST API for active child
   const markUnreadAsViewed = useCallback((noticesList) => {
     if (!currentUserId || !noticesList || !Array.isArray(noticesList)) return;
     noticesList.forEach((notice) => {
-      const alreadyViewed = notice.viewedBy?.some((v) => v && (v.uid === currentUserId || v.userId === currentUserId || v.parentUserId === currentUserId));
+      const alreadyViewed = notice.viewedBy?.some((v) => {
+        if (!v) return false;
+        if (activeStudentId && v.studentId) {
+          return v.studentId === activeStudentId;
+        }
+        return v.uid === currentUserId || v.userId === currentUserId || v.parentUserId === currentUserId;
+      });
       if (!alreadyViewed && notice.id) {
         noticesApi.markNoticeViewed(notice.id).catch(() => {});
       }
     });
-  }, [currentUserId]);
+  }, [currentUserId, activeStudentId]);
 
   // Load parent's linked children from REST API
   useEffect(() => {
@@ -57,15 +66,41 @@ export default function ParentNoticeboard() {
     try {
       if (activeTab === 'global') {
         const res = await noticesApi.listNotices({ type: 'global', limit: 100 });
-        const notices = res.data || [];
-        setGlobalNotices(notices);
-        markUnreadAsViewed(notices);
+        const rawNotices = res.data || [];
+        // Filter out specific_parents notices if activeChild is not targeted
+        const filtered = rawNotices.filter((n) => {
+          if (n.audience === 'specific_parents') {
+            const targets = n.targetStudentIds || n.attachments?.targetStudentIds || [];
+            if (targets.length > 0 && activeStudentId) {
+              return targets.includes(activeStudentId);
+            }
+          }
+          return true;
+        });
+        setGlobalNotices(filtered);
+        markUnreadAsViewed(filtered);
       } else if (activeTab === 'class') {
         const queryParams = { type: 'class', limit: 100 };
+        if (activeClassId) {
+          queryParams.classId = activeClassId;
+        }
         const res = await noticesApi.listNotices(queryParams);
-        const notices = res.data || [];
-        setClassNotices(notices);
-        markUnreadAsViewed(notices);
+        const rawNotices = res.data || [];
+        // Filter class notices strictly for active child's class & target student if specific_parents
+        const filtered = rawNotices.filter((n) => {
+          if (activeClassId && n.classId && n.classId !== activeClassId) {
+            return false;
+          }
+          if (n.audience === 'specific_parents') {
+            const targets = n.targetStudentIds || n.attachments?.targetStudentIds || [];
+            if (targets.length > 0 && activeStudentId) {
+              return targets.includes(activeStudentId);
+            }
+          }
+          return true;
+        });
+        setClassNotices(filtered);
+        markUnreadAsViewed(filtered);
       }
     } catch (err) {
       console.error('Failed to load parent notices from REST:', err);
@@ -73,11 +108,11 @@ export default function ParentNoticeboard() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, markUnreadAsViewed]);
+  }, [activeTab, activeClassId, activeStudentId, markUnreadAsViewed]);
 
   useEffect(() => {
     fetchNotices();
-  }, [fetchNotices, activeStudentId]);
+  }, [fetchNotices, activeStudentId, activeClassId]);
 
   // Canonical live-data synchronization for notices
   useLiveDataRefresh(fetchNotices, [fetchNotices], 'notices');
