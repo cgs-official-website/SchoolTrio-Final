@@ -214,6 +214,7 @@ export default function Attendance() {
       if (
         !mountedRef.current ||
         currentClassRef.current !== targetClassId ||
+        currentSectionRef.current !== (targetSectionId || null) ||
         currentDateRef.current !== targetDate ||
         currentSessionRef.current !== targetSession
       ) {
@@ -237,6 +238,7 @@ export default function Attendance() {
         if (
           !mountedRef.current ||
           currentClassRef.current !== targetClassId ||
+          currentSectionRef.current !== (targetSectionId || null) ||
           currentDateRef.current !== targetDate ||
           currentSessionRef.current !== targetSession
         ) {
@@ -281,6 +283,7 @@ export default function Attendance() {
       if (
         mountedRef.current &&
         currentClassRef.current === targetClassId &&
+        currentSectionRef.current === (targetSectionId || null) &&
         currentDateRef.current === targetDate &&
         currentSessionRef.current === targetSession
       ) {
@@ -291,6 +294,7 @@ export default function Attendance() {
       if (
         mountedRef.current &&
         currentClassRef.current === targetClassId &&
+        currentSectionRef.current === (targetSectionId || null) &&
         currentDateRef.current === targetDate &&
         currentSessionRef.current === targetSession
       ) {
@@ -436,13 +440,17 @@ export default function Attendance() {
         let totalPages = 1;
 
         do {
-          const res = await listAttendanceSessions({
+          const histQuery = {
             classId: selectedClassId,
             startDate: startDate || undefined,
             endDate: endDate || undefined,
             page: currentPage,
             limit: 100
-          });
+          };
+          if (selectedSectionId) {
+            histQuery.sectionId = selectedSectionId;
+          }
+          const res = await listAttendanceSessions(histQuery);
 
           if (!isMounted) return;
           const pageData = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
@@ -484,7 +492,7 @@ export default function Attendance() {
     return () => {
       isMounted = false;
     };
-  }, [activeTab, viewMode, selectedClassId]);
+  }, [activeTab, viewMode, selectedClassId, selectedSectionId]);
 
   // Aggregate historical stats
   useEffect(() => {
@@ -569,11 +577,11 @@ export default function Attendance() {
     if (activeTab === 'dashboard') {
       fetchDashboardStats(selectedDate);
     } else if (activeTab === 'marking' && selectedClassId && students.length > 0) {
-      fetchDailySession(selectedClassId, selectedDate, selectedSession, true);
+      fetchDailySession(selectedClassId, selectedSectionId, selectedDate, selectedSession, true);
     } else if (activeTab === 'analytics') {
       fetchAnalyticsData(selectedDate);
     }
-  }, [activeTab, selectedDate, selectedClassId, students.length, selectedSession, fetchDashboardStats, fetchDailySession, fetchAnalyticsData]);
+  }, [activeTab, selectedDate, selectedClassId, selectedSectionId, students.length, selectedSession, fetchDashboardStats, fetchDailySession, fetchAnalyticsData]);
 
   // Canonical live-data synchronization for attendance
   useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], 'attendance');
@@ -583,7 +591,7 @@ export default function Attendance() {
     if (activeTab === 'dashboard') {
       fetchDashboardStats(selectedDate);
     } else if (activeTab === 'marking' && selectedClassId) {
-      fetchDailySession(selectedClassId, selectedDate, selectedSession, false);
+      fetchDailySession(selectedClassId, selectedSectionId, selectedDate, selectedSession, false);
     } else if (activeTab === 'analytics') {
       fetchAnalyticsData(selectedDate);
     }

@@ -246,7 +246,14 @@ export default function StudentManagement() {
         }
         const timeline = res?.data?.timeline || res?.timeline;
         if (Array.isArray(timeline)) {
-          setStudentHistory(timeline);
+          const normalized = timeline.map(item => ({
+            id: item.id,
+            date: item.session?.date || item.date || item.createdAt || '',
+            status: item.status || 'Present',
+            session: item.session?.session || (typeof item.session === 'string' ? item.session : 'FN'),
+            className: item.session?.class?.name || ''
+          }));
+          setStudentHistory(normalized);
         } else {
           setStudentHistory([]);
         }
@@ -3275,21 +3282,28 @@ export default function StudentManagement() {
                         <p className="text-xs text-slate-400 dark:text-slate-300 italic">No daily logs found for the current month.</p>
                       ) : (
                         <div className="max-h-[200px] overflow-y-auto border border-slate-200/60 rounded-xl divide-y divide-slate-100 bg-white dark:bg-slate-900">
-                          {studentHistory.map((item, idx) => (
-                            <div key={idx} className="flex justify-between items-center px-4 py-2.5 text-xs">
-                              <div>
-                                <span className="font-bold text-slate-800 dark:text-slate-100">{new Date(item.date).toLocaleDateString('en-GB')}</span>
-                                <span className="text-slate-400 dark:text-slate-300 ml-2 font-medium">({item.session})</span>
+                          {studentHistory.map((item, idx) => {
+                            const rawDate = item.session?.date || item.date || item.createdAt;
+                            const dateDisplay = rawDate && !isNaN(new Date(rawDate).getTime())
+                              ? new Date(rawDate).toLocaleDateString('en-GB')
+                              : 'N/A';
+                            const sessionDisplay = item.session?.session || (typeof item.session === 'string' ? item.session : 'FN');
+                            return (
+                              <div key={item.id || idx} className="flex justify-between items-center px-4 py-2.5 text-xs">
+                                <div>
+                                  <span className="font-bold text-slate-800 dark:text-slate-100">{dateDisplay}</span>
+                                  <span className="text-slate-400 dark:text-slate-300 ml-2 font-medium">({sessionDisplay})</span>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border text-[10px] ${
+                                  item.status === 'Present' ? 'bg-green-50 text-green-700 border-green-100' :
+                                  item.status === 'Absent' ? 'bg-red-50 text-red-700 border-red-100' :
+                                  'bg-amber-50 text-amber-700 border-amber-100'
+                                }`}>
+                                  {item.status}
+                                </span>
                               </div>
-                              <span className={`px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border text-[10px] ${
-                                item.status === 'Present' ? 'bg-green-50 text-green-700 border-green-100' :
-                                item.status === 'Absent' ? 'bg-red-50 text-red-700 border-red-100' :
-                                'bg-amber-50 text-amber-700 border-amber-100'
-                              }`}>
-                                {item.status}
-                              </span>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
