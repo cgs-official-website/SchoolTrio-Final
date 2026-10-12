@@ -335,114 +335,200 @@ export default function ParentGrades() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {assessmentIds.map((id, i) => {
-                      const item = selectedReport.marks[id] || {};
-                      const mark = item.obtained !== undefined ? item.obtained : '-';
-                      const maxMark = item.max !== undefined ? item.max : '-';
-                      const autoGrade = item.grade || (mark !== '-' && Number(maxMark) > 0 
-                        ? (Number(mark) / Number(maxMark) >= 0.9 ? 'A1' : Number(mark) / Number(maxMark) >= 0.8 ? 'A2' : Number(mark) / Number(maxMark) >= 0.7 ? 'B1' : 'B2') 
-                        : '-');
+                    {(() => {
+                      // Helper to get display value for a cell in assessment row
+                      const getColDisplayValue = (item, colName, cIdx) => {
+                        if (cIdx === 0) return item.title || '';
+                        const lower = colName.toLowerCase();
+                        if (lower.includes('max')) {
+                          return item.max !== undefined ? item.max : '-';
+                        }
+                        if (lower.includes('grade')) {
+                          const mark = item.obtained !== undefined ? item.obtained : '-';
+                          const maxMark = item.max !== undefined ? item.max : '-';
+                          return item.grade || (mark !== '-' && Number(maxMark) > 0 
+                            ? (Number(mark) / Number(maxMark) >= 0.9 ? 'A1' : Number(mark) / Number(maxMark) >= 0.8 ? 'A2' : Number(mark) / Number(maxMark) >= 0.7 ? 'B1' : 'B2') 
+                            : '-');
+                        }
+
+                        // Total column check
+                        const isTotalCol = lower.startsWith('total') || lower === 'total' || lower.includes('total/') || lower.includes('/total') || lower.includes('aggregate');
+                        if (isTotalCol) {
+                          // If componentMarks has valid numbers for real non-total components, compute clean sum
+                          if (item.componentMarks && typeof item.componentMarks === 'object') {
+                            const realComps = (template.assessmentComponents || []).filter(c => {
+                              const cLower = (c.label || c.key || '').toLowerCase();
+                              return !c.isCalculated && c.type !== 'calculated_total' && c.type !== 'grade' && !cLower.includes('total') && !cLower.includes('grade');
+                            });
+                            if (realComps.length > 0) {
+                              let sum = 0;
+                              let hasVal = false;
+                              realComps.forEach(c => {
+                                const v = item.componentMarks[c.key];
+                                if (v !== undefined && v !== null && v !== '' && !isNaN(Number(v))) {
+                                  sum += Number(v);
+                                  hasVal = true;
+                                }
+                              });
+                              if (hasVal) return sum;
+                            }
+                          }
+                          return item.obtained !== undefined ? item.obtained : '-';
+                        }
+
+                        // Component matching (excluding any component whose key or label is total or grade)
+                        const matchedComponent = (template.assessmentComponents || []).find(comp => {
+                          const cKey = (comp.key || '').toLowerCase();
+                          const cLabel = (comp.label || '').toLowerCase();
+                          if (cKey.includes('total') || cKey.includes('grade') || cLabel.includes('total') || cLabel.includes('grade')) return false;
+                          return (cLabel && lower.includes(cLabel)) || (cKey && lower.includes(cKey));
+                        });
+                        const compKey = matchedComponent?.key;
+                        if (compKey && item.componentMarks?.[compKey] !== undefined) {
+                          return item.componentMarks[compKey];
+                        }
+
+                        // Fallback matching by column name prefix
+                        if (item.componentMarks && typeof item.componentMarks === 'object') {
+                          const cleanKey = lower.split('/')[0].trim().replace(/[^a-z0-9]/g, '_');
+                          for (const [k, v] of Object.entries(item.componentMarks)) {
+                            const kLower = k.toLowerCase();
+                            if (kLower === cleanKey || kLower.startsWith(cleanKey)) {
+                              return v;
+                            }
+                          }
+                        }
+
+                        return item.obtained !== undefined ? item.obtained : '-';
+                      };
+
+                      const computedTotalMax = assessmentIds.reduce((sum, id) => {
+                        const m = selectedReport?.marks?.[id]?.max;
+                        return m !== undefined && !isNaN(Number(m)) ? sum + Number(m) : sum;
+                      }, 0) || selectedReport?.totalMax || 0;
+
+                      const computedTotalObtained = assessmentIds.reduce((sum, id) => {
+                        const itm = selectedReport?.marks?.[id] || {};
+                        const val = getColDisplayValue(itm, 'total', 999);
+                        return (val !== '-' && !isNaN(Number(val))) ? sum + Number(val) : sum;
+                      }, 0);
+
+                      const computedPercentage = computedTotalMax > 0 
+                        ? ((computedTotalObtained / computedTotalMax) * 100).toFixed(1) 
+                        : (selectedReport?.percentage || 0);
 
                       return (
-                        <tr key={id} className={i % 2 === 0 ? 'bg-white dark:bg-slate-900 hover:bg-slate-50/50' : 'bg-slate-50 dark:bg-slate-800 hover:bg-slate-100/50'}>
-                          {hasCustomColumns ? (
-                            template.grading.columns.map((colName, cIdx) => {
-                              if (cIdx === 0) {
-                                return (
-                                  <td key={cIdx} className="p-3 border border-slate-300 dark:border-slate-600 font-semibold text-slate-900 dark:text-white">
-                                    {item.title || id}
-                                  </td>
-                                );
-                              }
-                              const lower = colName.toLowerCase();
-                              if (lower.includes('max')) {
-                                return (
-                                  <td key={cIdx} className="p-3 border border-slate-300 dark:border-slate-600 text-center text-slate-500 dark:text-slate-400">
-                                    {maxMark}
-                                  </td>
-                                );
-                              }
-                              if (lower.includes('grade')) {
-                                return (
-                                  <td key={cIdx} className="p-3 border border-slate-300 dark:border-slate-600 text-center font-bold text-slate-800 dark:text-slate-100">
-                                    {autoGrade}
-                                  </td>
-                                );
-                              }
-                              const matchedComponent = (template.assessmentComponents || []).find(
-                                comp => (comp.label && lower.includes(comp.label.toLowerCase())) ||
-                                        (comp.key && lower.includes(comp.key.toLowerCase()))
-                              );
-                              const compKey = matchedComponent?.key;
-                              const displayMark = (compKey && item.componentMarks?.[compKey] !== undefined)
-                                ? item.componentMarks[compKey]
-                                : mark;
+                        <>
+                          {assessmentIds.map((id, i) => {
+                            const item = selectedReport.marks[id] || {};
+                            const mark = item.obtained !== undefined ? item.obtained : '-';
+                            const maxMark = item.max !== undefined ? item.max : '-';
+                            const autoGrade = item.grade || (mark !== '-' && Number(maxMark) > 0 
+                              ? (Number(mark) / Number(maxMark) >= 0.9 ? 'A1' : Number(mark) / Number(maxMark) >= 0.8 ? 'A2' : Number(mark) / Number(maxMark) >= 0.7 ? 'B1' : 'B2') 
+                              : '-');
 
-                              return (
-                                <td key={cIdx} className="p-3 border border-slate-300 dark:border-slate-600 text-center font-bold text-slate-800 dark:text-slate-100">
-                                  {displayMark}
-                                </td>
-                              );
-                            })
-                          ) : (
-                            <>
-                              <td className="p-3 border border-slate-300 dark:border-slate-600 font-semibold text-slate-900 dark:text-white">{item.title || id}</td>
-                              <td className="p-3 border border-slate-300 dark:border-slate-600 text-center text-slate-500 dark:text-slate-400">{maxMark}</td>
-                              {['marks', 'marks_and_grades'].includes(template.grading?.style) && (
-                                <td className="p-3 border border-slate-300 dark:border-slate-600 text-center font-bold text-slate-800 dark:text-slate-100">{mark}</td>
-                              )}
-                              {['grades', 'marks_and_grades'].includes(template.grading?.style) && (
-                                <td className="p-3 border border-slate-300 dark:border-slate-600 text-center font-bold text-slate-800 dark:text-slate-100">{autoGrade}</td>
-                              )}
-                            </>
-                          )}
-                        </tr>
-                      );
-                    })}
-
-                    {/* Totals Row */}
-                    {(template.grading?.showTotal || template.grading?.showPercentage) && (
-                      <tr className="bg-slate-100 dark:bg-slate-700 font-bold">
-                        {hasCustomColumns ? (
-                          template.grading.columns.map((colName, cIdx) => {
-                            if (cIdx === 0) {
-                              return <td key={cIdx} className="p-3 border border-slate-300 dark:border-slate-600 text-right">TOTAL</td>;
-                            }
-                            const lower = colName.toLowerCase();
-                            if (lower.includes('grade')) {
-                              return (
-                                <td key={cIdx} className="p-3 border border-slate-300 dark:border-slate-600 text-center text-primary-700" style={{ color: template.themeColor }}>
-                                  {selectedReport.overallGrade || (selectedReport.percentage >= 90 ? 'A1' : selectedReport.percentage >= 80 ? 'A2' : selectedReport.percentage >= 70 ? 'B1' : 'B2')}
-                                </td>
-                              );
-                            }
-                            if (lower.includes('max')) {
-                              return <td key={cIdx} className="p-3 border border-slate-300 dark:border-slate-600 text-center">{selectedReport.totalMax}</td>;
-                            }
                             return (
-                              <td key={cIdx} className="p-3 border border-slate-300 dark:border-slate-600 text-center text-primary-700" style={{ color: template.themeColor }}>
-                                {selectedReport.totalObtained}
-                              </td>
+                              <tr key={id} className={i % 2 === 0 ? 'bg-white dark:bg-slate-900 hover:bg-slate-50/50' : 'bg-slate-50 dark:bg-slate-800 hover:bg-slate-100/50'}>
+                                {hasCustomColumns ? (
+                                  template.grading.columns.map((colName, cIdx) => {
+                                    if (cIdx === 0) {
+                                      return (
+                                        <td key={cIdx} className="p-3 border border-slate-300 dark:border-slate-600 font-semibold text-slate-900 dark:text-white">
+                                          {item.title || id}
+                                        </td>
+                                      );
+                                    }
+                                    const displayMark = getColDisplayValue(item, colName, cIdx);
+
+                                    return (
+                                      <td key={cIdx} className="p-3 border border-slate-300 dark:border-slate-600 text-center font-bold text-slate-800 dark:text-slate-100">
+                                        {displayMark}
+                                      </td>
+                                    );
+                                  })
+                                ) : (
+                                  <>
+                                    <td className="p-3 border border-slate-300 dark:border-slate-600 font-semibold text-slate-900 dark:text-white">{item.title || id}</td>
+                                    <td className="p-3 border border-slate-300 dark:border-slate-600 text-center text-slate-500 dark:text-slate-400">{maxMark}</td>
+                                    {['marks', 'marks_and_grades'].includes(template.grading?.style) && (
+                                      <td className="p-3 border border-slate-300 dark:border-slate-600 text-center font-bold text-slate-800 dark:text-slate-100">{mark}</td>
+                                    )}
+                                    {['grades', 'marks_and_grades'].includes(template.grading?.style) && (
+                                      <td className="p-3 border border-slate-300 dark:border-slate-600 text-center font-bold text-slate-800 dark:text-slate-100">{autoGrade}</td>
+                                    )}
+                                  </>
+                                )}
+                              </tr>
                             );
-                          })
-                        ) : (
-                          <>
-                            <td className="p-3 border border-slate-300 dark:border-slate-600 text-right">TOTAL</td>
-                            <td className="p-3 border border-slate-300 dark:border-slate-600 text-center">{selectedReport.totalMax}</td>
-                            {['marks', 'marks_and_grades'].includes(template.grading?.style) && (
-                              <td className="p-3 border border-slate-300 dark:border-slate-600 text-center text-primary-700" style={{ color: template.themeColor }}>
-                                {selectedReport.totalObtained}
-                              </td>
-                            )}
-                            {['grades', 'marks_and_grades'].includes(template.grading?.style) && (
-                              <td className="p-3 border border-slate-300 dark:border-slate-600 text-center text-primary-700" style={{ color: template.themeColor }}>
-                                {selectedReport.overallGrade || (selectedReport.percentage >= 90 ? 'A1' : selectedReport.percentage >= 80 ? 'A2' : selectedReport.percentage >= 70 ? 'B1' : 'B2')}
-                              </td>
-                            )}
-                          </>
-                        )}
-                      </tr>
-                    )}
+                          })}
+
+                          {/* Totals Row */}
+                          {(template.grading?.showTotal || template.grading?.showPercentage) && (
+                            <tr className="bg-slate-100 dark:bg-slate-700 font-bold">
+                              {hasCustomColumns ? (
+                                template.grading.columns.map((colName, cIdx) => {
+                                  if (cIdx === 0) {
+                                    return <td key={cIdx} className="p-3 border border-slate-300 dark:border-slate-600 text-right">TOTAL</td>;
+                                  }
+                                  const lower = colName.toLowerCase();
+                                  if (lower.includes('grade')) {
+                                    const overallPct = computedTotalMax > 0 ? (computedTotalObtained / computedTotalMax) * 100 : selectedReport.percentage;
+                                    return (
+                                      <td key={cIdx} className="p-3 border border-slate-300 dark:border-slate-600 text-center text-primary-700" style={{ color: template.themeColor }}>
+                                        {selectedReport.overallGrade || (overallPct >= 90 ? 'A1' : overallPct >= 80 ? 'A2' : overallPct >= 70 ? 'B1' : 'B2')}
+                                      </td>
+                                    );
+                                  }
+                                  if (lower.includes('max')) {
+                                    let maxColSum = 0;
+                                    assessmentIds.forEach(id => {
+                                      const itm = selectedReport.marks[id] || {};
+                                      if (itm.max !== undefined && !isNaN(Number(itm.max))) {
+                                        maxColSum += Number(itm.max);
+                                      }
+                                    });
+                                    return <td key={cIdx} className="p-3 border border-slate-300 dark:border-slate-600 text-center">{maxColSum || computedTotalMax}</td>;
+                                  }
+
+                                  // Calculate column total strictly from each cell above it in this column
+                                  let colSum = 0;
+                                  let hasValidVal = false;
+                                  assessmentIds.forEach(id => {
+                                    const itm = selectedReport.marks[id] || {};
+                                    const cellVal = getColDisplayValue(itm, colName, cIdx);
+                                    if (cellVal !== '-' && cellVal !== '' && cellVal !== null && cellVal !== undefined && !isNaN(Number(cellVal))) {
+                                      colSum += Number(cellVal);
+                                      hasValidVal = true;
+                                    }
+                                  });
+
+                                  return (
+                                    <td key={cIdx} className="p-3 border border-slate-300 dark:border-slate-600 text-center text-primary-700" style={{ color: template.themeColor }}>
+                                      {hasValidVal ? colSum : '-'}
+                                    </td>
+                                  );
+                                })
+                              ) : (
+                                <>
+                                  <td className="p-3 border border-slate-300 dark:border-slate-600 text-right">TOTAL</td>
+                                  <td className="p-3 border border-slate-300 dark:border-slate-600 text-center">{computedTotalMax}</td>
+                                  {['marks', 'marks_and_grades'].includes(template.grading?.style) && (
+                                    <td className="p-3 border border-slate-300 dark:border-slate-600 text-center text-primary-700" style={{ color: template.themeColor }}>
+                                      {computedTotalObtained}
+                                    </td>
+                                  )}
+                                  {['grades', 'marks_and_grades'].includes(template.grading?.style) && (
+                                    <td className="p-3 border border-slate-300 dark:border-slate-600 text-center text-primary-700" style={{ color: template.themeColor }}>
+                                      {selectedReport.overallGrade || (computedPercentage >= 90 ? 'A1' : computedPercentage >= 80 ? 'A2' : computedPercentage >= 70 ? 'B1' : 'B2')}
+                                    </td>
+                                  )}
+                                </>
+                              )}
+                            </tr>
+                          )}
+                        </>
+                      );
+                    })()}
                   </tbody>
                 </table>
               </div>
@@ -450,14 +536,52 @@ export default function ParentGrades() {
               {/* Performance Summary / Percentage */}
               {template.grading?.showPercentage && (
                 <div className="mt-6 flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-sans">
-                  <div>
-                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Obtained Marks:</span>
-                    <p className="text-lg font-black text-slate-900 dark:text-white">{selectedReport.totalObtained} / {selectedReport.totalMax}</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Overall Percentage:</span>
-                    <p className="text-2xl font-black" style={{ color: template.themeColor }}>{selectedReport.percentage}%</p>
-                  </div>
+                  {(() => {
+                    const compTotalMax = assessmentIds.reduce((sum, id) => {
+                      const m = selectedReport?.marks?.[id]?.max;
+                      return m !== undefined && !isNaN(Number(m)) ? sum + Number(m) : sum;
+                    }, 0) || selectedReport?.totalMax || 0;
+
+                    const compTotalObt = assessmentIds.reduce((sum, id) => {
+                      const itm = selectedReport?.marks?.[id] || {};
+                      if (itm.componentMarks && typeof itm.componentMarks === 'object') {
+                        const realComps = (template.assessmentComponents || []).filter(c => {
+                          const cLower = (c.label || c.key || '').toLowerCase();
+                          return !c.isCalculated && c.type !== 'calculated_total' && c.type !== 'grade' && !cLower.includes('total') && !cLower.includes('grade');
+                        });
+                        if (realComps.length > 0) {
+                          let s = 0;
+                          let h = false;
+                          realComps.forEach(c => {
+                            const v = itm.componentMarks[c.key];
+                            if (v !== undefined && v !== null && v !== '' && !isNaN(Number(v))) {
+                              s += Number(v);
+                              h = true;
+                            }
+                          });
+                          if (h) return sum + s;
+                        }
+                      }
+                      return (itm.obtained !== undefined && !isNaN(Number(itm.obtained))) ? sum + Number(itm.obtained) : sum;
+                    }, 0);
+
+                    const compPct = compTotalMax > 0 
+                      ? ((compTotalObt / compTotalMax) * 100).toFixed(1) 
+                      : (selectedReport?.percentage || 0);
+
+                    return (
+                      <>
+                        <div>
+                          <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Obtained Marks:</span>
+                          <p className="text-lg font-black text-slate-900 dark:text-white">{compTotalObt} / {compTotalMax}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Overall Percentage:</span>
+                          <p className="text-2xl font-black" style={{ color: template.themeColor }}>{compPct}%</p>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>

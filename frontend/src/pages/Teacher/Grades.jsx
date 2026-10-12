@@ -235,21 +235,17 @@ export default function Grades() {
     };
   }, [schoolId, classId, fetchExams, fetchAssessments]);
 
-  // Derive active assessment components from assessment or template config
+  // Derive active assessment components from assessment or template config (only manual mark entry components)
   const activeComponents = useMemo(() => {
+    let list = [];
     if (Array.isArray(activeAssessment?.components) && activeAssessment.components.length > 0) {
-      return activeAssessment.components;
-    }
-    if (Array.isArray(reportTemplate?.assessmentComponents) && reportTemplate.assessmentComponents.length > 0) {
-      return reportTemplate.assessmentComponents;
-    }
-    // Check if reportTemplate has grading.columns that can be parsed
-    if (Array.isArray(reportTemplate?.grading?.columns) && reportTemplate.grading.columns.length > 0) {
+      list = activeAssessment.components;
+    } else if (Array.isArray(reportTemplate?.assessmentComponents) && reportTemplate.assessmentComponents.length > 0) {
+      list = reportTemplate.assessmentComponents;
+    } else if (Array.isArray(reportTemplate?.grading?.columns) && reportTemplate.grading.columns.length > 0) {
       const parsed = [];
       reportTemplate.grading.columns.forEach((col, idx) => {
         if (idx === 0) return; // subject column
-        const lower = col.toLowerCase();
-        if (lower.includes('total') || lower.includes('grade') || lower.includes('remark') || lower.includes('rank') || lower.includes('percent')) return;
         const slashMatch = col.match(/(.+?)\s*[\/|\(]\s*(\d+)/);
         if (slashMatch) {
           parsed.push({
@@ -260,9 +256,19 @@ export default function Grades() {
           });
         }
       });
-      if (parsed.length > 0) return parsed;
+      list = parsed;
     }
-    return [];
+
+    // Exclude any columns that are Total, Grade, Percentage, Rank, Remarks, or Calculated
+    return list.filter(comp => {
+      if (comp.isCalculated) return false;
+      if (comp.type === 'calculated_total' || comp.type === 'grade' || comp.type === 'remarks') return false;
+      const lower = (comp.label || comp.name || comp.key || '').toLowerCase();
+      if (lower.startsWith('total') || lower === 'total' || lower.includes('total/') || lower.includes('total_') || lower.includes('aggregate')) return false;
+      if (lower.startsWith('grade') || lower === 'grade' || lower.includes('grade/') || lower.includes('grade_')) return false;
+      if (lower.includes('percentage') || lower.includes('percent') || lower.includes('rank') || lower.includes('remark')) return false;
+      return true;
+    });
   }, [activeAssessment, reportTemplate]);
 
   // Handle auto-selecting the first assessment when data is ready
@@ -328,6 +334,27 @@ export default function Grades() {
           }
         }
       });
+
+      // Recalculate clean total from activeComponents to purge any legacy total_100 or grade values
+      if (activeComponents.length > 0) {
+        studentList.forEach(student => {
+          const comps = loadedComponentGrades[student.id];
+          if (comps && typeof comps === 'object') {
+            let sum = 0;
+            let hasAny = false;
+            activeComponents.forEach(c => {
+              const v = comps[c.key];
+              if (v !== '' && v !== undefined && v !== null && !isNaN(Number(v))) {
+                sum += Number(v);
+                hasAny = true;
+              }
+            });
+            if (hasAny) {
+              loadedGrades[student.id] = sum;
+            }
+          }
+        });
+      }
 
       setGrades(loadedGrades);
       setComponentGrades(loadedComponentGrades);
@@ -425,10 +452,11 @@ export default function Grades() {
     setComponentGrades(prev => {
       const studentComps = { ...(prev[studentId] || {}), [compKey]: value === '' ? '' : Number(value) };
       
-      // Auto-compute student total marks from components
+      // Auto-compute student total marks from ONLY activeComponents
       let sum = 0;
       let hasAnyValue = false;
-      Object.entries(studentComps).forEach(([k, v]) => {
+      activeComponents.forEach(c => {
+        const v = studentComps[c.key];
         if (v !== '' && v !== undefined && v !== null && !isNaN(Number(v))) {
           sum += Number(v);
           hasAnyValue = true;
@@ -476,11 +504,15 @@ export default function Grades() {
         const isCurrentBlank = (currentVal === '' || currentVal === undefined || currentVal === null) &&
           (!currentCompMarks || Object.values(currentCompMarks).every(v => v === '' || v === undefined || v === null));
 
-        // Format componentMarks map
+        // Format componentMarks map with ONLY valid active components
         let formattedCompMarks = undefined;
-        if (currentCompMarks && typeof currentCompMarks === 'object' && Object.keys(currentCompMarks).length > 0) {
+        if (currentCompMarks && typeof currentCompMarks === 'object') {
+          const compKeys = activeComponents.length > 0
+            ? activeComponents.map(c => c.key)
+            : Object.keys(currentCompMarks);
           formattedCompMarks = {};
-          Object.entries(currentCompMarks).forEach(([k, v]) => {
+          compKeys.forEach(k => {
+            const v = currentCompMarks[k];
             if (v !== '' && v !== undefined && v !== null && !isNaN(Number(v))) {
               formattedCompMarks[k] = Number(v);
             }

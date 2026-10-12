@@ -885,15 +885,50 @@ export default function ExamManagement() {
                                                 if (lower.includes('grade')) {
                                                   return <td key={cIdx} className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">{grade}</td>;
                                                 }
-                                                // Resolve component mark for column if componentMarks exists
-                                                const matchedComponent = (reportTemplate.assessmentComponents || []).find(
-                                                  comp => (comp.label && lower.includes(comp.label.toLowerCase())) ||
-                                                          (comp.key && lower.includes(comp.key.toLowerCase()))
-                                                );
-                                                const compKey = matchedComponent?.key;
-                                                const displayMark = (compKey && markObj?.componentMarks?.[compKey] !== undefined)
-                                                  ? markObj.componentMarks[compKey]
-                                                  : mark;
+                                                // Total column check
+                                                const isTotalCol = lower.startsWith('total') || lower === 'total' || lower.includes('total/') || lower.includes('/total') || lower.includes('aggregate');
+                                                let displayMark = mark;
+                                                if (isTotalCol) {
+                                                  if (markObj?.componentMarks && typeof markObj.componentMarks === 'object') {
+                                                    const realComps = (reportTemplate.assessmentComponents || []).filter(c => {
+                                                      const cLower = (c.label || c.key || '').toLowerCase();
+                                                      return !c.isCalculated && c.type !== 'calculated_total' && c.type !== 'grade' && !cLower.includes('total') && !cLower.includes('grade');
+                                                    });
+                                                    if (realComps.length > 0) {
+                                                      let s = 0;
+                                                      let h = false;
+                                                      realComps.forEach(c => {
+                                                        const v = markObj.componentMarks[c.key];
+                                                        if (v !== undefined && v !== null && v !== '' && !isNaN(Number(v))) {
+                                                          s += Number(v);
+                                                          h = true;
+                                                        }
+                                                      });
+                                                      if (h) displayMark = s;
+                                                    }
+                                                  }
+                                                } else {
+                                                  // Resolve component mark for column if componentMarks exists
+                                                  const matchedComponent = (reportTemplate.assessmentComponents || []).find(comp => {
+                                                    const cKey = (comp.key || '').toLowerCase();
+                                                    const cLabel = (comp.label || '').toLowerCase();
+                                                    if (cKey.includes('total') || cKey.includes('grade') || cLabel.includes('total') || cLabel.includes('grade')) return false;
+                                                    return (cLabel && lower.includes(cLabel)) || (cKey && lower.includes(cKey));
+                                                  });
+                                                  const compKey = matchedComponent?.key;
+                                                  if (compKey && markObj?.componentMarks?.[compKey] !== undefined) {
+                                                    displayMark = markObj.componentMarks[compKey];
+                                                  } else if (markObj?.componentMarks && typeof markObj.componentMarks === 'object') {
+                                                    const cleanKey = lower.split('/')[0].trim().replace(/[^a-z0-9]/g, '_');
+                                                    for (const [k, v] of Object.entries(markObj.componentMarks)) {
+                                                      const kLower = k.toLowerCase();
+                                                      if (kLower === cleanKey || kLower.startsWith(cleanKey)) {
+                                                        displayMark = v;
+                                                        break;
+                                                      }
+                                                    }
+                                                  }
+                                                }
 
                                                 return (
                                                   <td key={cIdx} className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">
@@ -961,11 +996,72 @@ export default function ExamManagement() {
                                                 return <td key={cIdx} className="border border-slate-400 p-2 text-center text-primary-700" style={{ color: reportTemplate.themeColor }}>{row.overallGrade || '-'}</td>;
                                               }
                                               if (lower.includes('max')) {
-                                                return <td key={cIdx} className="border border-slate-400 p-2 text-center">{row.totalMax}</td>;
+                                                let maxColSum = 0;
+                                                reportData.assessments.forEach(a => {
+                                                  if (a.totalMarks !== undefined && !isNaN(Number(a.totalMarks))) {
+                                                    maxColSum += Number(a.totalMarks);
+                                                  }
+                                                });
+                                                return <td key={cIdx} className="border border-slate-400 p-2 text-center">{maxColSum || row.totalMax}</td>;
                                               }
+
+                                              // Calculate column total strictly from each cell above it in this column
+                                              let colSum = 0;
+                                              let hasValidVal = false;
+                                              const isTotalCol = lower.startsWith('total') || lower === 'total' || lower.includes('total/') || lower.includes('/total') || lower.includes('aggregate');
+                                              const matchedComp = (reportTemplate.assessmentComponents || []).find(comp => {
+                                                const cKey = (comp.key || '').toLowerCase();
+                                                const cLabel = (comp.label || '').toLowerCase();
+                                                if (cKey.includes('total') || cKey.includes('grade') || cLabel.includes('total') || cLabel.includes('grade')) return false;
+                                                return (cLabel && lower.includes(cLabel)) || (cKey && lower.includes(cKey));
+                                              });
+                                              const compKey = matchedComp?.key;
+                                              const cleanKey = lower.split('/')[0].trim().replace(/[^a-z0-9]/g, '_');
+
+                                              reportData.assessments.forEach(a => {
+                                                const markObj = row.marks?.[a.id];
+                                                const rawMark = markObj?.obtained !== undefined ? markObj.obtained : '-';
+                                                let cellVal = rawMark;
+                                                if (isTotalCol) {
+                                                  if (markObj?.componentMarks && typeof markObj.componentMarks === 'object') {
+                                                    const realComps = (reportTemplate.assessmentComponents || []).filter(c => {
+                                                      const cLower = (c.label || c.key || '').toLowerCase();
+                                                      return !c.isCalculated && c.type !== 'calculated_total' && c.type !== 'grade' && !cLower.includes('total') && !cLower.includes('grade');
+                                                    });
+                                                    if (realComps.length > 0) {
+                                                      let s = 0;
+                                                      let h = false;
+                                                      realComps.forEach(c => {
+                                                        const v = markObj.componentMarks[c.key];
+                                                        if (v !== undefined && v !== null && v !== '' && !isNaN(Number(v))) {
+                                                          s += Number(v);
+                                                          h = true;
+                                                        }
+                                                      });
+                                                      if (h) cellVal = s;
+                                                    }
+                                                  }
+                                                } else if (compKey && markObj?.componentMarks?.[compKey] !== undefined) {
+                                                  cellVal = markObj.componentMarks[compKey];
+                                                } else if (markObj?.componentMarks && typeof markObj.componentMarks === 'object') {
+                                                  for (const [k, v] of Object.entries(markObj.componentMarks)) {
+                                                    const kLower = k.toLowerCase();
+                                                    if (kLower === cleanKey || kLower.startsWith(cleanKey)) {
+                                                      cellVal = v;
+                                                      break;
+                                                    }
+                                                  }
+                                                }
+
+                                                if (cellVal !== '-' && cellVal !== '' && cellVal !== null && cellVal !== undefined && !isNaN(Number(cellVal))) {
+                                                  colSum += Number(cellVal);
+                                                  hasValidVal = true;
+                                                }
+                                              });
+
                                               return (
                                                 <td key={cIdx} className="border border-slate-400 p-2 text-center text-primary-700" style={{ color: reportTemplate.themeColor }}>
-                                                  {row.totalObtained}
+                                                  {hasValidVal ? colSum : '-'}
                                                 </td>
                                               );
                                             })
