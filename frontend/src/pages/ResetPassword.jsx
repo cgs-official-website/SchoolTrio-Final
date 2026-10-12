@@ -10,7 +10,9 @@ export default function ResetPassword() {
   const [searchParams] = useSearchParams();
   const reducedMotion = useReducedMotion();
 
-  const rawToken = searchParams.get('token');
+  const rawToken = searchParams.get('token') || 
+    (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('token')) ||
+    (typeof window !== 'undefined' && new URLSearchParams((window.location.hash || '').split('?')[1] || '').get('token'));
   const token = rawToken ? rawToken.trim() : '';
 
   const [password, setPassword] = useState('');

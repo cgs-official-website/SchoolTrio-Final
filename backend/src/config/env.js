@@ -80,12 +80,20 @@ const parseEnv = () => {
     ? result.data.JWT_REFRESH_SECRET
     : 'sms-production-master-jwt-refresh-secret-key-32-chars-minimum-safe-default-2026';
 
+  const isProduction = result.data.NODE_ENV === 'production';
+  const resolvedFrontendUrl = result.data.FRONTEND_URL && !result.data.FRONTEND_URL.includes('localhost')
+    ? result.data.FRONTEND_URL.replace(/\/+$/, '')
+    : isProduction
+      ? 'https://school-trio-final-frontend.vercel.app'
+      : result.data.FRONTEND_URL;
+
   return {
     ...result.data,
+    FRONTEND_URL: resolvedFrontendUrl,
     JWT_SECRET: jwtSecret,
     JWT_REFRESH_SECRET: jwtRefreshSecret,
     parsedCorsOrigins: parsedOrigins,
-    isProduction: result.data.NODE_ENV === 'production',
+    isProduction,
     isDevelopment: result.data.NODE_ENV === 'development',
     isTest: result.data.NODE_ENV === 'test'
   };

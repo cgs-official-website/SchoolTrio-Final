@@ -257,12 +257,45 @@ export const me = async (req, res, next) => {
  */
 export const requestPasswordReset = async (req, res, next) => {
   try {
-    const { email } = req.body;
+    const { email, frontendUrl } = req.body;
     const ipAddress = req.ip || req.headers['x-forwarded-for'] || null;
+
+    // Detect requesting client origin from payload, Origin header, or Referer header
+    let clientOrigin = frontendUrl || req.headers['origin'];
+    if (!clientOrigin && req.headers['referer']) {
+      try {
+        clientOrigin = new URL(req.headers['referer']).origin;
+      } catch (_e) {
+        // ignore malformed referer
+      }
+    }
+
+    if (clientOrigin && typeof clientOrigin === 'string') {
+      const cleanOrigin = clientOrigin.replace(/\/+$/, '');
+      const lowerOrigin = cleanOrigin.toLowerCase();
+      const isValid = 
+        lowerOrigin.startsWith('http://localhost') ||
+        lowerOrigin.startsWith('http://127.0.0.1') ||
+        lowerOrigin.endsWith('.vercel.app') ||
+        lowerOrigin.includes('vercel.app') ||
+        lowerOrigin.endsWith('.teamzuna.in') ||
+        lowerOrigin.includes('teamzuna.in') ||
+        env.parsedCorsOrigins.some(allowed => {
+          const cleanAllowed = allowed.toLowerCase();
+          if (cleanAllowed === '*') return true;
+          if (cleanAllowed.startsWith('*.')) return lowerOrigin.endsWith(cleanAllowed.slice(1));
+          return cleanAllowed === lowerOrigin;
+        });
+
+      clientOrigin = isValid ? cleanOrigin : null;
+    } else {
+      clientOrigin = null;
+    }
 
     const result = await passwordResetService.requestPasswordReset({
       email,
-      ipAddress
+      ipAddress,
+      frontendUrl: clientOrigin
     });
 
     return ApiResponse.success(res, null, result.message);

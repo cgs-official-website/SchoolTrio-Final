@@ -100,12 +100,16 @@ export const authApi = {
    * Requests a password reset link.
    * @param {Object} params
    * @param {string} params.email - User email
+   * @param {string} [params.frontendUrl] - Requesting frontend URL
    * @returns {Promise<{ success: boolean }>}
    */
-  async passwordResetRequest({ email }) {
+  async passwordResetRequest({ email, frontendUrl }) {
     return apiClient('/api/v1/auth/password-reset/request', {
       method: 'POST',
-      body: JSON.stringify({ email })
+      body: JSON.stringify({
+        email,
+        ...(frontendUrl ? { frontendUrl } : {})
+      })
     });
   },
 

@@ -43,7 +43,7 @@ export const hashToken = (rawToken) => {
  * @param {string|null} [params.ipAddress] - Requesting client IP
  * @returns {Promise<{ success: boolean, message: string }>}
  */
-export const requestPasswordReset = async ({ email, ipAddress = null }) => {
+export const requestPasswordReset = async ({ email, ipAddress = null, frontendUrl = null }) => {
   const genericResponse = {
     success: true,
     message: 'If an account exists for this email, password reset instructions have been sent.'
@@ -74,7 +74,7 @@ export const requestPasswordReset = async ({ email, ipAddress = null }) => {
   // 5. Generate secure 256-bit token
   const { rawToken, tokenHash } = generateSecureToken();
   const expiresAt = new Date(
-    Date.now() + (AUTH_CONSTANTS.PASSWORD_RESET_TOKEN_EXPIRY_MINUTES || 15) * 60 * 1000
+    Date.now() + (AUTH_CONSTANTS.PASSWORD_RESET_TOKEN_EXPIRY_MINUTES || 60) * 60 * 1000
   );
 
   // 6. Persist hashed token
@@ -90,7 +90,8 @@ export const requestPasswordReset = async ({ email, ipAddress = null }) => {
   await emailService.sendPasswordResetEmail({
     to: user.email,
     resetToken: rawToken,
-    schoolName: user.school?.name || 'School Management System'
+    schoolName: user.school?.name || 'School Management System',
+    frontendUrl
   });
 
   return genericResponse;

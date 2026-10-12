@@ -50,7 +50,8 @@ export const passwordResetRequestSchema = {
     email: z
       .string({ required_error: 'Email is required' })
       .email('Invalid email address')
-      .max(255, 'Email must not exceed 255 characters')
+      .max(255, 'Email must not exceed 255 characters'),
+    frontendUrl: z.string().url().optional()
   })
 };
 

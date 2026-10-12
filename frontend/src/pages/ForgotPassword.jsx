@@ -31,7 +31,11 @@ export default function ForgotPassword() {
     setLoading(true);
     setError(null);
     try {
-      await authApi.passwordResetRequest({ email: targetEmail.toLowerCase() });
+      const frontendUrl = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : undefined;
+      await authApi.passwordResetRequest({ 
+        email: targetEmail.toLowerCase(),
+        frontendUrl
+      });
       setSuccess(true);
     } catch (err) {
       console.error("[PASSWORD RESET REQUEST ERROR]", err);

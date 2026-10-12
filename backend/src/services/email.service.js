@@ -198,8 +198,13 @@ export const sendMail = async ({ to, subject, html, text, from = env.SMTP_FROM }
  * @param {string} [params.schoolName] - Optional school tenant name
  * @returns {Promise<{ success: boolean, messageId: string }>}
  */
-export const sendPasswordResetEmail = async ({ to, resetToken, schoolName = 'School Management System' }) => {
-  const baseUrl = env.FRONTEND_URL || 'https://app.sms.com';
+export const sendPasswordResetEmail = async ({ to, resetToken, schoolName = 'School Management System', frontendUrl = null }) => {
+  const baseUrl = (frontendUrl && typeof frontendUrl === 'string' && frontendUrl.trim())
+    ? frontendUrl.trim().replace(/\/+$/, '')
+    : (env.FRONTEND_URL && !env.FRONTEND_URL.includes('localhost'))
+      ? env.FRONTEND_URL.replace(/\/+$/, '')
+      : (env.isProduction ? 'https://school-trio-final-frontend.vercel.app' : (env.FRONTEND_URL || 'http://localhost:5173'));
+
   const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
   const subject = `Password Reset Request - ${schoolName}`;
 
@@ -232,10 +237,16 @@ export const sendPasswordResetEmail = async ({ to, resetToken, schoolName = 'Sch
  * @param {string} params.to - Recipient email address
  * @param {string} params.setupToken - Raw 64-character hex setup token
  * @param {string} [params.schoolName] - Optional school tenant name
+ * @param {string|null} [params.frontendUrl] - Requesting frontend URL
  * @returns {Promise<{ success: boolean, messageId: string }>}
  */
-export const sendPasswordSetupEmail = async ({ to, setupToken, schoolName = 'School Management System' }) => {
-  const baseUrl = env.FRONTEND_URL || 'https://app.sms.com';
+export const sendPasswordSetupEmail = async ({ to, setupToken, schoolName = 'School Management System', frontendUrl = null }) => {
+  const baseUrl = (frontendUrl && typeof frontendUrl === 'string' && frontendUrl.trim())
+    ? frontendUrl.trim().replace(/\/+$/, '')
+    : (env.FRONTEND_URL && !env.FRONTEND_URL.includes('localhost'))
+      ? env.FRONTEND_URL.replace(/\/+$/, '')
+      : (env.isProduction ? 'https://school-trio-final-frontend.vercel.app' : (env.FRONTEND_URL || 'http://localhost:5173'));
+
   const setupUrl = `${baseUrl}/setup-password?token=${setupToken}`;
   const subject = `Account Setup Invitation - ${schoolName}`;
 
