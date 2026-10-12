@@ -156,7 +156,20 @@ export async function findParentWithLinkedStudents(schoolId, userId, tx = prisma
               firstName: true,
               lastName: true,
               classId: true,
-              status: true
+              sectionId: true,
+              status: true,
+              class: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              },
+              section: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
             }
           }
         }
@@ -300,8 +313,21 @@ export async function findStudentsByUserIds(schoolId, userOrStudentIds, tx = pri
       id: true,
       schoolId: true,
       classId: true,
+      sectionId: true,
       firstName: true,
-      lastName: true
+      lastName: true,
+      class: {
+        select: {
+          id: true,
+          name: true
+        }
+      },
+      section: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
     }
   });
 }

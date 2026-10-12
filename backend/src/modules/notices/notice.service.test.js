@@ -649,5 +649,176 @@ describe('Noticeboard Read Receipts - Multi-Student Parent Account (BUG-01)', ()
     };
     expect(resolveAdminDisplayName(legacySingleNameParentReceipt)).toBe('Bala A');
   });
+
+  it('18 (BUG-2026-10-09-02): Resolves section-aware labels Class 10-A, Class 10-B, and safe class-only fallbacks for siblings', async () => {
+    const sectionAId = 'aaaa1111-aaaa-1111-aaaa-111111111111';
+    const sectionBId = 'bbbb2222-bbbb-2222-bbbb-222222222222';
+
+    const parentProfileWithSections = {
+      id: 'parent-profile-sections',
+      schoolId,
+      userId: parentUserId,
+      name: 'Arun A',
+      children: [
+        {
+          id: 'link-1',
+          relationship: 'Father',
+          student: {
+            id: balaStudentId,
+            firstName: 'Bala',
+            lastName: 'A',
+            classId: class10Id,
+            sectionId: sectionAId,
+            status: 'Active',
+            class: { id: class10Id, name: 'Class 10' },
+            section: { id: sectionAId, name: 'A' }
+          }
+        },
+        {
+          id: 'link-2',
+          relationship: 'Father',
+          student: {
+            id: nishaStudentId,
+            firstName: 'Nisha',
+            lastName: 'A',
+            classId: class10Id,
+            sectionId: sectionBId,
+            status: 'Active',
+            class: { id: class10Id, name: 'Class 10' },
+            section: { id: sectionBId, name: 'B' }
+          }
+        }
+      ]
+    };
+
+    const globalNotice = {
+      id: noticeGlobalId,
+      schoolId,
+      title: 'School Announcement',
+      content: 'General circular',
+      type: 'global',
+      audience: 'parents',
+      viewedBy: []
+    };
+
+    noticeRepository.findNoticeById.mockResolvedValue(globalNotice);
+    noticeRepository.findParentStudentsAndClasses.mockResolvedValue({
+      studentIds: [balaStudentId, nishaStudentId],
+      classIds: [class10Id]
+    });
+    noticeRepository.findParentWithLinkedStudents.mockResolvedValue(parentProfileWithSections);
+    noticeRepository.recordNoticeView.mockImplementation(async (sId, nId, viewers) => {
+      return {
+        notice: {
+          ...globalNotice,
+          viewedBy: viewers
+        },
+        alreadyViewed: false
+      };
+    });
+
+    noticeRepository.findStaffProfilesByUserIds.mockResolvedValue([]);
+    noticeRepository.findParentProfilesByUserIds.mockResolvedValue([
+      { userId: parentUserId, name: 'Arun A' }
+    ]);
+    noticeRepository.findStudentsByUserIds.mockResolvedValue([
+      {
+        id: balaStudentId,
+        firstName: 'Bala',
+        lastName: 'A',
+        classId: class10Id,
+        sectionId: sectionAId,
+        class: { id: class10Id, name: 'Class 10' },
+        section: { id: sectionAId, name: 'A' }
+      },
+      {
+        id: nishaStudentId,
+        firstName: 'Nisha',
+        lastName: 'A',
+        classId: class10Id,
+        sectionId: sectionBId,
+        class: { id: class10Id, name: 'Class 10' },
+        section: { id: sectionBId, name: 'B' }
+      }
+    ]);
+    noticeRepository.findUsersByIds.mockResolvedValue([]);
+
+    const actor = {
+      userId: parentUserId,
+      systemRole: SYSTEM_ROLES.PARENT
+    };
+
+    const response = await noticeService.recordNoticeView(schoolId, noticeGlobalId, actor);
+    const recordedViewers = noticeRepository.recordNoticeView.mock.calls[0][2];
+
+    expect(recordedViewers).toHaveLength(2);
+
+    // Bala A in Class 10, Section A
+    const balaRecorded = recordedViewers.find((v) => v.studentId === balaStudentId);
+    expect(balaRecorded.classId).toBe(class10Id);
+    expect(balaRecorded.sectionId).toBe(sectionAId);
+    expect(balaRecorded.className).toBe('Class 10');
+    expect(balaRecorded.sectionName).toBe('A');
+
+    // Nisha A in Class 10, Section B
+    const nishaRecorded = recordedViewers.find((v) => v.studentId === nishaStudentId);
+    expect(nishaRecorded.classId).toBe(class10Id);
+    expect(nishaRecorded.sectionId).toBe(sectionBId);
+    expect(nishaRecorded.className).toBe('Class 10');
+    expect(nishaRecorded.sectionName).toBe('B');
+
+    // Frontend label resolution verification logic
+    const resolveClassLabel = (viewer, classesMap = {}, sectionsMap = {}) => {
+      const className = (viewer.className || classesMap[viewer.classId] || '').trim();
+      const sectionName = (viewer.sectionName || (viewer.sectionId ? sectionsMap[viewer.sectionId] : '') || '').trim();
+
+      if (className && sectionName) {
+        const cleanSec = sectionName.replace(/^(section|sec)\s+/i, '').trim();
+        const formattedClass = /^\d+$/.test(className) ? `Class ${className}` : className;
+        const secRegex = new RegExp(`[-–—\\s]+${cleanSec}$`, 'i');
+        return secRegex.test(formattedClass) ? formattedClass : `${formattedClass}-${cleanSec}`;
+      }
+
+      if (viewer.classId && viewer.sectionId && classesMap[`${viewer.classId}:${viewer.sectionId}`]) {
+        const rawLabel = classesMap[`${viewer.classId}:${viewer.sectionId}`].trim();
+        return /^\d+-/.test(rawLabel) ? `Class ${rawLabel}` : rawLabel;
+      }
+
+      if (className) {
+        return /^\d+$/.test(className) ? `Class ${className}` : className;
+      }
+
+      if (viewer.classId && classesMap[viewer.classId]) {
+        const cName = classesMap[viewer.classId].trim();
+        return /^\d+$/.test(cName) ? `Class ${cName}` : cName;
+      }
+
+      return viewer.classId || '';
+    };
+
+    // 1. Class 10, Section A -> Class 10-A
+    expect(resolveClassLabel(balaRecorded)).toBe('Class 10-A');
+
+    // 2. Class 10, Section B -> Class 10-B
+    expect(resolveClassLabel(nishaRecorded)).toBe('Class 10-B');
+
+    // 3. Raw numeric class "10" with section "A" -> Class 10-A
+    expect(resolveClassLabel({ className: '10', sectionName: 'A' })).toBe('Class 10-A');
+
+    // 4. Missing section data -> Safe fallback "Class 10" (no invented section)
+    expect(resolveClassLabel({ className: 'Class 10' })).toBe('Class 10');
+    expect(resolveClassLabel({ className: '10' })).toBe('Class 10');
+
+    // 5. classesMap fallback lookup when viewer only has classId and sectionId
+    const mockClassesMap = {
+      [class10Id]: 'Class 10',
+      [`${class10Id}:${sectionAId}`]: 'Class 10-A',
+      [`${class10Id}:${sectionBId}`]: 'Class 10-B'
+    };
+    expect(resolveClassLabel({ classId: class10Id, sectionId: sectionAId }, mockClassesMap)).toBe('Class 10-A');
+    expect(resolveClassLabel({ classId: class10Id, sectionId: sectionBId }, mockClassesMap)).toBe('Class 10-B');
+    expect(resolveClassLabel({ classId: class10Id }, mockClassesMap)).toBe('Class 10');
+  });
 });
+
 

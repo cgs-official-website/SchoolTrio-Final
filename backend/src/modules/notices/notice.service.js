@@ -239,7 +239,10 @@ export async function batchEnrichNoticeViewers(schoolId, notices) {
       identityMap.set(key, {
         name,
         role: 'Student',
-        classId: st.classId || ''
+        classId: st.classId || '',
+        sectionId: st.sectionId || '',
+        className: st.class?.name || '',
+        sectionName: st.section?.name || ''
       });
     }
   }
@@ -252,7 +255,10 @@ export async function batchEnrichNoticeViewers(schoolId, notices) {
       studentMap.set(st.id, {
         id: st.id,
         name,
-        classId: st.classId || ''
+        classId: st.classId || '',
+        sectionId: st.sectionId || '',
+        className: st.class?.name || '',
+        sectionName: st.section?.name || ''
       });
     }
   }
@@ -280,10 +286,22 @@ export async function batchEnrichNoticeViewers(schoolId, notices) {
         let name = v.name;
         let role = v.role;
         let classId = v.classId;
+        let sectionId = v.sectionId;
+        let className = v.className;
+        let sectionName = v.sectionName;
 
         if (resolvedStudent) {
           if (!classId && resolvedStudent.classId) {
             classId = resolvedStudent.classId;
+          }
+          if (!sectionId && resolvedStudent.sectionId) {
+            sectionId = resolvedStudent.sectionId;
+          }
+          if (!className && resolvedStudent.className) {
+            className = resolvedStudent.className;
+          }
+          if (!sectionName && resolvedStudent.sectionName) {
+            sectionName = resolvedStudent.sectionName;
           }
           const studentName = resolvedStudent.name;
           if (v.role === 'parent' || resolved?.role === 'Parent') {
@@ -301,6 +319,9 @@ export async function batchEnrichNoticeViewers(schoolId, notices) {
             name = resolved.name;
             role = resolved.role || role || 'Staff';
             classId = classId || resolved.classId;
+            sectionId = sectionId || resolved.sectionId;
+            className = className || resolved.className;
+            sectionName = sectionName || resolved.sectionName;
           }
         }
 
@@ -310,7 +331,10 @@ export async function batchEnrichNoticeViewers(schoolId, notices) {
           parentName: resolved?.name || v.parentName,
           name: name || 'Staff Member',
           role: role || 'Member',
-          classId: classId || ''
+          classId: classId || '',
+          sectionId: sectionId || '',
+          className: className || '',
+          sectionName: sectionName || ''
         };
       });
     }
@@ -997,6 +1021,9 @@ export async function recordNoticeView(schoolId, noticeId, actor = {}) {
             name: displayName,
             role: 'parent',
             classId: st.classId || '',
+            sectionId: st.sectionId || '',
+            className: st.class?.name || '',
+            sectionName: st.section?.name || '',
             viewedAt: now
           };
         });

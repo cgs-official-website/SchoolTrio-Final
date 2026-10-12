@@ -35,6 +35,7 @@ export default function Noticeboard() {
   const [globalNotices, setGlobalNotices] = useState([]);
   const [classNotices, setClassNotices] = useState([]);
   const [classesMap, setClassesMap] = useState({});
+  const [sectionsMap, setSectionsMap] = useState({});
   const [loading, setLoading] = useState(true);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -92,10 +93,23 @@ export default function Noticeboard() {
         const res = await listClasses({ limit: 100 });
         if (isMounted && res.data) {
           const cmap = {};
+          const smap = {};
           res.data.forEach((c) => {
-            cmap[c.id] = c.name || c.className || c.id;
+            const rawName = (c.name || c.className || c.id).trim();
+            const cName = /^\d+$/.test(rawName) ? `Class ${rawName}` : rawName;
+            cmap[c.id] = cName;
+            if (Array.isArray(c.sections)) {
+              c.sections.forEach((s) => {
+                if (s.id) {
+                  const sName = (s.name || '').trim().replace(/^(section|sec)\s+/i, '');
+                  smap[s.id] = sName;
+                  cmap[`${c.id}:${s.id}`] = `${cName}-${sName}`;
+                }
+              });
+            }
           });
           setClassesMap(cmap);
+          setSectionsMap(smap);
         }
       } catch (err) {
         console.error('Failed to load classes for notices:', err);
@@ -433,11 +447,31 @@ export default function Noticeboard() {
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
                   {selectedViewers.map((viewer, index) => {
                     const displayName = viewer.studentName || (viewer.role?.toLowerCase() === 'parent' && viewer.name?.match(/\(([^)]+)\)$/)?.[1]?.trim()) || viewer.name || viewer.userName || 'Staff Member';
+                    const className = (viewer.className || classesMap[viewer.classId] || '').trim();
+                    const sectionName = (viewer.sectionName || (viewer.sectionId ? sectionsMap[viewer.sectionId] : '') || '').trim();
+                    let classLabel = '';
+                    if (className && sectionName) {
+                      const cleanSec = sectionName.replace(/^(section|sec)\s+/i, '').trim();
+                      const formattedClass = /^\d+$/.test(className) ? `Class ${className}` : className;
+                      const secRegex = new RegExp(`[-–—\\s]+${cleanSec}$`, 'i');
+                      classLabel = secRegex.test(formattedClass) ? formattedClass : `${formattedClass}-${cleanSec}`;
+                    } else if (viewer.classId && viewer.sectionId && classesMap[`${viewer.classId}:${viewer.sectionId}`]) {
+                      const rawLabel = classesMap[`${viewer.classId}:${viewer.sectionId}`].trim();
+                      classLabel = /^\d+-/.test(rawLabel) ? `Class ${rawLabel}` : rawLabel;
+                    } else if (className) {
+                      classLabel = /^\d+$/.test(className) ? `Class ${className}` : className;
+                    } else if (viewer.classId && classesMap[viewer.classId]) {
+                      const cName = classesMap[viewer.classId].trim();
+                      classLabel = /^\d+$/.test(cName) ? `Class ${cName}` : cName;
+                    } else if (viewer.classId) {
+                      classLabel = viewer.classId;
+                    }
+
                     return (
                       <div key={index} className="p-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors">
                         <div>
                           <div className="font-bold text-slate-900 dark:text-white">{displayName}</div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400 capitalize">{viewer.role || 'Member'} {viewer.classId ? `- Class: ${classesMap[viewer.classId] || viewer.classId}` : ''}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 capitalize">{viewer.role || 'Member'} {classLabel ? `- ${classLabel.startsWith('Class') || classLabel.startsWith('Grade') ? classLabel : `Class: ${classLabel}`}` : ''}</div>
                         </div>
                         {viewer.viewedAt && (
                           <div className="text-xs text-slate-400 dark:text-slate-500 text-right">
