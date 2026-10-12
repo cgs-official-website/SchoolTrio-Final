@@ -720,15 +720,6 @@ export default function Grades() {
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
           {isClassTeacher && (
             <button 
-              onClick={handlePublishReportCards}
-              disabled={publishing}
-              className="w-full sm:w-auto flex justify-center items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-xl text-sm font-semibold hover:bg-green-100 shadow-sm transition-colors border border-green-200 disabled:opacity-50"
-            >
-              <Send size={18} className={publishing ? "animate-spin" : ""} /> {publishing ? "Publishing..." : "Publish to Parent Portal"}
-            </button>
-          )}
-          {isClassTeacher && (
-            <button 
               onClick={generateReportCards}
               className="w-full sm:w-auto flex justify-center items-center gap-2 px-4 py-2 bg-primary-50 text-primary-700 rounded-xl text-sm font-semibold hover:bg-primary-100 dark:hover:bg-slate-700 shadow-sm transition-colors border border-primary-200"
             >
