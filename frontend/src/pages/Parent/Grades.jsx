@@ -369,9 +369,18 @@ export default function ParentGrades() {
                                   </td>
                                 );
                               }
+                              const matchedComponent = (template.assessmentComponents || []).find(
+                                comp => (comp.label && lower.includes(comp.label.toLowerCase())) ||
+                                        (comp.key && lower.includes(comp.key.toLowerCase()))
+                              );
+                              const compKey = matchedComponent?.key;
+                              const displayMark = (compKey && item.componentMarks?.[compKey] !== undefined)
+                                ? item.componentMarks[compKey]
+                                : mark;
+
                               return (
                                 <td key={cIdx} className="p-3 border border-slate-300 dark:border-slate-600 text-center font-bold text-slate-800 dark:text-slate-100">
-                                  {mark}
+                                  {displayMark}
                                 </td>
                               );
                             })

@@ -67,6 +67,37 @@ export const footerConfigSchema = z
   })
   .passthrough();
 
+// Assessment component definition schema (columns with individual mark entry fields)
+export const assessmentComponentSchema = z
+  .object({
+    key: z.string().trim().min(1, 'Component key cannot be empty').max(50),
+    name: z.string().trim().max(100).optional(),
+    label: z.string().trim().min(1, 'Component label cannot be empty').max(100),
+    maxMarks: z.coerce.number().min(0, 'Max marks cannot be negative').max(1000).optional().default(100),
+    type: z.enum(['mark', 'calculated_total', 'grade', 'max', 'remarks', 'text']).optional().default('mark'),
+    weightage: z.coerce.number().min(0).max(100).optional(),
+    isCalculated: z.boolean().optional().default(false)
+  })
+  .passthrough();
+
+// Subject row definition schema
+export const templateSubjectSchema = z
+  .object({
+    id: z.string().trim().min(1, 'Subject id cannot be empty').max(100),
+    name: z.string().trim().min(1, 'Subject name cannot be empty').max(150),
+    code: z.string().trim().max(50).optional()
+  })
+  .passthrough();
+
+// Template section definition schema
+export const templateSectionSchema = z
+  .object({
+    id: z.string().trim().min(1, 'Section id cannot be empty').max(100),
+    name: z.string().trim().min(1, 'Section name cannot be empty').max(150),
+    subjects: z.array(templateSubjectSchema).optional()
+  })
+  .passthrough();
+
 // Root template configuration schema
 export const templateConfigSchema = z
   .object({
@@ -79,6 +110,9 @@ export const templateConfigSchema = z
     studentFields: studentFieldsConfigSchema.optional(),
     grading: gradingConfigSchema.optional(),
     footer: footerConfigSchema.optional(),
+    assessmentComponents: z.array(assessmentComponentSchema).max(30).optional(),
+    subjects: z.array(templateSubjectSchema).max(50).optional(),
+    sections: z.array(templateSectionSchema).max(20).optional(),
     rawHtmlTemplate: z.string().optional().nullable(),
     originalDocxName: z.string().optional().nullable()
   })

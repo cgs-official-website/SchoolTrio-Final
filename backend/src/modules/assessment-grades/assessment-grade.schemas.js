@@ -47,9 +47,15 @@ export const listGradesSchema = {
   })
 };
 
+export const componentMarksSchema = z
+  .record(z.union([z.number(), z.string(), z.null()]))
+  .optional()
+  .nullable();
+
 export const singleGradeItemSchema = z.object({
   studentId: z.string({ required_error: 'Student ID is required' }).regex(REGEX.UUID, 'Invalid student ID format'),
   marksObtained: marksObtainedSchema.optional().nullable(),
+  componentMarks: componentMarksSchema,
   isAbsent: z.boolean().optional().default(false),
   isExempt: z.boolean().optional().default(false),
   remarks: z.string().trim().max(1000, 'Remarks cannot exceed 1000 characters').optional().nullable(),
@@ -63,6 +69,7 @@ export const upsertSingleGradeSchema = {
   }),
   body: z.object({
     marksObtained: marksObtainedSchema.optional().nullable(),
+    componentMarks: componentMarksSchema,
     isAbsent: z.boolean().optional().default(false),
     isExempt: z.boolean().optional().default(false),
     remarks: z.string().trim().max(1000, 'Remarks cannot exceed 1000 characters').optional().nullable(),

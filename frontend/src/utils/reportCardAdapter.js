@@ -97,6 +97,9 @@ export function adaptReportCard(dto) {
   // Attendance summary
   const attendanceSummary = dto.attendanceSummary || null;
 
+  // Extract marks breakdown
+  const marksBreakdown = dto.marksData?.marksBreakdown || dto.marksBreakdown || [];
+
   return {
     id: dto.id || '',
     examId: dto.examId !== undefined ? dto.examId : null,
@@ -106,6 +109,7 @@ export function adaptReportCard(dto) {
     studentId,
     studentName,
     marks,
+    marksBreakdown,
     totalObtained,
     totalMax,
     percentage,
@@ -146,6 +150,10 @@ export function normalizeReportCardTemplate(config) {
     themeColor: config.themeColor || '#c99bc1',
     rawHtmlTemplate: config.rawHtmlTemplate || null,
     originalDocxName: config.originalDocxName || null,
+    assessmentComponents: Array.isArray(config.assessmentComponents) ? config.assessmentComponents : [],
+    subjects: Array.isArray(config.subjects) ? config.subjects : [],
+    sections: Array.isArray(config.sections) ? config.sections : [],
+    structureMetadata: config.structureMetadata || null,
     header: {
       schoolName: config.header?.schoolName || '',
       showLogo: config.header?.showLogo ?? true,

@@ -9,6 +9,7 @@ import {
   deleteAssessmentGrade 
 } from '../../api/assessments';
 import { publishReportCards } from '../../api/reportCards';
+import { getReportCardTemplate } from '../../api/reportCardTemplates';
 import { listExams } from '../../api/exams';
 import { listClasses } from '../../api/classes';
 import { listSubjects } from '../../api/subjects';
@@ -46,6 +47,7 @@ export default function Grades() {
 
   const [allClasses, setAllClasses] = useState([]);
   const [allSubjects, setAllSubjects] = useState([]);
+  const [reportTemplate, setReportTemplate] = useState(null);
 
   // Compute available classes for the teacher with proper names
   const availableClasses = useMemo(() => {
@@ -98,6 +100,7 @@ export default function Grades() {
   // Active Assessment State
   const [activeAssessment, setActiveAssessment] = useState(null);
   const [grades, setGrades] = useState({}); // { studentId: number | '' }
+  const [componentGrades, setComponentGrades] = useState({}); // { studentId: { [componentKey]: number | '' } }
   const [absentMap, setAbsentMap] = useState({}); // { studentId: boolean }
   const [exemptMap, setExemptMap] = useState({}); // { studentId: boolean }
   const [initialGrades, setInitialGrades] = useState({}); // Baseline for clear-grade delta detection
@@ -124,10 +127,11 @@ export default function Grades() {
 
   const fetchMetadata = useCallback(async () => {
     try {
-      const [examsRes, classesRes, subjectsRes] = await Promise.all([
+      const [examsRes, classesRes, subjectsRes, templateRes] = await Promise.all([
         listExams(),
         listClasses({ limit: 100 }),
-        listSubjects({ limit: 100 })
+        listSubjects({ limit: 100 }),
+        getReportCardTemplate('report_card').catch(() => null)
       ]);
       if (mountedRef.current) {
         setExams(examsRes?.data || []);
@@ -140,6 +144,10 @@ export default function Grades() {
           setAllSubjects(subjectsRes.data);
         } else if (Array.isArray(subjectsRes)) {
           setAllSubjects(subjectsRes);
+        }
+        const tConfig = templateRes?.data?.config || templateRes?.data;
+        if (tConfig) {
+          setReportTemplate(tConfig);
         }
       }
     } catch (error) {
@@ -227,6 +235,36 @@ export default function Grades() {
     };
   }, [schoolId, classId, fetchExams, fetchAssessments]);
 
+  // Derive active assessment components from assessment or template config
+  const activeComponents = useMemo(() => {
+    if (Array.isArray(activeAssessment?.components) && activeAssessment.components.length > 0) {
+      return activeAssessment.components;
+    }
+    if (Array.isArray(reportTemplate?.assessmentComponents) && reportTemplate.assessmentComponents.length > 0) {
+      return reportTemplate.assessmentComponents;
+    }
+    // Check if reportTemplate has grading.columns that can be parsed
+    if (Array.isArray(reportTemplate?.grading?.columns) && reportTemplate.grading.columns.length > 0) {
+      const parsed = [];
+      reportTemplate.grading.columns.forEach((col, idx) => {
+        if (idx === 0) return; // subject column
+        const lower = col.toLowerCase();
+        if (lower.includes('total') || lower.includes('grade') || lower.includes('remark') || lower.includes('rank') || lower.includes('percent')) return;
+        const slashMatch = col.match(/(.+?)\s*[\/|\(]\s*(\d+)/);
+        if (slashMatch) {
+          parsed.push({
+            key: slashMatch[1].trim().toLowerCase().replace(/[^a-z0-9]/g, '_'),
+            label: slashMatch[1].trim(),
+            maxMarks: Number(slashMatch[2]),
+            type: 'mark'
+          });
+        }
+      });
+      if (parsed.length > 0) return parsed;
+    }
+    return [];
+  }, [activeAssessment, reportTemplate]);
+
   // Handle auto-selecting the first assessment when data is ready
   useEffect(() => {
     if (!activeAssessment && assessments.length > 0 && students.length > 0) {
@@ -244,12 +282,15 @@ export default function Grades() {
     const defaultMap = {};
     const defaultAbsent = {};
     const defaultExempt = {};
+    const defaultComponentMap = {};
     studentList.forEach(student => {
       defaultMap[student.id] = '';
       defaultAbsent[student.id] = false;
       defaultExempt[student.id] = false;
+      defaultComponentMap[student.id] = {};
     });
     setGrades(defaultMap);
+    setComponentGrades(defaultComponentMap);
     setAbsentMap(defaultAbsent);
     setExemptMap(defaultExempt);
     setInitialGrades(defaultMap);
@@ -269,6 +310,7 @@ export default function Grades() {
       const loadedGrades = { ...defaultMap };
       const loadedAbsent = { ...defaultAbsent };
       const loadedExempt = { ...defaultExempt };
+      const loadedComponentGrades = { ...defaultComponentMap };
       
       gradesList.forEach(item => {
         if (item.studentId) {
@@ -281,10 +323,14 @@ export default function Grades() {
           if (item.marksObtained !== undefined && item.marksObtained !== null) {
             loadedGrades[item.studentId] = Number(item.marksObtained);
           }
+          if (item.componentMarks && typeof item.componentMarks === 'object') {
+            loadedComponentGrades[item.studentId] = { ...item.componentMarks };
+          }
         }
       });
 
       setGrades(loadedGrades);
+      setComponentGrades(loadedComponentGrades);
       setAbsentMap(loadedAbsent);
       setExemptMap(loadedExempt);
       setInitialGrades({ ...loadedGrades });
@@ -366,6 +412,48 @@ export default function Grades() {
     setGrades(prev => ({ ...prev, [studentId]: value }));
   };
 
+  const handleComponentGradeChange = (studentId, compKey, value, compMaxMarks) => {
+    // Only allow numbers
+    if (value !== '' && isNaN(Number(value))) return;
+    if (value !== '' && Number(value) < 0) return;
+    
+    // Prevent entering more than component max marks
+    if (value !== '' && compMaxMarks && Number(value) > compMaxMarks) {
+      value = compMaxMarks;
+    }
+
+    setComponentGrades(prev => {
+      const studentComps = { ...(prev[studentId] || {}), [compKey]: value === '' ? '' : Number(value) };
+      
+      // Auto-compute student total marks from components
+      let sum = 0;
+      let hasAnyValue = false;
+      Object.entries(studentComps).forEach(([k, v]) => {
+        if (v !== '' && v !== undefined && v !== null && !isNaN(Number(v))) {
+          sum += Number(v);
+          hasAnyValue = true;
+        }
+      });
+
+      setGrades(gPrev => ({ ...gPrev, [studentId]: hasAnyValue ? sum : '' }));
+
+      return { ...prev, [studentId]: studentComps };
+    });
+  };
+
+  const calculateGrade = (obtained, total) => {
+    if (obtained === '' || obtained === undefined || obtained === null || !total) return '-';
+    const pct = (Number(obtained) / Number(total)) * 100;
+    if (pct >= 91) return 'A1';
+    if (pct >= 81) return 'A2';
+    if (pct >= 71) return 'B1';
+    if (pct >= 61) return 'B2';
+    if (pct >= 51) return 'C1';
+    if (pct >= 41) return 'C2';
+    if (pct >= 33) return 'D';
+    return 'E';
+  };
+
   const handleSaveGrades = async (isDraft = true) => {
     if (!activeAssessment || savingGrades || submittingMarks) return;
     if (isDraft) {
@@ -377,29 +465,46 @@ export default function Grades() {
 
     try {
       const gradesToUpsert = [];
-      const studentsToDelete = [];
 
       students.forEach(student => {
         const sId = student.id;
         const currentVal = grades[sId];
+        const currentCompMarks = componentGrades[sId];
         const isAbsent = !!absentMap[sId];
         const isExempt = !!exemptMap[sId];
 
-        const isCurrentBlank = currentVal === '' || currentVal === undefined || currentVal === null;
+        const isCurrentBlank = (currentVal === '' || currentVal === undefined || currentVal === null) &&
+          (!currentCompMarks || Object.values(currentCompMarks).every(v => v === '' || v === undefined || v === null));
+
+        // Format componentMarks map
+        let formattedCompMarks = undefined;
+        if (currentCompMarks && typeof currentCompMarks === 'object' && Object.keys(currentCompMarks).length > 0) {
+          formattedCompMarks = {};
+          Object.entries(currentCompMarks).forEach(([k, v]) => {
+            if (v !== '' && v !== undefined && v !== null && !isNaN(Number(v))) {
+              formattedCompMarks[k] = Number(v);
+            }
+          });
+          if (Object.keys(formattedCompMarks).length === 0) {
+            formattedCompMarks = undefined;
+          }
+        }
 
         // If absent or exempt, always record as 0 marks with flags
         if (isAbsent || isExempt) {
           gradesToUpsert.push({
             studentId: sId,
             marksObtained: 0,
+            componentMarks: formattedCompMarks,
             isAbsent,
             isExempt
           });
         } else if (!isCurrentBlank) {
-          const numericVal = Number(currentVal);
+          const numericVal = Number(currentVal) || 0;
           gradesToUpsert.push({
             studentId: sId,
             marksObtained: numericVal,
+            componentMarks: formattedCompMarks,
             isAbsent: false,
             isExempt: false
           });
@@ -766,17 +871,33 @@ export default function Grades() {
                         <table className="w-full text-left border-collapse min-w-max">
                           <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800 shadow-sm z-10">
                             <tr className="border-b border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider font-semibold">
-                              <th className="p-4 pl-6">Student</th>
-                              <th className="p-4">Admission No.</th>
-                              <th className="p-4 text-center w-24">Absent</th>
-                              <th className="p-4 text-center w-24">Exempt</th>
-                              <th className="p-4 w-48 text-right pr-6">Marks Achieved</th>
+                              <th className="p-4 pl-6 min-w-[200px]">Student</th>
+                              <th className="p-4 min-w-[130px]">Admission No.</th>
+                              <th className="p-4 text-center w-20">Absent</th>
+                              <th className="p-4 text-center w-20">Exempt</th>
+                              {activeComponents.length > 0 ? (
+                                <>
+                                  {activeComponents.map((comp) => (
+                                    <th key={comp.key} className="p-4 text-center min-w-[110px]">
+                                      <div className="font-bold text-slate-800 dark:text-slate-100">{comp.label}</div>
+                                      <div className="text-[10px] text-slate-400 font-normal">Max {comp.maxMarks}</div>
+                                    </th>
+                                  ))}
+                                  <th className="p-4 text-center min-w-[120px]">
+                                    <div className="font-bold text-slate-800 dark:text-slate-100">Total</div>
+                                    <div className="text-[10px] text-slate-400 font-normal">Max {activeAssessment.totalMarks}</div>
+                                  </th>
+                                  <th className="p-4 text-center min-w-[90px] pr-6">Grade</th>
+                                </>
+                              ) : (
+                                <th className="p-4 w-48 text-right pr-6">Marks Achieved</th>
+                              )}
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-100">
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                             {students.length === 0 ? (
                               <tr>
-                                <td colSpan="5" className="p-16 text-center text-slate-500 dark:text-slate-400">
+                                <td colSpan={activeComponents.length > 0 ? activeComponents.length + 6 : 5} className="p-16 text-center text-slate-500 dark:text-slate-400">
                                   <GraduationCap size={40} className="mx-auto mb-4 text-slate-300" />
                                   <p className="font-bold text-slate-900 dark:text-white">No students enrolled</p>
                                 </td>
@@ -789,9 +910,12 @@ export default function Grades() {
                                 const percentage = (!isAbsent && !isExempt && val !== '' && val !== undefined && val !== null) 
                                   ? ((Number(val) / activeAssessment.totalMarks) * 100).toFixed(0) 
                                   : null;
+                                const studentGrade = (!isAbsent && !isExempt && val !== '' && val !== undefined && val !== null)
+                                  ? calculateGrade(val, activeAssessment.totalMarks)
+                                  : null;
 
                                 return (
-                                  <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
+                                  <tr key={student.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                                     <td className="p-4 pl-6">
                                       <div className="flex items-center gap-3">
                                         <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold text-xs border border-slate-200 dark:border-slate-700">
@@ -837,43 +961,119 @@ export default function Grades() {
                                         className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 disabled:opacity-50"
                                       />
                                     </td>
-                                    <td className="p-4 pr-6 text-right">
-                                      <div className="flex items-center justify-end gap-3">
-                                        {isAbsent ? (
-                                          <span className="text-xs font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-900">
-                                            ABSENT
-                                          </span>
-                                        ) : isExempt ? (
-                                          <span className="text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-900">
-                                            EXEMPT
-                                          </span>
-                                        ) : (
-                                          <>
-                                            {percentage !== null && (
-                                              <span className={`text-xs font-bold ${Number(percentage) >= 50 ? 'text-green-600' : 'text-red-600'}`}>
-                                                {percentage}%
+
+                                    {activeComponents.length > 0 ? (
+                                      <>
+                                        {/* Individual Assessment Component Columns */}
+                                        {activeComponents.map((comp) => {
+                                          const compVal = componentGrades[student.id]?.[comp.key];
+                                          const hasVal = compVal !== undefined && compVal !== '' && compVal !== null;
+                                          return (
+                                            <td key={comp.key} className="p-4 text-center">
+                                              {isAbsent ? (
+                                                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/40 px-1.5 py-0.5 rounded">ABS</span>
+                                              ) : isExempt ? (
+                                                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded">EXM</span>
+                                              ) : (
+                                                <input 
+                                                  type="number"
+                                                  min="0"
+                                                  max={comp.maxMarks}
+                                                  disabled={isLocked || !canEditMarks}
+                                                  value={hasVal ? compVal : ''}
+                                                  onChange={(e) => handleComponentGradeChange(student.id, comp.key, e.target.value, comp.maxMarks)}
+                                                  placeholder="--"
+                                                  className={`w-20 px-2 py-1.5 text-center rounded-lg border font-mono font-bold focus:ring-2 focus:ring-primary-500 transition-colors disabled:opacity-60 disabled:bg-slate-100 ${
+                                                    hasVal
+                                                      ? 'border-green-300 bg-green-50 text-green-900 dark:bg-green-950/30 dark:text-green-200' 
+                                                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
+                                                  }`}
+                                                />
+                                              )}
+                                            </td>
+                                          );
+                                        })}
+
+                                        {/* Total Marks Column */}
+                                        <td className="p-4 text-center">
+                                          {isAbsent ? (
+                                            <span className="text-xs font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-900">
+                                              ABSENT
+                                            </span>
+                                          ) : isExempt ? (
+                                            <span className="text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-900">
+                                              EXEMPT
+                                            </span>
+                                          ) : (
+                                            <div className="flex items-center justify-center">
+                                              <span className={`px-2.5 py-1 rounded-lg font-mono font-black text-sm ${
+                                                val !== '' && val !== undefined
+                                                  ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300 border border-primary-200 dark:border-primary-800'
+                                                  : 'text-slate-400'
+                                              }`}>
+                                                {val !== '' && val !== undefined ? val : '--'}
                                               </span>
-                                            )}
-                                            <div className="relative">
-                                              <input 
-                                                type="number"
-                                                min="0"
-                                                disabled={isLocked || !canEditMarks}
-                                                max={activeAssessment.totalMarks}
-                                                value={grades[student.id] === undefined || grades[student.id] === '' ? '' : grades[student.id]}
-                                                onChange={(e) => handleGradeChange(student.id, e.target.value)}
-                                                placeholder="--"
-                                                className={`w-24 px-3 py-2 text-right rounded-lg border font-mono font-bold focus:ring-2 focus:ring-primary-500 transition-colors disabled:opacity-60 disabled:bg-slate-100 ${
-                                                  grades[student.id] !== '' && grades[student.id] !== undefined 
-                                                    ? 'border-green-300 bg-green-50 text-green-900' 
-                                                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
-                                                }`}
-                                              />
                                             </div>
-                                          </>
-                                        )}
-                                      </div>
-                                    </td>
+                                          )}
+                                        </td>
+
+                                        {/* Grade Column */}
+                                        <td className="p-4 pr-6 text-center">
+                                          {!isAbsent && !isExempt && studentGrade ? (
+                                            <span className={`text-xs font-black px-2 py-0.5 rounded ${
+                                              ['A1', 'A2', 'B1'].includes(studentGrade)
+                                                ? 'bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300'
+                                                : ['B2', 'C1', 'C2'].includes(studentGrade)
+                                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300'
+                                                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
+                                            }`}>
+                                              {studentGrade} {percentage ? `(${percentage}%)` : ''}
+                                            </span>
+                                          ) : (
+                                            <span className="text-slate-400 text-xs">--</span>
+                                          )}
+                                        </td>
+                                      </>
+                                    ) : (
+                                      /* Fallback: single Marks Achieved column if template has no components */
+                                      <td className="p-4 pr-6 text-right">
+                                        <div className="flex items-center justify-end gap-3">
+                                          {isAbsent ? (
+                                            <span className="text-xs font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-900">
+                                              ABSENT
+                                            </span>
+                                          ) : isExempt ? (
+                                            <span className="text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-900">
+                                              EXEMPT
+                                            </span>
+                                          ) : (
+                                            <>
+                                              {percentage !== null && (
+                                                <span className={`text-xs font-bold ${Number(percentage) >= 50 ? 'text-green-600' : 'text-red-600'}`}>
+                                                  {percentage}%
+                                                </span>
+                                              )}
+                                              <div className="relative">
+                                                <input 
+                                                  type="number"
+                                                  min="0"
+                                                  disabled={isLocked || !canEditMarks}
+                                                  max={activeAssessment.totalMarks}
+                                                  value={grades[student.id] === undefined || grades[student.id] === '' ? '' : grades[student.id]}
+                                                  onChange={(e) => handleGradeChange(student.id, e.target.value)}
+                                                  placeholder="--"
+                                                  className={`w-24 px-3 py-2 text-right rounded-lg border font-mono font-bold focus:ring-2 focus:ring-primary-500 transition-colors disabled:opacity-60 disabled:bg-slate-100 ${
+                                                    grades[student.id] !== '' && grades[student.id] !== undefined 
+                                                      ? 'border-green-300 bg-green-50 text-green-900' 
+                                                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
+                                                  }`}
+                                                />
+                                              </div>
+                                            </>
+                                          )}
+                                        </div>
+                                      </td>
+                                    )}
                                   </tr>
                                 );
                               })

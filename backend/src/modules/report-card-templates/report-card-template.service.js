@@ -33,14 +33,115 @@ export const DEFAULT_REPORT_CARD_CONFIG = Object.freeze({
     style: 'marks_and_grades',
     showTotal: true,
     showPercentage: true,
-    showRank: false
+    showRank: false,
+    columns: ['Subject', 'Max Marks', 'Marks Obtained', 'Grade']
   },
+  assessmentComponents: [
+    { key: 'maxMarks', name: 'Max Marks', label: 'Max Marks', maxMarks: 100, type: 'max', isCalculated: false },
+    { key: 'marksObtained', name: 'Marks Obtained', label: 'Marks Obtained', maxMarks: 100, type: 'mark', isCalculated: false },
+    { key: 'grade', name: 'Grade', label: 'Grade', type: 'grade', isCalculated: true }
+  ],
+  subjects: [
+    { id: 'sub_english', name: 'English', code: 'ENG' },
+    { id: 'sub_math', name: 'Mathematics', code: 'MATH' },
+    { id: 'sub_science', name: 'Science', code: 'SCI' },
+    { id: 'sub_social', name: 'Social Studies', code: 'SST' },
+    { id: 'sub_computer', name: 'Computer Science', code: 'CS' }
+  ],
+  sections: [
+    {
+      id: 'scholastic',
+      name: 'Scholastic Area : Subjects',
+      subjects: [
+        { id: 'sub_english', name: 'English', code: 'ENG' },
+        { id: 'sub_math', name: 'Mathematics', code: 'MATH' },
+        { id: 'sub_science', name: 'Science', code: 'SCI' },
+        { id: 'sub_social', name: 'Social Studies', code: 'SST' },
+        { id: 'sub_computer', name: 'Computer Science', code: 'CS' }
+      ]
+    }
+  ],
   footer: {
     signatures: ['Class Teacher', 'Principal', 'Parent'],
     gradingScaleText: 'A1: 91-100 | A2: 81-90 | B1: 71-80 | B2: 61-70 | C1: 51-60 | C2: 41-50 | D: 33-40 | E: Below 33',
     remarks: true
   }
 });
+
+/**
+ * Derives structured assessment components from string table columns.
+ *
+ * @param {Array<string>} columns - Column headers
+ * @returns {Array<Object>}
+ */
+export function deriveAssessmentComponentsFromColumns(columns) {
+  if (!Array.isArray(columns) || columns.length === 0) return [];
+  const components = [];
+  const seenKeys = new Set();
+
+  columns.forEach((col, idx) => {
+    const raw = String(col || '').trim();
+    if (!raw) return;
+    const lower = raw.toLowerCase();
+
+    // Skip subject/student row label columns
+    if (idx === 0 && (lower.includes('subject') || lower.includes('scholastic') || lower.includes('student') || lower.includes('area'))) {
+      return;
+    }
+
+    let baseKey = raw
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || `col_${idx}`;
+
+    if (seenKeys.has(baseKey)) {
+      baseKey = `${baseKey}_${idx}`;
+    }
+    seenKeys.add(baseKey);
+
+    // Extract maximum marks if present (e.g., PT/20 -> 20, T/50 -> 50, Total/100 -> 100)
+    let maxMarks = 100;
+    const numberMatch = raw.match(/\/(\d+)/) || raw.match(/(\d+)/);
+    if (numberMatch && numberMatch[1]) {
+      const parsed = parseInt(numberMatch[1], 10);
+      if (!isNaN(parsed) && parsed > 0 && parsed <= 1000) {
+        maxMarks = parsed;
+      }
+    }
+
+    let type = 'mark';
+    let isCalculated = false;
+
+    if (lower.includes('grade')) {
+      type = 'grade';
+      isCalculated = true;
+    } else if (lower.includes('total') || lower.includes('overall') || lower.includes('aggregate')) {
+      type = 'calculated_total';
+      isCalculated = true;
+    } else if (lower.includes('max') && !lower.includes('obt')) {
+      type = 'max';
+      isCalculated = false;
+    } else if (lower.includes('remark') || lower.includes('comment')) {
+      type = 'remarks';
+      isCalculated = false;
+    } else {
+      type = 'mark';
+      isCalculated = false;
+    }
+
+    components.push({
+      key: baseKey,
+      name: raw.replace(/\/\d+/, '').trim() || raw,
+      label: raw,
+      maxMarks,
+      type,
+      weightage: maxMarks,
+      isCalculated
+    });
+  });
+
+  return components;
+}
 
 /**
  * Serializes a ReportCardTemplate record for clean API output.
@@ -51,11 +152,34 @@ export const DEFAULT_REPORT_CARD_CONFIG = Object.freeze({
  */
 export function serializeTemplate(template, isDefault = false) {
   if (!template) return null;
+  const config = template.config ? { ...template.config } : { ...DEFAULT_REPORT_CARD_CONFIG };
+
+  // Ensure assessmentComponents is always available
+  if ((!config.assessmentComponents || config.assessmentComponents.length === 0) && Array.isArray(config.grading?.columns) && config.grading.columns.length > 0) {
+    config.assessmentComponents = deriveAssessmentComponentsFromColumns(config.grading.columns);
+  } else if (!config.assessmentComponents || config.assessmentComponents.length === 0) {
+    config.assessmentComponents = [...DEFAULT_REPORT_CARD_CONFIG.assessmentComponents];
+  }
+
+  // Ensure subjects and sections are always available
+  if (!config.subjects || !Array.isArray(config.subjects) || config.subjects.length === 0) {
+    config.subjects = [...DEFAULT_REPORT_CARD_CONFIG.subjects];
+  }
+  if (!config.sections || !Array.isArray(config.sections) || config.sections.length === 0) {
+    config.sections = [
+      {
+        id: 'scholastic',
+        name: 'Scholastic Area : Subjects',
+        subjects: [...config.subjects]
+      }
+    ];
+  }
+
   return {
     id: template.id || null,
     schoolId: template.schoolId,
     templateType: template.templateType || 'report_card',
-    config: template.config || DEFAULT_REPORT_CARD_CONFIG,
+    config,
     isDefault,
     createdAt: template.createdAt || null,
     updatedAt: template.updatedAt || null

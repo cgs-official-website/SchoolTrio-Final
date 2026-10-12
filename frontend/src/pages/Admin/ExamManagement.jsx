@@ -885,18 +885,27 @@ export default function ExamManagement() {
                                                 if (lower.includes('grade')) {
                                                   return <td key={cIdx} className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">{grade}</td>;
                                                 }
-                                                // Marks column
+                                                // Resolve component mark for column if componentMarks exists
+                                                const matchedComponent = (reportTemplate.assessmentComponents || []).find(
+                                                  comp => (comp.label && lower.includes(comp.label.toLowerCase())) ||
+                                                          (comp.key && lower.includes(comp.key.toLowerCase()))
+                                                );
+                                                const compKey = matchedComponent?.key;
+                                                const displayMark = (compKey && markObj?.componentMarks?.[compKey] !== undefined)
+                                                  ? markObj.componentMarks[compKey]
+                                                  : mark;
+
                                                 return (
                                                   <td key={cIdx} className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">
                                                     <div className="flex items-center justify-center gap-1.5 group">
-                                                      <span>{mark}</span>
+                                                      <span>{displayMark}</span>
                                                       <button
                                                         onClick={() => setOverrideModal({
                                                           isOpen: true,
                                                           student: row.student,
                                                           assessment: a,
-                                                          currentMarks: mark === '-' ? '' : mark,
-                                                          newMarks: mark === '-' ? '' : mark,
+                                                          currentMarks: displayMark === '-' ? '' : displayMark,
+                                                          newMarks: displayMark === '-' ? '' : displayMark,
                                                           reason: ''
                                                         })}
                                                         className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-primary-600 transition-all text-xs print:hidden"

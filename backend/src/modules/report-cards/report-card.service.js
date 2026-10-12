@@ -302,6 +302,22 @@ async function aggregateReportCardData(schoolId, classId, examId = null, targetS
       const gradeRecord = studentGrades.get(assessment.id);
       const maxMarks = Number(assessment.totalMarks);
 
+      let compMarks = null;
+      let noteRemarks = gradeRecord?.remarks || null;
+      if (gradeRecord?.remarks && typeof gradeRecord.remarks === 'string' && gradeRecord.remarks.trim().startsWith('{')) {
+        try {
+          const parsed = JSON.parse(gradeRecord.remarks);
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.componentMarks && typeof parsed.componentMarks === 'object') {
+              compMarks = parsed.componentMarks;
+            }
+            noteRemarks = parsed.note !== undefined ? parsed.note : null;
+          }
+        } catch (_e) {
+          // ignore
+        }
+      }
+
       if (gradeRecord && gradeRecord.marksObtained !== null && gradeRecord.marksObtained !== undefined) {
         const obtained = Number(gradeRecord.marksObtained);
         totalObtained += obtained;
@@ -317,7 +333,8 @@ async function aggregateReportCardData(schoolId, classId, examId = null, targetS
           obtained,
           max: maxMarks,
           grade: letterGrade,
-          remarks: gradeRecord.remarks || null
+          componentMarks: compMarks,
+          remarks: noteRemarks
         };
       } else {
         totalMax += maxMarks;
@@ -327,6 +344,7 @@ async function aggregateReportCardData(schoolId, classId, examId = null, targetS
           obtained: '-',
           max: maxMarks,
           grade: '-',
+          componentMarks: null,
           remarks: null
         };
       }
@@ -443,6 +461,7 @@ export async function generateReportCardPreview(schoolId, input = {}, actor = nu
       title: c.title,
       term: c.term,
       marks: c.marksData.marks,
+      marksBreakdown: c.marksData.marksBreakdown,
       totalObtained: c.marksData.totalObtained,
       totalMax: c.marksData.totalMax,
       percentage: c.marksData.percentage,
@@ -470,7 +489,7 @@ export async function publishReportCards(schoolId, input = {}, actor = null) {
     throw new ValidationError('classId is required');
   }
 
-  const { targetClass, exam, studentCards } = await aggregateReportCardData(
+  const { targetClass, exam, template, studentCards } = await aggregateReportCardData(
     schoolId,
     classId,
     examId || null,
@@ -478,6 +497,14 @@ export async function publishReportCards(schoolId, input = {}, actor = null) {
     actor,
     sectionId || null
   );
+
+  // Structural validation: template must have valid columns/assessment components
+  const config = template?.config;
+  const hasColumns = (Array.isArray(config?.assessmentComponents) && config.assessmentComponents.length > 0) ||
+                     (Array.isArray(config?.grading?.columns) && config.grading.columns.length > 0);
+  if (!hasColumns) {
+    throw new ValidationError('Template structural validation failed: The report card template must contain valid columns or assessment components before publication');
+  }
 
   if (studentCards.length === 0) {
     throw new ValidationError('No students found to publish report cards');

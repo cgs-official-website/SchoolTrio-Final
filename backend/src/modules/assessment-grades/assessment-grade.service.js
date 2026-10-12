@@ -27,16 +27,34 @@ import { logger } from '../../utils/logger.js';
  */
 export function serializeGrade(grade) {
   if (!grade) return null;
+  let componentMarks = null;
+  let cleanRemarks = grade.remarks || null;
+
+  if (grade.remarks && typeof grade.remarks === 'string' && grade.remarks.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(grade.remarks);
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.componentMarks && typeof parsed.componentMarks === 'object') {
+          componentMarks = parsed.componentMarks;
+        }
+        cleanRemarks = parsed.note !== undefined ? parsed.note : null;
+      }
+    } catch (_e) {
+      // plain text fallback
+    }
+  }
+
   return {
     id: grade.id,
     schoolId: grade.schoolId,
     assessmentId: grade.assessmentId,
     studentId: grade.studentId,
     marksObtained: grade.marksObtained !== null && grade.marksObtained !== undefined ? Number(grade.marksObtained) : 0,
+    componentMarks,
     isAbsent: Boolean(grade.isAbsent),
     isExempt: Boolean(grade.isExempt),
     grade: grade.grade || null,
-    remarks: grade.remarks || null,
+    remarks: cleanRemarks,
     createdAt: grade.createdAt,
     updatedAt: grade.updatedAt,
     student: grade.student
@@ -362,8 +380,27 @@ export async function upsertSingleGrade(schoolId, assessmentId, studentId, data,
   // 4. Validate marks against assessment totalMarks using integer cents comparison for Decimal safety
   const isAbsent = Boolean(data.isAbsent);
   const isExempt = Boolean(data.isExempt);
-  const numericMarks = isAbsent || isExempt ? 0 : Number(data.marksObtained || 0);
+  let numericMarks = isAbsent || isExempt ? 0 : Number(data.marksObtained ?? 0);
   const maxMarks = Number(assessment.totalMarks);
+
+  // If component marks provided, validate and compute total if not explicitly provided
+  if (!isAbsent && !isExempt && data.componentMarks && typeof data.componentMarks === 'object') {
+    let compSum = 0;
+    let hasComponents = false;
+    for (const [cKey, cVal] of Object.entries(data.componentMarks)) {
+      if (cVal !== null && cVal !== undefined && cVal !== '') {
+        const num = Number(cVal);
+        if (isNaN(num) || num < 0) {
+          throw new ValidationError(`Mark for component '${cKey}' cannot be negative`);
+        }
+        compSum += num;
+        hasComponents = true;
+      }
+    }
+    if (hasComponents && (data.marksObtained === undefined || data.marksObtained === null || data.marksObtained === '')) {
+      numericMarks = compSum;
+    }
+  }
 
   if (numericMarks < 0) {
     throw new ValidationError('Marks obtained cannot be negative');
@@ -375,12 +412,21 @@ export async function upsertSingleGrade(schoolId, assessmentId, studentId, data,
     );
   }
 
+  // Format remarks to preserve componentMarks payload
+  let remarksPayload = data.remarks !== undefined ? (data.remarks && data.remarks.trim() ? data.remarks.trim() : null) : undefined;
+  if (data.componentMarks && typeof data.componentMarks === 'object') {
+    remarksPayload = JSON.stringify({
+      componentMarks: data.componentMarks,
+      note: data.remarks || null
+    });
+  }
+
   // 5. Execute atomic upsert
   const savedGrade = await assessmentGradeRepository.upsertGrade(schoolId, assessmentId, studentId, {
     marksObtained: numericMarks,
     isAbsent,
     isExempt,
-    remarks: data.remarks !== undefined ? (data.remarks && data.remarks.trim() ? data.remarks.trim() : null) : undefined
+    remarks: remarksPayload
   });
 
   // 6. Update assessment status if needed
@@ -512,7 +558,26 @@ export async function bulkUpsertGrades(schoolId, assessmentId, data, actor = nul
 
       const isAbsent = Boolean(item.isAbsent);
       const isExempt = Boolean(item.isExempt);
-      const numericMarks = isAbsent || isExempt ? 0 : Number(item.marksObtained || 0);
+      let numericMarks = isAbsent || isExempt ? 0 : Number(item.marksObtained ?? 0);
+
+      // Validate componentMarks if provided
+      if (!isAbsent && !isExempt && item.componentMarks && typeof item.componentMarks === 'object') {
+        let compSum = 0;
+        let hasComponents = false;
+        for (const [cKey, cVal] of Object.entries(item.componentMarks)) {
+          if (cVal !== null && cVal !== undefined && cVal !== '') {
+            const num = Number(cVal);
+            if (isNaN(num) || num < 0) {
+              throw new ValidationError(`Mark for component '${cKey}' for student '${item.studentId}' cannot be negative`);
+            }
+            compSum += num;
+            hasComponents = true;
+          }
+        }
+        if (hasComponents && (item.marksObtained === undefined || item.marksObtained === null || item.marksObtained === '')) {
+          numericMarks = compSum;
+        }
+      }
 
       if (numericMarks < 0) {
         throw new ValidationError(`Marks obtained for student '${item.studentId}' cannot be negative`);
@@ -530,7 +595,32 @@ export async function bulkUpsertGrades(schoolId, assessmentId, data, actor = nul
     for (const item of data.grades) {
       const isAbsent = Boolean(item.isAbsent);
       const isExempt = Boolean(item.isExempt);
-      const numericMarks = isAbsent || isExempt ? 0 : Number(item.marksObtained || 0);
+      let numericMarks = isAbsent || isExempt ? 0 : Number(item.marksObtained ?? 0);
+
+      if (!isAbsent && !isExempt && item.componentMarks && typeof item.componentMarks === 'object') {
+        let compSum = 0;
+        let hasComponents = false;
+        for (const [, cVal] of Object.entries(item.componentMarks)) {
+          if (cVal !== null && cVal !== undefined && cVal !== '') {
+            const num = Number(cVal);
+            if (!isNaN(num) && num >= 0) {
+              compSum += num;
+              hasComponents = true;
+            }
+          }
+        }
+        if (hasComponents && (item.marksObtained === undefined || item.marksObtained === null || item.marksObtained === '')) {
+          numericMarks = compSum;
+        }
+      }
+
+      let remarksPayload = item.remarks !== undefined ? (item.remarks && item.remarks.trim() ? item.remarks.trim() : null) : undefined;
+      if (item.componentMarks && typeof item.componentMarks === 'object') {
+        remarksPayload = JSON.stringify({
+          componentMarks: item.componentMarks,
+          note: item.remarks || null
+        });
+      }
 
       const saved = await assessmentGradeRepository.upsertGrade(
         schoolId,
@@ -540,7 +630,7 @@ export async function bulkUpsertGrades(schoolId, assessmentId, data, actor = nul
           marksObtained: numericMarks,
           isAbsent,
           isExempt,
-          remarks: item.remarks !== undefined ? (item.remarks && item.remarks.trim() ? item.remarks.trim() : null) : undefined
+          remarks: remarksPayload
         },
         tx
       );

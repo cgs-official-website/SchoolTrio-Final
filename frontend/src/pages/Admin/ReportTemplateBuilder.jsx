@@ -18,6 +18,9 @@ export default function ReportTemplateBuilder({ onBack }) {
   // Template State
   const [template, setTemplate] = useState({
     themeColor: '#c99bc1', // primary by default
+    assessmentComponents: [],
+    subjects: [],
+    sections: [],
     header: {
       schoolName: '',
       showLogo: true,
@@ -36,6 +39,7 @@ export default function ReportTemplateBuilder({ onBack }) {
     },
     grading: {
       style: 'marks_and_grades', // 'marks', 'grades', 'marks_and_grades'
+      columns: null,
       showTotal: true,
       showPercentage: true,
       showRank: false,
@@ -59,6 +63,10 @@ export default function ReportTemplateBuilder({ onBack }) {
         setTemplate(prev => ({
           ...prev,
           ...configData,
+          assessmentComponents: configData.assessmentComponents || prev.assessmentComponents || [],
+          subjects: configData.subjects || prev.subjects || [],
+          sections: configData.sections || prev.sections || [],
+          structureMetadata: configData.structureMetadata || prev.structureMetadata || null,
           header: { ...prev.header, ...(configData.header || {}) },
           studentFields: { ...prev.studentFields, ...(configData.studentFields || {}) },
           grading: { ...prev.grading, ...(configData.grading || {}) },
@@ -100,6 +108,10 @@ export default function ReportTemplateBuilder({ onBack }) {
         setTemplate(prev => ({
           ...prev,
           ...extractedConfig,
+          assessmentComponents: extractedConfig.assessmentComponents || prev.assessmentComponents || [],
+          subjects: extractedConfig.subjects || prev.subjects || [],
+          sections: extractedConfig.sections || prev.sections || [],
+          structureMetadata: extractedConfig.structureMetadata || prev.structureMetadata || null,
           rawHtmlTemplate: htmlPreview || prev.rawHtmlTemplate || null,
           originalDocxName: fileName || prev.originalDocxName || null,
           header: { ...prev.header, ...(extractedConfig.header || {}) },
@@ -131,6 +143,12 @@ export default function ReportTemplateBuilder({ onBack }) {
   };
 
   const handleSave = async () => {
+    const hasColumns = (Array.isArray(template.grading?.columns) && template.grading.columns.length > 0) ||
+                       (Array.isArray(template.assessmentComponents) && template.assessmentComponents.length > 0);
+    if (!hasColumns) {
+      toast.error("Template validation failed: At least one column or assessment component is required.");
+      return;
+    }
     setSaving(true);
     try {
       await saveReportCardTemplate('report_card', template);
@@ -325,12 +343,85 @@ export default function ReportTemplateBuilder({ onBack }) {
               </div>
             </div>
 
-            {/* Dynamic Columns Configuration */}
+            {/* Assessment Components & Structure */}
             <div>
-              <h3 className="text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-2">
-                <LuLayoutTemplate /> Extracted Table Columns
-              </h3>
-              <p className="text-xs text-slate-500 mb-3">Columns extracted from your Word document. You can edit them live:</p>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  <LuLayoutTemplate /> Assessment Components
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newKey = `comp_${(template.assessmentComponents || []).length + 1}`;
+                    const updated = [
+                      ...(template.assessmentComponents || []),
+                      { key: newKey, label: `Component ${(template.assessmentComponents || []).length + 1}`, maxMarks: 20, type: 'mark' }
+                    ];
+                    const newCols = [
+                      template.grading?.columns?.[0] || 'Subject',
+                      ...updated.map(c => `${c.label}/${c.maxMarks}`),
+                      'Total',
+                      'Grade'
+                    ];
+                    setTemplate({
+                      ...template,
+                      assessmentComponents: updated,
+                      grading: { ...template.grading, columns: newCols }
+                    });
+                  }}
+                  className="text-xs font-bold text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                >
+                  + Add Component
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 mb-3">Individual assessment columns (e.g., PT, Theory, Viva) and their maximum marks:</p>
+              
+              <div className="space-y-2 mb-4">
+                {(template.assessmentComponents || []).map((comp, cIdx) => (
+                  <div key={cIdx} className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                    <input
+                      type="text"
+                      value={comp.label}
+                      placeholder="Label (e.g. PT)"
+                      onChange={(e) => {
+                        const updated = [...(template.assessmentComponents || [])];
+                        updated[cIdx] = { ...updated[cIdx], label: e.target.value };
+                        setTemplate({ ...template, assessmentComponents: updated });
+                      }}
+                      className="flex-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold focus:ring-2 focus:ring-primary-500"
+                    />
+                    <div className="flex items-center gap-1 w-20">
+                      <span className="text-[10px] text-slate-400 font-bold">Max:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="999"
+                        value={comp.maxMarks}
+                        onChange={(e) => {
+                          const updated = [...(template.assessmentComponents || [])];
+                          updated[cIdx] = { ...updated[cIdx], maxMarks: Number(e.target.value) || 0 };
+                          setTemplate({ ...template, assessmentComponents: updated });
+                        }}
+                        className="w-14 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-center focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = (template.assessmentComponents || []).filter((_, idx) => idx !== cIdx);
+                        setTemplate({ ...template, assessmentComponents: updated });
+                      }}
+                      className="p-1 text-slate-400 hover:text-rose-500 rounded text-xs"
+                      title="Remove component"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Extracted Table Columns */}
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Display Table Columns</h4>
               <div className="space-y-2">
                 {(template.grading?.columns || ['Subject', 'Max Marks', 'Marks Obtained', 'Grade']).map((col, idx) => (
                   <div key={idx} className="flex items-center gap-2">
@@ -351,6 +442,25 @@ export default function ReportTemplateBuilder({ onBack }) {
                   </div>
                 ))}
               </div>
+
+              {/* Extracted Subjects Summary */}
+              {Array.isArray(template.subjects) && template.subjects.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                    Extracted Subjects ({template.subjects.length})
+                  </h4>
+                  <div className="flex flex-wrap gap-1.5">
+                    {template.subjects.map((sub, sIdx) => {
+                      const name = typeof sub === 'string' ? sub : sub?.name;
+                      return (
+                        <span key={sIdx} className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-primary-50 dark:bg-primary-950/40 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800">
+                          {name}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Footer & Signatures */}
@@ -552,13 +662,16 @@ export default function ReportTemplateBuilder({ onBack }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {['English', 'Mathematics', 'Science', 'Social Studies', 'Computer Science'].map((sub, i) => {
+                    {((Array.isArray(template.subjects) && template.subjects.length > 0)
+                      ? template.subjects.map(s => typeof s === 'string' ? s : s?.name).filter(Boolean)
+                      : ['English', 'Mathematics', 'Science', 'Social Studies', 'Computer Science']
+                    ).map((sub, i) => {
                       const cols = template.grading?.columns && template.grading.columns.length > 0
                         ? template.grading.columns
                         : ['Subject', 'Max Marks', 'Marks Obt.', 'Grade'];
 
                       return (
-                        <tr key={sub} className={i % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50 dark:bg-slate-800'}>
+                        <tr key={sub || i} className={i % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50 dark:bg-slate-800'}>
                           {cols.map((colName, cIdx) => {
                             if (cIdx === 0) {
                               return <td key={cIdx} className="border border-slate-400 p-2 font-medium">{sub}</td>;
@@ -570,11 +683,15 @@ export default function ReportTemplateBuilder({ onBack }) {
                             if (lower.includes('grade')) {
                               return <td key={cIdx} className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">{i % 2 === 0 ? 'A1' : 'A2'}</td>;
                             }
-                            // Default to sample mark score (e.g. for PT/20, T/50, Total, etc.)
-                            const sampleScore = lower.includes('/20') ? (16 + (i % 4))
-                              : lower.includes('/50') ? (42 + (i % 6))
-                              : lower.includes('/10') ? (8 + (i % 2))
-                              : (85 + i);
+                            // Check if column matches an assessment component
+                            const matchedComp = (template.assessmentComponents || []).find(
+                              comp => (comp.label && lower.includes(comp.label.toLowerCase())) ||
+                                      (comp.key && lower.includes(comp.key.toLowerCase()))
+                            );
+                            const compMax = matchedComp?.maxMarks || (
+                              lower.includes('/20') ? 20 : lower.includes('/50') ? 50 : lower.includes('/10') ? 10 : 100
+                            );
+                            const sampleScore = Math.min(compMax, Math.round(compMax * (0.8 + ((i % 3) * 0.05))));
                             return (
                               <td key={cIdx} className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">
                                 {sampleScore}
