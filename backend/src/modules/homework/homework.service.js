@@ -585,6 +585,11 @@ export async function updateStaffSubmission(schoolId, homeworkId, studentId, dat
     throw new NotFoundError('Student in assignment class');
   }
 
+  const role = (actor?.systemRole || actor?.role || '').toUpperCase();
+  if (data.status !== undefined && (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER')) {
+    throw new ForbiddenError('Teachers are not authorized to manually change student homework status');
+  }
+
   const submissionPayload = {};
   if (data.status !== undefined) submissionPayload.status = data.status;
   if (data.grade !== undefined) submissionPayload.grade = data.grade;
@@ -667,6 +672,11 @@ export async function bulkUpdateStaffSubmissions(schoolId, homeworkId, submissio
     }
   }
 
+  const role = (actor?.systemRole || actor?.role || '').toUpperCase();
+  if ((role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') && submissions.some((s) => s.status !== undefined)) {
+    throw new ForbiddenError('Teachers are not authorized to manually change student homework status');
+  }
+
   const results = await prisma.$transaction(async (tx) => {
     const updated = [];
     for (const sub of submissions) {
@@ -744,7 +754,7 @@ export async function getStudentHomework(schoolId, studentId, query = {}, actor 
     throw new NotFoundError('Student');
   }
 
-  // 2. Check parent authorization if parent
+  // 2. Check authorization
   const role = (actor?.systemRole || actor?.role || '').toUpperCase();
   if (role === SYSTEM_ROLES.PARENT || role === 'PARENT') {
     const userId = actor.id || actor.userId;
@@ -752,6 +762,11 @@ export async function getStudentHomework(schoolId, studentId, query = {}, actor 
 
     if (!authorizedStudentIds.includes(studentId)) {
       throw new NotFoundError('Student');
+    }
+  } else if (role === SYSTEM_ROLES.STUDENT || role === 'STUDENT') {
+    const actorStudentId = actor.studentId || actor.id;
+    if (actorStudentId !== studentId) {
+      throw new ForbiddenError('Students can only view their own homework assignments');
     }
   }
 
@@ -820,14 +835,23 @@ export async function updateStudentHomeworkStatus(schoolId, studentId, homeworkI
     throw new NotFoundError('Student');
   }
 
-  // 2. Check parent authorization if parent
+  // 2. Check authorization
   const role = (actor?.systemRole || actor?.role || '').toUpperCase();
+  if (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
+    throw new ForbiddenError('Teachers are not authorized to manually change student homework status');
+  }
+
   if (role === SYSTEM_ROLES.PARENT || role === 'PARENT') {
     const userId = actor.id || actor.userId;
     const authorizedStudentIds = await homeworkRepository.findAuthorizedStudentIdsForParent(schoolId, userId);
 
     if (!authorizedStudentIds.includes(studentId)) {
       throw new NotFoundError('Student');
+    }
+  } else if (role === SYSTEM_ROLES.STUDENT || role === 'STUDENT') {
+    const actorStudentId = actor.studentId || actor.id;
+    if (actorStudentId !== studentId) {
+      throw new ForbiddenError('Students can only update their own homework status');
     }
   }
 

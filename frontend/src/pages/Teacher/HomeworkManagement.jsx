@@ -6,7 +6,6 @@ import {
   createHomework,
   updateHomework,
   deleteHomework,
-  updateSubmission,
   bulkUpdateSubmissions
 } from '../../api/homework';
 import { listClasses } from '../../api/classes';
@@ -394,61 +393,6 @@ export default function HomeworkManagement() {
     }
   };
 
-  // ============================================================
-  // SUBMISSION EVALUATION (PATCH /api/v1/homework/:id/submissions/:studentId)
-  // ============================================================
-
-  const handleUpdateStudentSubmission = async (studentId, status, grade = null, feedback = null) => {
-    if (!selectedHomework) return;
-    try {
-      await updateSubmission(selectedHomework.id, studentId, {
-        status,
-        grade: grade !== null ? grade : undefined,
-        feedback: feedback !== null ? feedback : undefined
-      });
-      notifyDataChanged('homework');
-      toast.success('Student submission updated!');
-      
-      // Update local state roster
-      setSelectedHomework(prev => {
-        if (!prev) return prev;
-        const currentRoster = prev.roster || [];
-        const updatedRoster = currentRoster.map(s => {
-          if (s.studentId === studentId) {
-            return {
-              ...s,
-              status,
-              grade: grade !== null ? grade : s.grade,
-              feedback: feedback !== null ? feedback : s.feedback,
-              lastUpdated: new Date().toISOString()
-            };
-          }
-          return s;
-        });
-
-        // Recalculate summary counts
-        let subCount = 0, compCount = 0, progCount = 0, notCount = 0;
-        updatedRoster.forEach(r => {
-          if (r.status === 'Submitted') subCount++;
-          else if (r.status === 'Completed') compCount++;
-          else if (r.status === 'In Progress') progCount++;
-          else notCount++;
-        });
-
-        return {
-          ...prev,
-          roster: updatedRoster,
-          submittedCount: subCount,
-          completedCount: compCount,
-          inProgressCount: progCount,
-          notStartedCount: notCount
-        };
-      });
-    } catch (err) {
-      console.error('Error updating student submission:', err);
-      toast.error(err.message || 'Failed to update student submission');
-    }
-  };
 
   // ============================================================
   // EXCEL EVALUATION UPLOAD
@@ -511,13 +455,16 @@ export default function HomeworkManagement() {
               continue;
             }
 
+            if (!gradeVal && !feedbackVal) {
+              continue;
+            }
+
             if (!submissionsByHwId.has(targetHwId)) {
               submissionsByHwId.set(targetHwId, []);
             }
 
             submissionsByHwId.get(targetHwId).push({
               studentId: targetStudentId,
-              status: statusVal,
               grade: gradeVal ? String(gradeVal) : null,
               feedback: feedbackVal ? String(feedbackVal) : null
             });
@@ -565,7 +512,7 @@ export default function HomeworkManagement() {
   // ============================================================
 
   const handleDownloadEvaluationTemplate = () => {
-    const headers = ['Homework Title', 'Student Name', 'Admission Number', 'Status', 'Grade', 'Feedback'];
+    const headers = ['Homework Title', 'Student Name', 'Admission Number', 'Status (Read Only)', 'Grade', 'Feedback'];
     let rows = [];
 
     const roster = selectedHomework?.roster || [];
@@ -1223,7 +1170,7 @@ export default function HomeworkManagement() {
                     Upload an Excel (.xlsx) or CSV file containing student evaluations for automatic batch submission updating.
                   </p>
                   <div className="text-xs text-slate-600 dark:text-slate-400">
-                    <strong>Supported Columns:</strong> Admission Number (required), Status (Completed, Submitted, In Progress, Not Started), Grade, Feedback, Homework Title
+                    <strong>Supported Columns:</strong> Admission Number (required), Grade, Feedback, Homework Title (Status is read-only)
                   </div>
                   <button
                     type="button"
@@ -1390,17 +1337,10 @@ export default function HomeworkManagement() {
                             </p>
                           )}
                         </div>
-                        <div className="flex items-center gap-3">
-                          <select
-                            value={status}
-                            onChange={(e) => handleUpdateStudentSubmission(student.studentId, e.target.value)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 outline-none cursor-pointer ${statusColor}`}
-                          >
-                            <option value="Not Started">Not Started</option>
-                            <option value="In Progress">In Progress</option>
-                            <option value="Completed">Completed</option>
-                            <option value="Submitted">Submitted</option>
-                          </select>
+                        <div className="flex items-center gap-3 shrink-0 self-start sm:self-auto">
+                          <div className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${statusColor}`}>
+                            {status}
+                          </div>
                         </div>
                       </div>
                     );

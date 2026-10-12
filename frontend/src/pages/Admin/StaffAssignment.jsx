@@ -289,6 +289,57 @@ export function normalizeStaffMember(s) {
   };
 }
 
+/**
+ * Safely hydrates selectedSubjectIds from historical staff profile data.
+ * If authoritative subjects are loaded for current tenant, eliminates any stale/orphaned IDs.
+ * If subjects are still loading or errored, preserves raw selections without premature erasure.
+ *
+ * @param {Object} staffMember - Staff profile object
+ * @param {Array<Object>} authoritativeSubjects - Current active tenant subjects list
+ * @param {boolean} isAuthoritative - Whether subjects list is authoritatively loaded for current tenant
+ * @returns {Array<string>} Deduplicated array of valid subject IDs
+ */
+export function hydrateSelectedSubjectIds(staffMember, authoritativeSubjects = [], isAuthoritative = false) {
+  let rawSubjectIds = [];
+  if (Array.isArray(staffMember?.assignedSubjectIds)) {
+    rawSubjectIds = staffMember.assignedSubjectIds;
+  } else if (Array.isArray(staffMember?.assignments?.assignedSubjectIds)) {
+    rawSubjectIds = staffMember.assignments.assignedSubjectIds;
+  } else if (Array.isArray(staffMember?.customData?.assignments?.assignedSubjectIds)) {
+    rawSubjectIds = staffMember.customData.assignments.assignedSubjectIds;
+  }
+
+  if (isAuthoritative && Array.isArray(authoritativeSubjects)) {
+    const validSubjectIdSet = new Set(authoritativeSubjects.map(s => s.id));
+    return Array.from(new Set(rawSubjectIds.filter(id => validSubjectIdSet.has(id))));
+  }
+  return Array.from(new Set(rawSubjectIds));
+}
+
+/**
+ * Sanitizes the assignment payload immediately before dispatching to the backend.
+ * Ensures only authoritative current-tenant subject IDs and deduplicated class IDs are submitted.
+ *
+ * @param {Array<string>} selectedSubjectIds - Selected subject IDs
+ * @param {Array<Object>} authoritativeSubjects - Canonical subject list for active tenant
+ * @param {Array<string>} selectedSubjectClassIds - Selected subject class IDs
+ * @param {string|null} selectedClassId - Selected class teacher class ID
+ * @returns {Object} Sanitized assignment payload
+ */
+export function sanitizeAssignmentPayload(selectedSubjectIds = [], authoritativeSubjects = [], selectedSubjectClassIds = [], selectedClassId = null) {
+  const validSubjectIdSet = new Set((authoritativeSubjects || []).map(s => s.id));
+  const sanitizedSubjectIds = Array.from(
+    new Set((selectedSubjectIds || []).filter(id => validSubjectIdSet.has(id)))
+  );
+  const sanitizedSubjectClassIds = Array.from(new Set(selectedSubjectClassIds || []));
+
+  return {
+    assignedClassId: selectedClassId || null,
+    assignedSubjectIds: sanitizedSubjectIds,
+    subjectClassIds: sanitizedSubjectClassIds
+  };
+}
+
 export default function StaffAssignment() {
   const { userProfile } = useAuth();
   const schoolId = userProfile?.schoolId;
@@ -300,6 +351,11 @@ export default function StaffAssignment() {
   const [staff, setStaff] = useState([]);
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  const [subjectsLoaded, setSubjectsLoaded] = useState(false);
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
+  const [subjectsError, setSubjectsError] = useState(null);
+  const [activeTenantId, setActiveTenantId] = useState(null);
+  const latestTenantIdRef = useRef(schoolId);
   const [rolesList, setRolesList] = useState([]);
   const [schoolName, setSchoolName] = useState(userProfile?.schoolName || 'School');
   const [loading, setLoading] = useState(true);
@@ -480,15 +536,39 @@ export default function StaffAssignment() {
     }
   }, [addStaffActiveTab]);
 
+  // Reset state on school tenant switch and track latest active tenant
+  useEffect(() => {
+    latestTenantIdRef.current = schoolId;
+    setSubjects([]);
+    setSubjectsLoaded(false);
+    setSubjectsLoading(false);
+    setSubjectsError(null);
+    setActiveTenantId(null);
+    setSelectedStaff(null);
+    setSelectedClassId('');
+    setSelectedSubjectClassIds([]);
+    setSelectedSubjectIds([]);
+    setAssignModalOpen(false);
+  }, [schoolId]);
+
   const fetchStaffData = useCallback(async () => {
+    const currentFetchTenantId = schoolId;
     setLoading(true);
+    setSubjectsLoading(true);
+    setSubjectsError(null);
+
     try {
       const [staffRes, classesRes, subjectsRes, rolesRes] = await Promise.all([
         listStaff({ limit: 100 }),
         listClasses({ limit: 100 }),
-        listSubjects({ limit: 100 }),
+        listSubjects({ limit: 100 }).then(res => ({ ok: true, res })).catch(err => ({ ok: false, err })),
         listRoles().catch(() => ({ data: [] }))
       ]);
+
+      // Late response check: Discard if active tenant switched during fetch
+      if (currentFetchTenantId !== latestTenantIdRef.current) {
+        return;
+      }
 
       const rawStaff = Array.isArray(staffRes?.data) ? staffRes.data : (staffRes?.data?.data || []);
       const normalizedStaff = rawStaff.map(normalizeStaffMember);
@@ -497,8 +577,21 @@ export default function StaffAssignment() {
       const rawClasses = Array.isArray(classesRes?.data) ? classesRes.data : (classesRes?.data?.classes || classesRes?.data?.data || []);
       setClasses(sortClassesAscending(rawClasses));
 
-      const rawSubjects = Array.isArray(subjectsRes?.data) ? subjectsRes.data : (subjectsRes?.data?.subjects || subjectsRes?.data?.data || []);
-      setSubjects(rawSubjects);
+      if (subjectsRes.ok) {
+        const rawSubjects = Array.isArray(subjectsRes.res?.data)
+          ? subjectsRes.res.data
+          : (subjectsRes.res?.data?.subjects || subjectsRes.res?.data?.data || []);
+        setSubjects(rawSubjects);
+        setSubjectsLoaded(true);
+        setSubjectsError(null);
+        setActiveTenantId(currentFetchTenantId);
+      } else {
+        console.error("Error loading subjects:", subjectsRes.err);
+        setSubjects([]);
+        setSubjectsLoaded(false);
+        setSubjectsError(subjectsRes.err?.message || "Failed to load subjects.");
+        setActiveTenantId(null);
+      }
 
       const rawRoles = Array.isArray(rolesRes?.data) ? rolesRes.data : [];
       setRolesList(rawRoles);
@@ -513,9 +606,12 @@ export default function StaffAssignment() {
       console.error("Error loading staff data:", err);
       toast.error(err.message || "Failed to load staff management data.");
     } finally {
-      setLoading(false);
+      if (currentFetchTenantId === latestTenantIdRef.current) {
+        setLoading(false);
+        setSubjectsLoading(false);
+      }
     }
-  }, []);
+  }, [schoolId]);
 
   useEffect(() => {
     fetchStaffData();
@@ -576,41 +672,65 @@ export default function StaffAssignment() {
     };
   }, []);
 
+  const closeAssignModal = () => {
+    setAssignModalOpen(false);
+    setSelectedStaff(null);
+    setSelectedClassId('');
+    setSelectedSubjectClassIds([]);
+    setSelectedSubjectIds([]);
+  };
+
   const openAssignModal = (staffMember) => {
     setSelectedStaff(staffMember);
     setSelectedClassId(staffMember.assignedClassId || staffMember.assignments?.assignedClassId || '');
 
     // Classes Taught: Hydrate from staffMember.subjectClassIds or staffMember.assignments?.subjectClassIds
     if (Array.isArray(staffMember.subjectClassIds)) {
-      setSelectedSubjectClassIds(staffMember.subjectClassIds);
+      setSelectedSubjectClassIds(Array.from(new Set(staffMember.subjectClassIds)));
     } else if (Array.isArray(staffMember.assignments?.subjectClassIds)) {
-      setSelectedSubjectClassIds(staffMember.assignments.subjectClassIds);
+      setSelectedSubjectClassIds(Array.from(new Set(staffMember.assignments.subjectClassIds)));
     } else {
       setSelectedSubjectClassIds([]);
     }
 
-    // Subjects Taught: Hydrate from staffMember.assignedSubjectIds or staffMember.assignments?.assignedSubjectIds
-    if (Array.isArray(staffMember.assignedSubjectIds)) {
-      setSelectedSubjectIds(staffMember.assignedSubjectIds);
-    } else if (Array.isArray(staffMember.assignments?.assignedSubjectIds)) {
-      setSelectedSubjectIds(staffMember.assignments.assignedSubjectIds);
-    } else {
-      setSelectedSubjectIds([]);
-    }
+    const isAuthoritative = subjectsLoaded && !subjectsError && activeTenantId === schoolId;
+    const sanitizedSubjectIds = hydrateSelectedSubjectIds(staffMember, subjects, isAuthoritative);
+    setSelectedSubjectIds(sanitizedSubjectIds);
 
     setAssignModalOpen(true);
   };
 
+  // Reconcile selected subjects once authoritative subject list finishes loading while modal is open
+  useEffect(() => {
+    if (assignModalOpen && selectedStaff && subjectsLoaded && !subjectsError && activeTenantId === schoolId) {
+      setSelectedSubjectIds(prev => {
+        const sanitized = hydrateSelectedSubjectIds({ assignedSubjectIds: prev }, subjects, true);
+        if (sanitized.length === prev.length && sanitized.every((id, idx) => id === prev[idx])) {
+          return prev;
+        }
+        return sanitized;
+      });
+    }
+  }, [assignModalOpen, selectedStaff, subjectsLoaded, subjectsError, activeTenantId, schoolId, subjects]);
+
   const handleAssign = async () => {
+    if (!subjectsLoaded || Boolean(subjectsError) || activeTenantId !== schoolId) {
+      toast.error("Subject list is still loading or unavailable for the current institution. Please wait or refresh the page.");
+      return;
+    }
+
     setSaving(true);
     try {
-      await assignStaff(selectedStaff.id, {
-        assignedClassId: selectedClassId || null,
-        assignedSubjectIds: selectedSubjectIds || [],
-        subjectClassIds: selectedSubjectClassIds || []
-      });
+      const payload = sanitizeAssignmentPayload(
+        selectedSubjectIds,
+        subjects,
+        selectedSubjectClassIds,
+        selectedClassId
+      );
 
-      setAssignModalOpen(false);
+      await assignStaff(selectedStaff.id, payload);
+
+      closeAssignModal();
       toast.success("Assignments updated successfully.");
       await fetchStaffData();
     } catch (error) {
@@ -1863,7 +1983,7 @@ export default function StaffAssignment() {
           <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-fade-in-up flex flex-col max-h-[90vh]">
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800 shrink-0">
               <h2 className="text-xl font-bold text-slate-900 dark:text-white">Assign Class</h2>
-              <button onClick={() => setAssignModalOpen(false)} className="p-2 text-slate-400 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full transition-colors">
+              <button onClick={closeAssignModal} className="p-2 text-slate-400 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full transition-colors">
                 <X size={20} />
               </button>
             </div>
@@ -1930,16 +2050,26 @@ export default function StaffAssignment() {
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Subject Specializations</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800">
-                    {subjects.map(s => (
+                    {subjectsLoading && (
+                      <div className="col-span-full p-3 text-center text-sm text-slate-500 dark:text-slate-400">
+                        Loading subjects...
+                      </div>
+                    )}
+                    {!subjectsLoading && subjectsError && (
+                      <div className="col-span-full p-3 text-center text-sm text-red-500 dark:text-red-400">
+                        Failed to load subjects. Please refresh the page.
+                      </div>
+                    )}
+                    {!subjectsLoading && !subjectsError && subjects.map(s => (
                       <label key={`spec-${s.id}`} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg cursor-pointer">
                         <input
                           type="checkbox"
                           checked={selectedSubjectIds.includes(s.id)}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              setSelectedSubjectIds([...selectedSubjectIds, s.id]);
+                              setSelectedSubjectIds(prev => Array.from(new Set([...prev, s.id])));
                             } else {
-                              setSelectedSubjectIds(selectedSubjectIds.filter(id => id !== s.id));
+                              setSelectedSubjectIds(prev => prev.filter(id => id !== s.id));
                             }
                           }}
                           className="w-4 h-4 text-primary-600 rounded border-slate-300 dark:border-slate-600 focus:ring-primary-500"
@@ -1947,7 +2077,11 @@ export default function StaffAssignment() {
                         <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{s.name} {s.code ? `(${s.code})` : ''}</span>
                       </label>
                     ))}
-                    {subjects.length === 0 && <span className="text-sm text-slate-500 dark:text-slate-400 italic p-2">No subjects available.</span>}
+                    {!subjectsLoading && !subjectsError && subjects.length === 0 && (
+                      <span className="col-span-full text-sm text-slate-500 dark:text-slate-400 italic p-2">
+                        No subjects available.
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1955,14 +2089,14 @@ export default function StaffAssignment() {
 
             <div className="p-6 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3">
               <button
-                onClick={() => setAssignModalOpen(false)}
+                onClick={closeAssignModal}
                 className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleAssign}
-                disabled={saving || classes.length === 0}
+                disabled={saving || classes.length === 0 || !subjectsLoaded || Boolean(subjectsError)}
                 className="px-6 py-2.5 bg-primary-600 text-white font-bold hover:bg-primary-700 rounded-xl shadow-sm disabled:opacity-50 transition-colors"
               >
                 {saving ? 'Saving...' : 'Save Assignment'}

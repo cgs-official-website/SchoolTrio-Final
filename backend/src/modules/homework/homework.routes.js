@@ -14,7 +14,7 @@ import { SYSTEM_ROLES } from '../../config/constants.js';
 export const requireHomeworkReadOrParent = (req, res, next) => {
   const user = req.auth || req.user;
   const role = (user?.systemRole || user?.role || '').toUpperCase();
-  if (role === SYSTEM_ROLES.PARENT || role === 'PARENT') {
+  if (role === SYSTEM_ROLES.PARENT || role === 'PARENT' || role === SYSTEM_ROLES.STUDENT || role === 'STUDENT') {
     return next();
   }
   return requirePermission('homework', 'read')(req, res, next);
@@ -22,12 +22,12 @@ export const requireHomeworkReadOrParent = (req, res, next) => {
 
 /**
  * Custom Authorization Gate for Updating Homework Status:
- * Allows institutional staff with 'homework.edit' OR authenticated parents (child-scoped in service).
+ * Allows institutional staff with 'homework.edit', authenticated parents, or students.
  */
 export const requireHomeworkStatusOrParent = (req, res, next) => {
   const user = req.auth || req.user;
   const role = (user?.systemRole || user?.role || '').toUpperCase();
-  if (role === SYSTEM_ROLES.PARENT || role === 'PARENT') {
+  if (role === SYSTEM_ROLES.PARENT || role === 'PARENT' || role === SYSTEM_ROLES.STUDENT || role === 'STUDENT') {
     return next();
   }
   return requirePermission('homework', 'edit')(req, res, next);

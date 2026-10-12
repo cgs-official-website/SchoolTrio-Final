@@ -174,41 +174,73 @@ export const apiClient = async (endpoint, options = {}) => {
 
   // Handle 401 Unauthorized with Single-Flight Refresh
   if (response.status === 401 && !options._retry && !isAuthEndpoint) {
+    let newAccessToken;
     try {
       const refreshData = await refreshTokenSingleFlight();
-      const newAccessToken = refreshData?.data?.accessToken;
-      
-      // Retry original request exactly once with new access token
-      const retryHeaders = {
-        ...fetchOptions.headers,
-        'Authorization': `Bearer ${newAccessToken}`
-      };
-
-      const retryResponse = await fetch(fullUrl, {
-        ...fetchOptions,
-        headers: retryHeaders,
-        _retry: true
-      });
-
-      if (!retryResponse.ok) {
-        const errorBody = await retryResponse.json().catch(() => ({}));
-        throw new ApiError(
-          errorBody.error?.message || retryResponse.statusText,
-          retryResponse.status,
-          errorBody.error?.code || 'UNAUTHORIZED',
-          errorBody.error?.details || null
-        );
+      newAccessToken = refreshData?.data?.accessToken;
+      if (!newAccessToken) {
+        throw new ApiError('No access token returned from refresh', 401, 'INVALID_REFRESH_RESPONSE');
       }
-
-      if (retryResponse.status === 204) {
-        return null;
-      }
-
-      return retryResponse.json();
     } catch (refreshErr) {
-      clearAccessToken();
+      // Refresh failed definitively (e.g. 401/403 or network failure during refresh)
+      // Note: refreshTokenSingleFlight already handles clearAccessToken() for 401/403
       throw refreshErr;
     }
+
+    // Retry original request exactly once OUTSIDE the refresh-specific catch block
+    const retryHeaders = {
+      ...fetchOptions.headers,
+      'Authorization': `Bearer ${newAccessToken}`
+    };
+
+    let retryResponse;
+    try {
+      retryResponse = await fetch(fullUrl, {
+        ...fetchOptions,
+        headers: retryHeaders
+      });
+    } catch (retryNetworkErr) {
+      throw new ApiError(
+        retryNetworkErr.message || 'Network request failed on retry',
+        0,
+        'NETWORK_ERROR'
+      );
+    }
+
+    if (!retryResponse.ok) {
+      const errorBody = await retryResponse.json().catch(() => ({}));
+      const apiError = new ApiError(
+        errorBody.error?.message || retryResponse.statusText || 'Request failed',
+        retryResponse.status,
+        errorBody.error?.code || (retryResponse.status === 401 ? 'UNAUTHORIZED' : 'REQUEST_FAILED'),
+        errorBody.error?.details || null
+      );
+
+      // Only clear access token if the retried request specifically returned 401 again
+      // (indicating that backend rejected the fresh token e.g. tokenVersion mismatch)
+      if (retryResponse.status === 401) {
+        clearAccessToken();
+      }
+
+      // For 403, 404, 422, 429, 500: DO NOT clear token! The user session is valid.
+      throw apiError;
+    }
+
+    if (retryResponse.status === 204) {
+      return null;
+    }
+
+    const retryContentType = retryResponse.headers?.get ? (retryResponse.headers.get('content-type') || '') : '';
+    if (retryContentType && !retryContentType.includes('application/json')) {
+      const text = await retryResponse.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        return null;
+      }
+    }
+
+    return retryResponse.json();
   }
 
   // Handle other error statuses

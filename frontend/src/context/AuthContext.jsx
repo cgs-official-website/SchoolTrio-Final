@@ -3,6 +3,7 @@ import { CacheService } from '../services/CacheService';
 import { getAccessToken, setAccessToken, clearAccessToken, subscribeToToken } from '../services/tokenService';
 import { authApi } from '../api/auth';
 import { normalizeAuthUser } from '../utils/userAdapter';
+import { clearPermissionsCache } from '../hooks/usePermissions';
 
 const AuthContext = createContext();
 
@@ -16,14 +17,16 @@ export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
   // Session restoration and listener initialization
   useEffect(() => {
     let isMounted = true;
 
     // PostgreSQL REST session restoration authority (HYBRID_BRIDGE & NATIVE_REST)
-    const restoreSession = async () => {
+    const restoreSession = async (retryCount = 0) => {
       try {
+        setAuthError(null);
         const existingToken = getAccessToken();
 
         if (existingToken) {
@@ -34,6 +37,7 @@ export const AuthProvider = ({ children }) => {
               const normalized = normalizeAuthUser(userData);
               setCurrentUser({ uid: normalized.uid, email: normalized.email, ...normalized });
               setUserProfile(normalized);
+              setAuthError(null);
               setLoading(false);
               return;
             }
@@ -42,7 +46,15 @@ export const AuthProvider = ({ children }) => {
             if (meErr?.status === 401) {
               clearAccessToken();
             } else if (isMounted) {
-              // Network error or temporary failure, keep active state if profile cached
+              // Network error, 502, 503, or timeout: bounded retry once
+              if (retryCount < 1) {
+                await new Promise((resolve) => setTimeout(resolve, 800));
+                if (isMounted) {
+                  return restoreSession(retryCount + 1);
+                }
+              }
+              // Persistent network/server error: keep token in storage, expose recoverable error
+              setAuthError(meErr);
               setLoading(false);
               return;
             }
@@ -61,19 +73,35 @@ export const AuthProvider = ({ children }) => {
               const normalized = normalizeAuthUser(userData);
               setCurrentUser({ uid: normalized.uid, email: normalized.email, ...normalized });
               setUserProfile(normalized);
+              setAuthError(null);
               setLoading(false);
               return;
             }
           }
-        } catch (_refreshErr) {
-          // No active refresh cookie or refresh failed
+        } catch (refreshErr) {
+          // If refresh was rejected with 401 or 403: genuinely unauthenticated
+          if (refreshErr?.status === 401 || refreshErr?.status === 403) {
+            clearAccessToken();
+            if (isMounted) {
+              setCurrentUser(null);
+              setUserProfile(null);
+            }
+          } else if (isMounted && (getAccessToken() || refreshErr?.status === 0 || refreshErr?.status >= 500)) {
+            // Transient error during refresh: do not wipe state
+            setAuthError(refreshErr);
+            setLoading(false);
+            return;
+          }
         }
       } catch (err) {
-        // No active session
-        clearAccessToken();
-        if (isMounted) {
-          setCurrentUser(null);
-          setUserProfile(null);
+        if (err?.status === 401 || err?.status === 403) {
+          clearAccessToken();
+          if (isMounted) {
+            setCurrentUser(null);
+            setUserProfile(null);
+          }
+        } else if (isMounted) {
+          setAuthError(err);
         }
       } finally {
         if (isMounted) {
@@ -87,8 +115,10 @@ export const AuthProvider = ({ children }) => {
     // Subscribe to token changes (e.g., cleared by 401 refresh failure)
     const unsubToken = subscribeToToken((token) => {
       if (!token && isMounted) {
+        clearPermissionsCache();
         setCurrentUser(null);
         setUserProfile(null);
+        setAuthError(null);
       }
     });
 
@@ -188,13 +218,65 @@ export const AuthProvider = ({ children }) => {
       console.warn('[AUTH BRIDGE] Backend logout failed or unreachable:', err);
     } finally {
       clearAccessToken();
+      clearPermissionsCache();
       setCurrentUser(null);
       setUserProfile(null);
+      setAuthError(null);
       try {
         CacheService?.clearTenant?.();
       } catch {
         // ignore cache clearing failure
       }
+    }
+  }, []);
+
+  /**
+   * Retries session restoration after a recoverable network/server error.
+   */
+  const retrySession = useCallback(async () => {
+    setLoading(true);
+    setAuthError(null);
+    try {
+      const existingToken = getAccessToken();
+      if (existingToken) {
+        const meRes = await authApi.getMe();
+        const userData = meRes?.data?.user || meRes?.data;
+        if (userData) {
+          const normalized = normalizeAuthUser(userData);
+          setCurrentUser({ uid: normalized.uid, email: normalized.email, ...normalized });
+          setUserProfile(normalized);
+          setAuthError(null);
+          setLoading(false);
+          return;
+        }
+      }
+
+      const refreshRes = await authApi.refreshSession();
+      const newAccessToken = refreshRes?.data?.accessToken;
+      if (newAccessToken) {
+        setAccessToken(newAccessToken);
+        const meRes = await authApi.getMe();
+        const userData = meRes?.data?.user || meRes?.data;
+        if (userData) {
+          const normalized = normalizeAuthUser(userData);
+          setCurrentUser({ uid: normalized.uid, email: normalized.email, ...normalized });
+          setUserProfile(normalized);
+          setAuthError(null);
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (err) {
+      if (err?.status === 401 || err?.status === 403) {
+        clearAccessToken();
+        setCurrentUser(null);
+        setUserProfile(null);
+        setAuthError(null);
+      } else {
+        setAuthError(err);
+      }
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -219,6 +301,8 @@ export const AuthProvider = ({ children }) => {
     currentUser,
     userProfile,
     loading,
+    authError,
+    retrySession,
     authMode: AUTH_MODE,
     loginWithCredentials,
     logoutUser,
@@ -229,7 +313,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };
