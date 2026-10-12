@@ -4,8 +4,10 @@ import { createAuditLog } from '../audit/audit.repository.js';
 import {
   NotFoundError,
   ConflictError,
-  RelationshipConflictError
+  RelationshipConflictError,
+  ValidationError
 } from '../../utils/app-error.js';
+import { getAuthoritativeTodayString } from './fee.schemas.js';
 
 /**
  * Fee Collection Periods & Fee Structures Domain Business Service
@@ -236,6 +238,21 @@ export async function getFeeStructureById(schoolId, id) {
 }
 
 /**
+ * Asserts that a due date is not in the past relative to the tenant's local calendar date.
+ *
+ * @param {string} dueDate - Canonical YYYY-MM-DD date string
+ * @param {string} [timeZone='Asia/Kolkata'] - Tenant IANA timezone
+ * @throws {ValidationError} If dueDate is in the past
+ */
+export function validateDueDateNonPast(dueDate, timeZone = 'Asia/Kolkata') {
+  if (!dueDate) return;
+  const todayStr = getAuthoritativeTodayString(timeZone);
+  if (dueDate < todayStr) {
+    throw new ValidationError('Due date cannot be in the past');
+  }
+}
+
+/**
  * Creates a FeeStructure and atomically generates initial invoices for active students in the target class.
  *
  * @param {string} schoolId - Tenant UUID
@@ -246,6 +263,24 @@ export async function getFeeStructureById(schoolId, id) {
 export async function createFeeStructure(schoolId, data, actor) {
   let createdFeeStructure = null;
   let generatedInvoicesCount = 0;
+
+  // 0. Defense in Depth: Validate dueDate is not in the past relative to school-local date
+  if (data.dueDate) {
+    let schoolTimezone = 'Asia/Kolkata';
+    try {
+      const school = await prisma.school.findFirst({
+        where: { id: schoolId },
+        select: { timezone: true }
+      });
+      if (school?.timezone) {
+        schoolTimezone = school.timezone;
+      }
+    } catch {
+      schoolTimezone = 'Asia/Kolkata';
+    }
+
+    validateDueDateNonPast(data.dueDate, schoolTimezone);
+  }
 
   // 1. Verify Class belongs to tenant
   const targetClass = await feeRepository.findClassInTenant(schoolId, data.classId);

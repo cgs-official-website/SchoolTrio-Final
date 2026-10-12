@@ -17,6 +17,35 @@ export const calendarDateSchema = z
   });
 
 /**
+ * Returns today's calendar date in YYYY-MM-DD format for a specified IANA timezone.
+ * Defaults to 'Asia/Kolkata' (the school schema default).
+ *
+ * @param {string} [timeZone='Asia/Kolkata']
+ * @returns {string} YYYY-MM-DD
+ */
+export const getAuthoritativeTodayString = (timeZone = 'Asia/Kolkata') => {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date());
+  } catch {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  }
+};
+
+/**
+ * Validates ISO calendar date in YYYY-MM-DD format and ensures it is not in the past
+ * relative to the authoritative school-local calendar date.
+ */
+export const futureOrTodayDateSchema = calendarDateSchema.refine(
+  (dateStr) => {
+    const todayStr = getAuthoritativeTodayString('Asia/Kolkata');
+    return dateStr >= todayStr;
+  },
+  {
+    message: 'Due date cannot be in the past'
+  }
+);
+
+/**
  * Validates financial decimal amounts compatible with PostgreSQL Decimal(10,2):
  * - Finite positive number > 0
  * - Maximum value: 99,999,999.99
@@ -140,7 +169,7 @@ export const createFeeStructureSchema = {
       .min(1, 'Fee structure name is required')
       .max(150, 'Fee structure name must not exceed 150 characters'),
     amount: decimalAmountSchema,
-    dueDate: calendarDateSchema,
+    dueDate: futureOrTodayDateSchema,
     classId: z
       .string({ required_error: 'classId is required' })
       .regex(REGEX.UUID, 'Invalid class ID format'),

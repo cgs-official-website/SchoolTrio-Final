@@ -11,6 +11,24 @@ import usePermissions from '../../hooks/usePermissions';
 import { sortClassesAscending, formatClassSection, getSectionName } from '../../utils/classSorting';
 import { notifyDataChanged } from '../../utils/liveData';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import { getTodayDateString } from '../../utils/validationUtils';
+
+/**
+ * Validates the fee due date ensuring it is provided and not in the past.
+ *
+ * @param {string} dueDate - Due date in YYYY-MM-DD format
+ * @param {string} [todayStr=getTodayDateString()] - Canonical today date string
+ * @returns {{ valid: boolean, error: string|null }}
+ */
+export const validateFeeDueDate = (dueDate, todayStr = getTodayDateString()) => {
+  if (!dueDate || !dueDate.trim()) {
+    return { valid: false, error: 'Due date is required.' };
+  }
+  if (dueDate < todayStr) {
+    return { valid: false, error: 'Due date cannot be in the past.' };
+  }
+  return { valid: true, error: null };
+};
 
 export default function FeeManagement() {
   const { userProfile } = useAuth();
@@ -48,7 +66,7 @@ export default function FeeManagement() {
   const [newFee, setNewFee] = useState({
     name: '',
     amount: '',
-    dueDate: new Date().toISOString().split('T')[0],
+    dueDate: getTodayDateString(),
     classId: '',
     collectionPeriodId: '',
     collectionPeriodName: '',
@@ -161,6 +179,13 @@ export default function FeeManagement() {
       toast.error("You do not have permission to create fee structures.");
       return;
     }
+
+    const dateValidation = validateFeeDueDate(newFee.dueDate);
+    if (!dateValidation.valid) {
+      toast.error(dateValidation.error);
+      return;
+    }
+
     if (!newFee.name || !newFee.amount || !newFee.classId) return;
     setCreating(true);
 
@@ -193,7 +218,7 @@ export default function FeeManagement() {
       notifyDataChanged('fees');
       notifyDataChanged('invoices');
       setShowCreateModal(false);
-      setNewFee({ name: '', amount: '', dueDate: new Date().toISOString().split('T')[0], classId: '', collectionPeriodId: '', collectionPeriodName: '', customData: {} });
+      setNewFee({ name: '', amount: '', dueDate: getTodayDateString(), classId: '', collectionPeriodId: '', collectionPeriodName: '', customData: {} });
     } catch (error) {
       console.error("Error creating fee:", error);
       toast.error(error.message || "Failed to create fee and generate invoices.");
@@ -859,6 +884,7 @@ export default function FeeManagement() {
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Due Date</label>
                     <input 
                       type="date" required
+                      min={getTodayDateString()}
                       value={newFee.dueDate}
                       onChange={(e) => setNewFee({...newFee, dueDate: e.target.value})}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
