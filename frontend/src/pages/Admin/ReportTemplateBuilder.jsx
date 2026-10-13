@@ -602,10 +602,6 @@ export default function ReportTemplateBuilder({ onBack }) {
                     <span className="font-bold text-slate-600 dark:text-slate-300 text-sm">Class & Section:</span>
                     <span className="font-bold text-slate-900 dark:text-white text-sm">10 - A</span>
                   </div>
-                  <div className="flex justify-between border-b border-slate-200 dark:border-slate-700 pb-1">
-                    <span className="font-bold text-slate-600 dark:text-slate-300 text-sm">Roll No:</span>
-                    <span className="font-bold text-slate-900 dark:text-white text-sm">42</span>
-                  </div>
 
                   {template.studentFields.admissionNo && (
                     <div className="flex justify-between border-b border-slate-200 dark:border-slate-700 pb-1">
@@ -729,11 +725,24 @@ export default function ReportTemplateBuilder({ onBack }) {
                   </tbody>
                 </table>
                 
-                {template.grading.showPercentage && (
-                  <div className="mt-4 text-right font-sans font-bold text-lg">
-                    Percentage: <span style={{ color: template.themeColor }}>87.0%</span>
+                <div className="mt-6 flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl font-sans print:bg-white print:border-slate-300">
+                  <div className="flex items-center gap-6">
+                    <div>
+                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total Marks:</span>
+                      <p className="text-lg font-black text-slate-900 dark:text-white">435 / 500</p>
+                    </div>
+                    <div className="border-l border-slate-300 dark:border-slate-600 pl-6">
+                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Grade:</span>
+                      <p className="text-lg font-black" style={{ color: template.themeColor }}>A2</p>
+                    </div>
                   </div>
-                )}
+                  {template.grading.showPercentage && (
+                    <div className="text-right">
+                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Percentage:</span>
+                      <p className="text-2xl font-black" style={{ color: template.themeColor }}>87.0%</p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Remarks Area */}

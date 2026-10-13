@@ -100,6 +100,39 @@ export function adaptReportCard(dto) {
   // Extract marks breakdown
   const marksBreakdown = dto.marksData?.marksBreakdown || dto.marksBreakdown || [];
 
+  // Extract overall grade
+  const overallGrade =
+    dto.grades?.overallGrade ||
+    dto.marksData?.overallGrade ||
+    dto.overallGrade ||
+    null;
+
+  // Extract student demographic details
+  const admissionNumber =
+    dto.student?.admissionNumber ||
+    dto.marksData?.admissionNumber ||
+    dto.admissionNumber ||
+    '';
+
+  const dateOfBirth =
+    dto.student?.dateOfBirth ||
+    dto.marksData?.dateOfBirth ||
+    dto.dateOfBirth ||
+    '';
+
+  const fatherName =
+    dto.student?.fatherName ||
+    dto.student?.parentName ||
+    dto.marksData?.fatherName ||
+    dto.fatherName ||
+    '';
+
+  const motherName =
+    dto.student?.motherName ||
+    dto.marksData?.motherName ||
+    dto.motherName ||
+    '';
+
   return {
     id: dto.id || '',
     examId: dto.examId !== undefined ? dto.examId : null,
@@ -108,11 +141,16 @@ export function adaptReportCard(dto) {
     className,
     studentId,
     studentName,
+    admissionNumber,
+    dateOfBirth,
+    fatherName,
+    motherName,
     marks,
     marksBreakdown,
     totalObtained,
     totalMax,
     percentage,
+    overallGrade,
     publishedAt,
     publishedBy,
     reportTemplate,

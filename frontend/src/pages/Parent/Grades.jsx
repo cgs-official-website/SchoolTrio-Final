@@ -5,7 +5,7 @@ import { getStudentReportCards } from '../../api/reportCards';
 import { getReportCardTemplate } from '../../api/reportCardTemplates';
 import { adaptReportCards, normalizeReportCardTemplate } from '../../utils/reportCardAdapter';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
-import { LuFileSpreadsheet as FileIcon, LuPrinter as Printer, LuArrowLeft as ArrowLeft, LuCalendar as Calendar, LuAward as Award, LuEye as Eye, LuSparkles as Sparkles } from 'react-icons/lu';
+import { LuFileSpreadsheet as FileIcon, LuPrinter as Printer, LuArrowLeft as ArrowLeft, LuCalendar as Calendar, LuAward as Award } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 
 export default function ParentGrades() {
@@ -19,7 +19,6 @@ export default function ParentGrades() {
   const [reportCards, setReportCards] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [activeTemplate, setActiveTemplate] = useState(null);
-  const [activePreviewTab, setActivePreviewTab] = useState('pdf');
   const [selectedExamId, setSelectedExamId] = useState('');
   const [availableExams, setAvailableExams] = useState([]);
 
@@ -28,7 +27,6 @@ export default function ParentGrades() {
 
   useEffect(() => {
     setSelectedReport(null);
-    setActivePreviewTab('pdf');
     setSelectedExamId('');
   }, [location.pathname]);
 
@@ -192,40 +190,12 @@ export default function ParentGrades() {
       <div className="p-4 sm:p-8 max-w-4xl mx-auto pb-24 min-w-0 w-full">
         {/* Actions bar */}
         <div className="flex justify-between items-center mb-6 print:hidden w-full">
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => { setSelectedReport(null); setActivePreviewTab('pdf'); }}
-              className="flex items-center gap-2 px-4 py-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-sm"
-            >
-              <ArrowLeft size={16} /> Back to List
-            </button>
-            {template.rawHtmlTemplate && (
-              <div className="flex items-center gap-1.5 ml-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
-                <button
-                  type="button"
-                  onClick={() => setActivePreviewTab('pdf')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    activePreviewTab === 'pdf'
-                      ? 'bg-primary-600 text-white shadow-sm'
-                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  <Eye size={14} /> Report Card View
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActivePreviewTab('original')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    activePreviewTab === 'original'
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  <Sparkles size={14} /> Uploaded Template ({template.originalDocxName || 'Word'})
-                </button>
-              </div>
-            )}
-          </div>
+          <button 
+            onClick={() => setSelectedReport(null)}
+            className="flex items-center gap-2 px-4 py-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-sm"
+          >
+            <ArrowLeft size={16} /> Back to List
+          </button>
           <button 
             onClick={() => window.print()}
             className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm"
@@ -234,23 +204,8 @@ export default function ParentGrades() {
           </button>
         </div>
 
-        {/* Uploaded HTML Document View (if active) */}
-        {activePreviewTab === 'original' && template.rawHtmlTemplate ? (
-          <div className="bg-white dark:bg-slate-900 shadow-xl w-full max-w-[794px] min-h-[1123px] mx-auto p-10 font-sans text-slate-900 dark:text-white rounded-3xl overflow-x-auto border border-slate-100 dark:border-slate-800 print:shadow-none print:border-none print:p-0">
-            <div className="mb-4 pb-2 border-b border-indigo-200 dark:border-indigo-800 flex items-center justify-between print:hidden">
-              <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-                Official School Template: {template.originalDocxName || 'Uploaded Layout'}
-              </span>
-              <span className="text-xs text-slate-400">Published Design</span>
-            </div>
-            <div 
-              className="prose dark:prose-invert max-w-none [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-slate-300 [&_th]:p-2 [&_td]:border [&_td]:border-slate-300 [&_td]:p-2 [&_p]:mb-2"
-              dangerouslySetInnerHTML={{ __html: template.rawHtmlTemplate }} 
-            />
-          </div>
-        ) : (
-          /* Paper Report Card Layout matching Published Admin Template */
-          <div className="bg-white dark:bg-slate-900 shadow-xl max-w-[794px] min-h-[1050px] mx-auto flex flex-col p-8 print:shadow-none border border-slate-100 dark:border-slate-800 rounded-3xl print:border-none print:p-0" style={{ fontFamily: "'Times New Roman', serif" }}>
+        {/* Paper Report Card Layout */}
+        <div className="bg-white dark:bg-slate-900 shadow-xl max-w-[794px] min-h-[1050px] mx-auto flex flex-col p-8 print:shadow-none border border-slate-100 dark:border-slate-800 rounded-3xl print:border-none print:p-0" style={{ fontFamily: "'Times New Roman', serif" }}>
             {/* Header */}
             <div className="pb-4 flex items-center border-b-[3px]" style={{ borderColor: template.themeColor }}>
               {template.header.showLogo && (
@@ -295,10 +250,6 @@ export default function ParentGrades() {
                 <div className="flex justify-between border-b border-slate-150 dark:border-slate-700 pb-1">
                   <span className="font-bold text-slate-500 dark:text-slate-400 text-xs uppercase">Examination:</span>
                   <span className="font-bold text-slate-900 dark:text-white text-xs">{selectedReport.examName || selectedReport.title}</span>
-                </div>
-                <div className="flex justify-between border-b border-slate-150 dark:border-slate-700 pb-1">
-                  <span className="font-bold text-slate-500 dark:text-slate-400 text-xs uppercase">Roll No:</span>
-                  <span className="font-bold text-slate-900 dark:text-white text-xs">{selectedReport.rollNumber || selectedReport.admissionNumber || 'N/A'}</span>
                 </div>
 
                 {template.studentFields?.admissionNo && (
@@ -547,7 +498,7 @@ export default function ParentGrades() {
                                   )}
                                   {['grades', 'marks_and_grades'].includes(template.grading?.style) && (
                                     <td className="p-3 border border-slate-300 dark:border-slate-600 text-center text-primary-700" style={{ color: template.themeColor }}>
-                                      {selectedReport.overallGrade || (computedPercentage >= 90 ? 'A1' : computedPercentage >= 80 ? 'A2' : computedPercentage >= 70 ? 'B1' : 'B2')}
+                                      {selectedReport.overallGrade || (computedPercentage >= 91 ? 'A1' : computedPercentage >= 81 ? 'A2' : computedPercentage >= 71 ? 'B1' : computedPercentage >= 61 ? 'B2' : computedPercentage >= 51 ? 'C1' : computedPercentage >= 41 ? 'C2' : computedPercentage >= 33 ? 'D' : 'E')}
                                     </td>
                                   )}
                                 </>
@@ -561,9 +512,9 @@ export default function ParentGrades() {
                 </table>
               </div>
 
-              {/* Performance Summary / Percentage */}
-              {template.grading?.showPercentage && (
-                <div className="mt-6 flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-sans">
+              {/* Performance Summary / Total Marks & Grade */}
+              {(template.grading?.showPercentage !== false || template.grading?.showTotal !== false) && (
+                <div className="mt-6 flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-sans print:bg-white print:border-slate-300">
                   {(() => {
                     const compTotalMax = assessmentIds.reduce((sum, id) => {
                       const m = selectedReport?.marks?.[id]?.max;
@@ -597,16 +548,28 @@ export default function ParentGrades() {
                       ? ((compTotalObt / compTotalMax) * 100).toFixed(1) 
                       : (selectedReport?.percentage || 0);
 
+                    const compGrade = selectedReport.overallGrade || (
+                      compPct >= 91 ? 'A1' : compPct >= 81 ? 'A2' : compPct >= 71 ? 'B1' : compPct >= 61 ? 'B2' : compPct >= 51 ? 'C1' : compPct >= 41 ? 'C2' : compPct >= 33 ? 'D' : 'E'
+                    );
+
                     return (
                       <>
-                        <div>
-                          <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Obtained Marks:</span>
-                          <p className="text-lg font-black text-slate-900 dark:text-white">{compTotalObt} / {compTotalMax}</p>
+                        <div className="flex items-center gap-6">
+                          <div>
+                            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total Marks:</span>
+                            <p className="text-lg font-black text-slate-900 dark:text-white">{compTotalObt} / {compTotalMax}</p>
+                          </div>
+                          <div className="border-l border-slate-300 dark:border-slate-600 pl-6">
+                            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Grade:</span>
+                            <p className="text-lg font-black" style={{ color: template.themeColor }}>{compGrade}</p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Overall Percentage:</span>
-                          <p className="text-2xl font-black" style={{ color: template.themeColor }}>{compPct}%</p>
-                        </div>
+                        {template.grading?.showPercentage !== false && (
+                          <div className="text-right">
+                            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Overall Percentage:</span>
+                            <p className="text-2xl font-black" style={{ color: template.themeColor }}>{compPct}%</p>
+                          </div>
+                        )}
                       </>
                     );
                   })()}
@@ -645,8 +608,7 @@ export default function ParentGrades() {
               </div>
             )}
           </div>
-        )}
-      </div>
+        </div>
     );
   }
 

@@ -801,10 +801,6 @@ export default function ExamManagement() {
                                       <span className="font-bold text-slate-600 dark:text-slate-300 text-sm">Class & Section:</span>
                                       <span className="font-bold text-slate-900 dark:text-white text-sm">{reportData.className}</span>
                                     </div>
-                                    <div className="flex justify-between border-b border-slate-200 dark:border-slate-700 pb-1">
-                                      <span className="font-bold text-slate-600 dark:text-slate-300 text-sm">Roll No:</span>
-                                      <span className="font-bold text-slate-900 dark:text-white text-sm">{row.student.admissionNumber || 'N/A'}</span>
-                                    </div>
 
                                     {reportTemplate.studentFields.admissionNo && (
                                       <div className="flex justify-between border-b border-slate-200 dark:border-slate-700 pb-1">
@@ -1078,11 +1074,34 @@ export default function ExamManagement() {
                                     </tbody>
                                   </table>
                                   
-                                  {reportTemplate.grading.showPercentage && (
-                                    <div className="mt-4 text-right font-sans font-bold text-lg">
-                                      Percentage: <span style={{ color: reportTemplate.themeColor }}>{row.percentage}%</span>
+                                  <div className="mt-6 flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl font-sans print:bg-white print:border-slate-300">
+                                    <div className="flex items-center gap-6">
+                                      <div>
+                                        <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total Marks:</span>
+                                        <p className="text-lg font-black text-slate-900 dark:text-white">{row.totalObtained} / {row.totalMax}</p>
+                                      </div>
+                                      <div className="border-l border-slate-300 dark:border-slate-600 pl-6">
+                                        <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Grade:</span>
+                                        <p className="text-lg font-black" style={{ color: reportTemplate.themeColor }}>
+                                          {row.overallGrade || (
+                                            Number(row.percentage) >= 91 ? 'A1' :
+                                            Number(row.percentage) >= 81 ? 'A2' :
+                                            Number(row.percentage) >= 71 ? 'B1' :
+                                            Number(row.percentage) >= 61 ? 'B2' :
+                                            Number(row.percentage) >= 51 ? 'C1' :
+                                            Number(row.percentage) >= 41 ? 'C2' :
+                                            Number(row.percentage) >= 33 ? 'D' : 'E'
+                                          )}
+                                        </p>
+                                      </div>
                                     </div>
-                                  )}
+                                    {reportTemplate.grading.showPercentage && (
+                                      <div className="text-right">
+                                        <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Percentage:</span>
+                                        <p className="text-2xl font-black" style={{ color: reportTemplate.themeColor }}>{row.percentage}%</p>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
 
                                 {/* Remarks Area */}
