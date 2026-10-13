@@ -730,9 +730,7 @@ export async function getApprovedModulesForSchool(schoolId) {
         for (const [key, val] of Object.entries(setData)) {
           const normKey = String(key).trim().toLowerCase();
           if (normKey in approvedMap) {
-            if (val === false) {
-              approvedMap[normKey] = false;
-            }
+            approvedMap[normKey] = Boolean(val);
           }
         }
       }
