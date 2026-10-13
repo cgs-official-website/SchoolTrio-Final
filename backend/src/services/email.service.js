@@ -23,21 +23,39 @@ export const getTransporter = () => {
     return cachedTransporter;
   }
 
-  if (env.SMTP_HOST) {
-    const transportConfig = {
-      host: env.SMTP_HOST,
-      port: Number(env.SMTP_PORT) || 587,
-      secure: Boolean(env.SMTP_SECURE),
-      auth: (env.SMTP_USER && env.SMTP_PASS)
-        ? {
-            user: env.SMTP_USER,
-            pass: env.SMTP_PASS
+  const rawHost = env.SMTP_HOST || 'smtp.gmail.com';
+  const rawUser = env.SMTP_USER || 'carrezzaglobalsolutions@gmail.com';
+  const rawPass = env.SMTP_PASS || 'bkggeprbspgvobde';
+
+  const cleanUser = rawUser ? rawUser.trim() : '';
+  const cleanPass = rawPass ? rawPass.replace(/["']/g, '').replace(/\s+/g, '') : '';
+
+  if (rawHost && cleanUser && cleanPass) {
+    const isGmail = rawHost.includes('gmail') || cleanUser.endsWith('@gmail.com');
+
+    const transportConfig = isGmail
+      ? {
+          service: 'gmail',
+          auth: {
+            user: cleanUser,
+            pass: cleanPass
+          },
+          tls: {
+            rejectUnauthorized: false
           }
-        : undefined,
-      tls: {
-        rejectUnauthorized: env.isProduction
-      }
-    };
+        }
+      : {
+          host: rawHost,
+          port: Number(env.SMTP_PORT) || 587,
+          secure: Boolean(env.SMTP_SECURE),
+          auth: {
+            user: cleanUser,
+            pass: cleanPass
+          },
+          tls: {
+            rejectUnauthorized: false
+          }
+        };
 
     cachedTransporter = nodemailer.createTransport(transportConfig);
     return cachedTransporter;

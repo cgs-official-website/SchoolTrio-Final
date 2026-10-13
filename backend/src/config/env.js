@@ -38,17 +38,17 @@ export const envSchema = z.object({
   FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional(),
 
   // SMTP Email Delivery Configuration (Nodemailer)
-  SMTP_HOST: z.string().optional(),
+  SMTP_HOST: z.string().default('smtp.gmail.com'),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
   SMTP_SECURE: z
     .enum(['true', 'false', '1', '0'])
     .transform(v => v === 'true' || v === '1')
     .optional()
     .default('false'),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
-  SMTP_FROM: z.string().default('School Management System <noreply@schoolmanagement.com>'),
-  FRONTEND_URL: z.string().default('http://localhost:5173')
+  SMTP_USER: z.string().default('carrezzaglobalsolutions@gmail.com'),
+  SMTP_PASS: z.string().default('bkggeprbspgvobde'),
+  SMTP_FROM: z.string().default('School Trio <carrezzaglobalsolutions@gmail.com>'),
+  FRONTEND_URL: z.string().default('https://school-trio-final-frontend.vercel.app')
 });
 
 

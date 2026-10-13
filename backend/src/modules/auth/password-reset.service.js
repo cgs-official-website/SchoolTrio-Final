@@ -4,6 +4,7 @@ import { UnauthorizedError, ForbiddenError, ValidationError } from '../../utils/
 import * as authRepository from './auth.repository.js';
 import { validatePasswordPolicy, hashPassword, verifyPassword, isLockedPassword } from './password.service.js';
 import * as emailService from '../../services/email.service.js';
+import { logger } from '../../utils/logger.js';
 
 /**
  * Password Reset, First-Time Setup & Password Change Domain Service
@@ -60,6 +61,10 @@ export const requestPasswordReset = async ({ email, ipAddress = null, frontendUr
 
   // 2. Return generic success if account does not exist or is inactive (enumeration resistance)
   if (!user || !user.isActive) {
+    logger.warn({
+      msg: '[PASSWORD RESET] User account not found or inactive for requested email',
+      email: emailService.maskEmail(normalizedEmail)
+    });
     return genericResponse;
   }
 
