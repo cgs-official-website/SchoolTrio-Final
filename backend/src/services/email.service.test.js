@@ -9,7 +9,7 @@ import {
 } from './email.service.js';
 import { env } from '../config/env.js';
 
-describe('FORGOT-PASSWORD-002: Email Service SMTP Transport & Security Unit Tests', () => {
+describe('FORGOT-PASSWORD-004: Explicit Gmail SMTP Configuration & Security Suite', () => {
   beforeEach(() => {
     resetTransporterCache();
     vi.clearAllMocks();
@@ -19,25 +19,37 @@ describe('FORGOT-PASSWORD-002: Email Service SMTP Transport & Security Unit Test
     resetTransporterCache();
   });
 
-  describe('1. Nodemailer Gmail SMTP Configuration', () => {
-    it('creates transport with Gmail service configuration and secure TLS verification', () => {
+  describe('1. Explicit SMTP Transport Configuration (No service: "gmail" Overrides)', () => {
+    it('creates transport using explicit host, port 587, and secure: false for STARTTLS', () => {
       const createTransportSpy = vi.spyOn(nodemailer, 'createTransport').mockReturnValue({
         sendMail: vi.fn().mockResolvedValue({ messageId: 'test-msg' }),
         verify: vi.fn().mockResolvedValue(true)
       });
 
-      // Provide simulated credentials
+      const originalHost = env.SMTP_HOST;
+      const originalPort = env.SMTP_PORT;
+      const originalSecure = env.SMTP_SECURE;
       const originalUser = env.SMTP_USER;
       const originalPass = env.SMTP_PASS;
+
+      env.SMTP_HOST = 'smtp.gmail.com';
+      env.SMTP_PORT = 587;
+      env.SMTP_SECURE = false;
       env.SMTP_USER = 'school.test@gmail.com';
-      env.SMTP_PASS = 'mockpassword123';
+      env.SMTP_PASS = 'mockapppassword123';
 
       try {
         const transporter = getTransporter();
         expect(transporter).not.toBeNull();
         expect(createTransportSpy).toHaveBeenCalledWith(
           expect.objectContaining({
-            service: 'gmail',
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false,
+            auth: {
+              user: 'school.test@gmail.com',
+              pass: 'mockapppassword123'
+            },
             connectionTimeout: 10000,
             greetingTimeout: 10000,
             socketTimeout: 15000,
@@ -46,7 +58,52 @@ describe('FORGOT-PASSWORD-002: Email Service SMTP Transport & Security Unit Test
             }
           })
         );
+        // CRITICAL: Must NOT contain service: 'gmail', which forces port 465
+        expect(createTransportSpy.mock.calls[0][0]).not.toHaveProperty('service');
       } finally {
+        env.SMTP_HOST = originalHost;
+        env.SMTP_PORT = originalPort;
+        env.SMTP_SECURE = originalSecure;
+        env.SMTP_USER = originalUser;
+        env.SMTP_PASS = originalPass;
+      }
+    });
+
+    it('honors explicitly configured port 465 with secure: true if configured', () => {
+      const createTransportSpy = vi.spyOn(nodemailer, 'createTransport').mockReturnValue({
+        sendMail: vi.fn().mockResolvedValue({ messageId: 'test-465-msg' }),
+        verify: vi.fn().mockResolvedValue(true)
+      });
+
+      const originalHost = env.SMTP_HOST;
+      const originalPort = env.SMTP_PORT;
+      const originalSecure = env.SMTP_SECURE;
+      const originalUser = env.SMTP_USER;
+      const originalPass = env.SMTP_PASS;
+
+      env.SMTP_HOST = 'smtp.gmail.com';
+      env.SMTP_PORT = 465;
+      env.SMTP_SECURE = true;
+      env.SMTP_USER = 'school.test@gmail.com';
+      env.SMTP_PASS = 'mockapppassword123';
+
+      try {
+        const transporter = getTransporter();
+        expect(transporter).not.toBeNull();
+        expect(createTransportSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            host: 'smtp.gmail.com',
+            port: 465,
+            secure: true,
+            tls: {
+              rejectUnauthorized: true
+            }
+          })
+        );
+      } finally {
+        env.SMTP_HOST = originalHost;
+        env.SMTP_PORT = originalPort;
+        env.SMTP_SECURE = originalSecure;
         env.SMTP_USER = originalUser;
         env.SMTP_PASS = originalPass;
       }
@@ -83,14 +140,13 @@ describe('FORGOT-PASSWORD-002: Email Service SMTP Transport & Security Unit Test
     });
 
     it('does not contain any Resend HTTP API invocations or dependencies', () => {
-      // Ensure global fetch is not called during SMTP operations
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
       expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
 
   describe('3. Masked Email Logging', () => {
-    it('masks emails cleanly for safe operator logging', () => {
+    it('masks emails cleanly for safe operator logging without leaking full PII', () => {
       expect(maskEmail('principal@greenschool.org')).toBe('p***l@greenschool.org');
       expect(maskEmail('a@b.com')).toBe('a***@b.com');
       expect(maskEmail('ab@b.com')).toBe('a***@b.com');

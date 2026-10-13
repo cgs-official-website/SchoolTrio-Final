@@ -38,37 +38,21 @@ export const getTransporter = () => {
   const cleanPass = rawPass ? rawPass.replace(/["']/g, '').replace(/\s+/g, '') : '';
 
   if (rawHost && cleanUser && cleanPass) {
-    const isGmail = rawHost.includes('gmail') || cleanUser.endsWith('@gmail.com');
-
-    const transportConfig = isGmail
-      ? {
-          service: 'gmail',
-          auth: {
-            user: cleanUser,
-            pass: cleanPass
-          },
-          connectionTimeout: 10000,
-          greetingTimeout: 10000,
-          socketTimeout: 15000,
-          tls: {
-            rejectUnauthorized: true
-          }
-        }
-      : {
-          host: rawHost,
-          port: Number(env.SMTP_PORT) || 587,
-          secure: Boolean(env.SMTP_SECURE),
-          auth: {
-            user: cleanUser,
-            pass: cleanPass
-          },
-          connectionTimeout: 10000,
-          greetingTimeout: 10000,
-          socketTimeout: 15000,
-          tls: {
-            rejectUnauthorized: true
-          }
-        };
+    const transportConfig = {
+      host: rawHost,
+      port: Number(env.SMTP_PORT) || 587,
+      secure: Boolean(env.SMTP_SECURE),
+      auth: {
+        user: cleanUser,
+        pass: cleanPass
+      },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
+      tls: {
+        rejectUnauthorized: true
+      }
+    };
 
     cachedTransporter = nodemailer.createTransport(transportConfig);
     return cachedTransporter;
