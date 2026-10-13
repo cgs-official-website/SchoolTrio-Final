@@ -91,12 +91,18 @@ export const requestPasswordReset = async ({ email, ipAddress = null, frontendUr
     expiresAt
   });
 
-  // 7. Dispatch transactional email (raw token exists only in memory for delivery)
-  await emailService.sendPasswordResetEmail({
+  // 7. Dispatch transactional email asynchronously so slow SMTP handshakes never cause HTTP 504 gateway timeouts
+  emailService.sendPasswordResetEmail({
     to: user.email,
     resetToken: rawToken,
     schoolName: user.school?.name || 'School Management System',
     frontendUrl
+  }).catch((err) => {
+    logger.error({
+      msg: '[PASSWORD RESET] Background email delivery error via Nodemailer',
+      recipient: emailService.maskEmail(user.email),
+      error: err.message
+    });
   });
 
   return genericResponse;
