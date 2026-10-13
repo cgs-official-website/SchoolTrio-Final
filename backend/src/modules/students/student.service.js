@@ -5,8 +5,10 @@ import {
   NotFoundError,
   ConflictError,
   ValidationError,
-  TenantAccessError
+  TenantAccessError,
+  ForbiddenError
 } from '../../utils/app-error.js';
+import { SYSTEM_ROLES, ERROR_CODES } from '../../config/constants.js';
 import { parsePagination, buildPaginationMetadata } from '../../utils/pagination.js';
 import { syncStudentClassFeeInvoices } from '../fees/fee.service.js';
 
@@ -377,6 +379,121 @@ export async function updateStudent(schoolId, studentId, data, actor = null) {
   if (data.classId && data.classId !== existingStudent.classId) {
     syncStudentClassFeeInvoices(schoolId, studentId, data.classId).catch(() => {});
   }
+
+  return updated;
+}
+
+/**
+ * Updates a student's performance status within a tenant.
+ *
+ * Requirements:
+ * - Resolve student within authenticated school tenant.
+ * - Verify caller's authority over that student's performance record (teacher assigned class).
+ * - Update only customData.performanceStatus while safely preserving unrelated customData keys.
+ * - Return updated student data.
+ * - Non-blocking canonical audit logging.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} studentId - Student UUID
+ * @param {string} status - Performance status ('stable' | 'improving' | 'excellent' | 'warning' | 'critical')
+ * @param {Object} [actor] - Context of requesting user
+ * @returns {Promise<Object>}
+ */
+export async function updateStudentPerformanceStatus(schoolId, studentId, status, actor = null) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required to update performance status');
+  }
+
+  const existingStudent = await studentRepository.findStudentById(schoolId, studentId);
+  if (!existingStudent) {
+    throw new NotFoundError('Student');
+  }
+
+  // Teacher authorization check: verify caller's authority over that student's performance record
+  if (actor) {
+    const role = (actor.systemRole || actor.role || '').toUpperCase();
+    const isAdmin =
+      role === SYSTEM_ROLES.SUPER_ADMIN ||
+      role === SYSTEM_ROLES.SCHOOL_ADMIN ||
+      role === SYSTEM_ROLES.PRINCIPAL ||
+      role === 'SUPER_ADMIN' ||
+      role === 'SCHOOL_ADMIN' ||
+      role === 'ADMIN' ||
+      role === 'PRINCIPAL' ||
+      actor.roles?.includes(SYSTEM_ROLES.SUPER_ADMIN) ||
+      actor.roles?.includes(SYSTEM_ROLES.SCHOOL_ADMIN) ||
+      actor.roles?.includes('ADMIN') ||
+      actor.roles?.includes('TENANT_ADMIN');
+
+    if (!isAdmin) {
+      const isTeacher =
+        role === SYSTEM_ROLES.TEACHER ||
+        role === 'TEACHER' ||
+        actor.roles?.includes('TEACHER') ||
+        Boolean(actor.staffProfile);
+
+      if (isTeacher) {
+        const userId = actor.id || actor.userId;
+        const staffProfile = await prisma.staffProfile.findFirst({
+          where: { schoolId, userId },
+          include: {
+            headedClasses: { select: { id: true } }
+          }
+        });
+
+        if (!staffProfile) {
+          throw new ForbiddenError('Staff profile not found for authenticated teacher', ERROR_CODES.FORBIDDEN);
+        }
+
+        const custom = staffProfile.customData && typeof staffProfile.customData === 'object' ? staffProfile.customData : {};
+        const assignments = custom.assignments && typeof custom.assignments === 'object' ? custom.assignments : {};
+
+        const assignedClasses = new Set([
+          staffProfile.assignedClassId,
+          assignments.assignedClassId,
+          ...(Array.isArray(assignments.subjectClassIds) ? assignments.subjectClassIds : []),
+          ...(Array.isArray(custom.subjectClassIds) ? custom.subjectClassIds : []),
+          ...(Array.isArray(staffProfile.subjectClassIds) ? staffProfile.subjectClassIds : []),
+          ...(Array.isArray(staffProfile.headedClasses) ? staffProfile.headedClasses.map(c => c.id) : [])
+        ].filter(Boolean));
+
+        const studentClassId = existingStudent.classId;
+        if (!studentClassId || !assignedClasses.has(studentClassId)) {
+          throw new ForbiddenError(
+            'Teachers are only authorized to update performance status for students in their assigned classes',
+            ERROR_CODES.FORBIDDEN
+          );
+        }
+      }
+    }
+  }
+
+  // Safely clone and preserve existing customData keys
+  const currentCustomData = existingStudent.customData && typeof existingStudent.customData === 'object'
+    ? { ...existingStudent.customData }
+    : {};
+
+  currentCustomData.performanceStatus = status;
+
+  const updated = await studentRepository.updateStudent(schoolId, studentId, {
+    customData: currentCustomData
+  });
+
+  // Canonical AuditLog integration (non-blocking)
+  createAuditLog({
+    schoolId,
+    entityType: 'Student',
+    entityId: studentId,
+    actionPerformed: `UPDATE_STUDENT_PERFORMANCE_STATUS: ${updated.firstName}${updated.lastName ? ' ' + updated.lastName : ''} (${status})`,
+    userName: actor?.email || actor?.userId || 'Teacher',
+    userRole: actor?.systemRole || actor?.role || 'TEACHER',
+    modifiedFields: {
+      performanceStatus: {
+        old: existingStudent.customData?.performanceStatus || 'stable',
+        new: status
+      }
+    }
+  }).catch(() => {});
 
   return updated;
 }

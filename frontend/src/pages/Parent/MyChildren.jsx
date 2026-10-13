@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getMyChildren, linkChild, unlinkChild } from '../../api/parents';
 import { 
@@ -46,6 +46,9 @@ const setStoredActiveStudentId = (id) => {
 
 export default function MyChildren() {
   const { currentUser, userProfile } = useAuth();
+  const outletContext = useOutletContext();
+  const contextActiveStudentId = outletContext?.activeStudentId;
+  const onSelectActiveChild = outletContext?.onSelectActiveChild || outletContext?.setActiveStudentId;
   const mountedRef = useRef(true);
 
   // Data states
@@ -53,8 +56,15 @@ export default function MyChildren() {
   const [manualChildren, setManualChildren] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeStudentId, setActiveStudentId] = useState(() => {
-    return getStoredActiveStudentId() || userProfile?.linkedStudentId || null;
+    return contextActiveStudentId || getStoredActiveStudentId() || userProfile?.linkedStudentId || null;
   });
+
+  // Keep in sync with ParentDashboard context
+  useEffect(() => {
+    if (contextActiveStudentId && contextActiveStudentId !== activeStudentId) {
+      setActiveStudentId(contextActiveStudentId);
+    }
+  }, [contextActiveStudentId]);
 
   // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -148,6 +158,10 @@ export default function MyChildren() {
 
     setActiveStudentId(studentId);
     setStoredActiveStudentId(studentId);
+    if (typeof onSelectActiveChild === 'function') {
+      onSelectActiveChild(studentId);
+    }
+    window.dispatchEvent(new CustomEvent('sms:active-child-changed', { detail: { studentId } }));
     toast.success(`Switched active view to ${studentName || child.firstName || 'selected child'}`);
   };
 

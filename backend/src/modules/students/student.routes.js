@@ -66,6 +66,16 @@ router.post(
 );
 
 
+// Update student performance status
+router.patch(
+  '/:id/performance-status',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('performance', 'edit'),
+  validate(studentSchemas.updateStudentPerformanceStatusSchema),
+  studentController.updateStudentPerformanceStatus
+);
+
 // Update student
 router.patch(
   '/:id',

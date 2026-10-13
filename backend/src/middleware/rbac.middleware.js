@@ -262,7 +262,7 @@ export const requirePermission = (...args) => {
             noticeboard: ['read'],
             calendar: ['read'],
             exams: ['read'],
-            performance: ['read']
+            performance: ['read', 'edit']
           };
 
           if (DEFAULT_TEACHER_MODULES[reqPerm.moduleKey]?.includes(reqPerm.operation)) {

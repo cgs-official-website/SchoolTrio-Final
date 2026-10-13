@@ -9,7 +9,7 @@ import useSchoolBranding from '../hooks/useSchoolBranding';
 import { useNotifications } from '../context/NotificationContext';
 import { useLiveDataRefresh } from '../hooks/useLiveDataRefresh';
 
-const getStoredActiveStudentId = () => {
+export const getStoredActiveStudentId = () => {
   try {
     return typeof localStorage !== 'undefined' ? localStorage.getItem('sms_active_student_id') : null;
   } catch {
@@ -17,7 +17,7 @@ const getStoredActiveStudentId = () => {
   }
 };
 
-const setStoredActiveStudentId = (id) => {
+export const setStoredActiveStudentId = (id) => {
   try {
     if (typeof localStorage !== 'undefined') {
       if (id) {
@@ -28,6 +28,31 @@ const setStoredActiveStudentId = (id) => {
     }
   } catch {}
 };
+
+/**
+ * Reconciles candidate student ID against authoritative enrolled children.
+ * If candidateId is valid and exists in enrolledChildren, preserves it.
+ * Otherwise safely falls back to the first enrolled child, or null if list is empty.
+ */
+export function reconcileActiveStudentId(candidateId, enrolledChildren) {
+  if (!Array.isArray(enrolledChildren) || enrolledChildren.length === 0) {
+    return null;
+  }
+  const match = enrolledChildren.find(c => c && (c.id === candidateId || c.studentId === candidateId));
+  return match ? (match.id || match.studentId) : (enrolledChildren[0].id || enrolledChildren[0].studentId || null);
+}
+
+/**
+ * Resolves the active child object.
+ * Returns null while loading or when children list is empty to prevent premature or stale rendering.
+ */
+export function resolveActiveChild(enrolledChildren, activeStudentId, loadingChildren = false) {
+  if (loadingChildren || !Array.isArray(enrolledChildren) || enrolledChildren.length === 0) {
+    return null;
+  }
+  const resolvedId = reconcileActiveStudentId(activeStudentId, enrolledChildren);
+  return enrolledChildren.find(c => c && (c.id === resolvedId || c.studentId === resolvedId)) || null;
+}
 
 const NAV_ITEMS = [
   { name: 'Student Overview', path: '/parent', icon: UserCircle, exact: true },
@@ -88,6 +113,24 @@ export default function ParentDashboard() {
     currentActiveStudentRef.current = activeStudentId;
   }, [activeStudentId]);
 
+  // Synchronize active child selection if triggered by sub-pages (e.g. MyChildren)
+  useEffect(() => {
+    const handleActiveChildChanged = (e) => {
+      const newId = e.detail?.studentId;
+      if (newId && newId !== currentActiveStudentRef.current) {
+        if (enrolledChildren.length === 0 || enrolledChildren.some(c => c.id === newId)) {
+          setActiveStudentId(newId);
+          setStoredActiveStudentId(newId);
+        }
+      }
+    };
+
+    window.addEventListener('sms:active-child-changed', handleActiveChildChanged);
+    return () => {
+      window.removeEventListener('sms:active-child-changed', handleActiveChildChanged);
+    };
+  }, [enrolledChildren]);
+
   // 1. Authoritative REST Loader for Enrolled Children
   const loadChildren = useCallback(async () => {
     try {
@@ -120,15 +163,9 @@ export default function ParentDashboard() {
       setActiveStudentId(prevActiveId => {
         const storedId = getStoredActiveStudentId();
         const candidateId = storedId || prevActiveId;
-        const isValid = candidateId && mapped.some(c => c.id === candidateId);
-
-        if (isValid) {
-          setStoredActiveStudentId(candidateId);
-          return candidateId;
-        }
-        const fallbackId = mapped[0]?.id || null;
-        setStoredActiveStudentId(fallbackId);
-        return fallbackId;
+        const validId = reconcileActiveStudentId(candidateId, mapped);
+        setStoredActiveStudentId(validId);
+        return validId;
       });
     } catch (err) {
       console.error('[ParentDashboard] Error loading enrolled children:', err);
@@ -333,11 +370,14 @@ export default function ParentDashboard() {
     }
     setActiveStudentId(studentId);
     setStoredActiveStudentId(studentId);
+    window.dispatchEvent(new CustomEvent('sms:active-child-changed', { detail: { studentId } }));
     setIsChildDropdownOpen(false);
   };
 
-  const activeChild = enrolledChildren.find(s => s.id === activeStudentId) || enrolledChildren[0] || null;
-  const activeChildName = activeChild?.name || 'Active Child';
+  const activeChild = (!loadingChildren && enrolledChildren.length > 0)
+    ? (enrolledChildren.find(s => s.id === activeStudentId) || enrolledChildren[0] || null)
+    : null;
+  const activeChildName = activeChild?.name || '';
 
   if (loading || loadingChildren) {
     return (
@@ -561,18 +601,45 @@ export default function ParentDashboard() {
         <div className="p-4 shrink-0 mt-auto">
           <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 flex items-center justify-between border border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-3 overflow-hidden">
-              <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold shrink-0">
-                {userProfile?.name ? userProfile.name.substring(0, 2).toUpperCase() : userProfile?.email?.substring(0, 2).toUpperCase() || 'PA'}
+              <div 
+                data-testid="sidebar-bottom-avatar"
+                className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300 flex items-center justify-center font-bold shrink-0"
+              >
+                {activeChild ? (
+                  (activeChild.name ? activeChild.name.substring(0, 2).toUpperCase() : (activeChild.firstName ? activeChild.firstName.substring(0, 2).toUpperCase() : 'ST'))
+                ) : (
+                  userProfile?.name ? userProfile.name.substring(0, 2).toUpperCase() : 'PA'
+                )}
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{userProfile?.name || userProfile?.email?.split('@')[0]}</p>
-                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mt-0.5">{userProfile?.role || 'Parent'}</p>
+                <p 
+                  data-testid="sidebar-bottom-child-name" 
+                  className="text-sm font-bold text-slate-900 dark:text-white truncate"
+                >
+                  {activeChild ? activeChildName : (loadingChildren ? 'Loading...' : (userProfile?.name || 'Parent'))}
+                </p>
+                <div className="flex items-center gap-1">
+                  <span 
+                    data-testid="sidebar-bottom-child-label"
+                    className="text-[10px] font-bold text-primary-600 dark:text-primary-400 uppercase tracking-wider"
+                  >
+                    {activeChild ? 'Selected Child' : (userProfile?.role || 'Parent')}
+                  </span>
+                </div>
+                <p 
+                  data-testid="sidebar-bottom-parent-identity"
+                  className="text-[11px] text-slate-400 dark:text-slate-500 truncate"
+                  title={`Parent Account: ${userProfile?.name || userProfile?.email || 'Parent'}`}
+                >
+                  Parent: {userProfile?.name || userProfile?.email?.split('@')[0]}
+                </p>
               </div>
             </div>
             <button 
               onClick={handleLogout}
               className="p-2 text-slate-400 dark:text-slate-300 hover:text-red-500 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-colors shrink-0"
               title="Logout"
+              data-testid="sidebar-logout-button"
             >
               <LogOut size={20} />
             </button>
@@ -587,6 +654,8 @@ export default function ParentDashboard() {
           schoolLogo={school?.branding?.logoUrl}
           toggleSidebar={() => setIsSidebarOpen(true)} 
           navItems={NAV_ITEMS}
+          activeChild={activeChild}
+          activeChildLoading={loadingChildren}
         />
         
         <main className="flex-1 overflow-y-auto custom-scrollbar">
@@ -595,7 +664,15 @@ export default function ParentDashboard() {
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent"></div>
             </div>
           }>
-            <Outlet context={{ activeStudentId, activeChild, enrolledChildren, refreshChildren: loadChildren, refreshFeeBadge: () => fetchFeeBadge(activeStudentId) }} />
+            <Outlet context={{ 
+              activeStudentId, 
+              activeChild, 
+              enrolledChildren, 
+              refreshChildren: loadChildren, 
+              refreshFeeBadge: () => fetchFeeBadge(activeStudentId),
+              onSelectActiveChild: handleSwitchChild,
+              setActiveStudentId: handleSwitchChild
+            }} />
           </Suspense>
         </main>
       </div>

@@ -6,6 +6,58 @@ import { LuCalendar as Calendar, LuCircleCheck as CheckCircle2, LuCircleX as XCi
 import toast from 'react-hot-toast';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
+/**
+ * Maps raw attendance session code to user-friendly label.
+ * - 'FN' -> 'Forenoon (FN)'
+ * - 'AN' -> 'Afternoon (AN)'
+ * - 'STANDARD' -> 'Full Day'
+ * - Fallback / missing -> 'Full Day'
+ */
+export function formatSessionLabel(session) {
+  if (!session || typeof session !== 'string') return 'Full Day';
+  const s = session.trim().toUpperCase();
+  if (s === 'FN' || s === 'FORENOON' || s === 'FORENOON (FN)') return 'Forenoon (FN)';
+  if (s === 'AN' || s === 'AFTERNOON' || s === 'AFTERNOON (AN)') return 'Afternoon (AN)';
+  if (s === 'STANDARD' || s === 'FULL DAY') return 'Full Day';
+  return 'Full Day';
+}
+
+/**
+ * Deterministically sorts attendance records:
+ * 1. Date descending (newest first)
+ * 2. Same date: Forenoon (FN) before Afternoon (AN), followed by Full Day (STANDARD)
+ * 3. Stable tie-breaker by record id
+ */
+export function sortAttendanceRecords(records) {
+  if (!Array.isArray(records)) return [];
+  const sessionPriority = {
+    FN: 1,
+    AN: 2,
+    STANDARD: 3
+  };
+
+  return [...records].sort((a, b) => {
+    // 1. Primary sort: date descending (newest first)
+    const dateA = a.date || '';
+    const dateB = b.date || '';
+    if (dateA !== dateB) {
+      return dateB.localeCompare(dateA);
+    }
+
+    // 2. Secondary sort: same date -> FN before AN, then STANDARD
+    const sessionA = (a.session || '').toUpperCase();
+    const sessionB = (b.session || '').toUpperCase();
+    const priorityA = sessionPriority[sessionA] || 4;
+    const priorityB = sessionPriority[sessionB] || 4;
+    if (priorityA !== priorityB) {
+      return priorityA - priorityB;
+    }
+
+    // 3. Stable tie-breaker by id
+    return String(a.id || '').localeCompare(String(b.id || ''));
+  });
+}
+
 export default function ParentAttendance() {
   const { userProfile } = useAuth();
   const outletContext = useOutletContext();
@@ -33,14 +85,14 @@ export default function ParentAttendance() {
         date: item.session?.date || item.date || '',
         status: item.status || 'PRESENT',
         remark: item.remark || '',
-        session: item.session?.session || item.session || 'Morning',
+        session: item.session?.session || item.session || 'STANDARD',
         className: item.session?.class?.name || ''
       }));
 
-      // Sort by date descending
-      records.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+      // Deterministic sort: Newest date first, FN before AN for same date
+      const sortedRecords = sortAttendanceRecords(records);
 
-      setAttendanceRecords(records);
+      setAttendanceRecords(sortedRecords);
     } catch (err) {
       if (mountedRef.current && currentStudentRef.current === targetStudentId) {
         console.error('Error fetching student attendance:', err);
@@ -202,7 +254,15 @@ export default function ParentAttendance() {
                       <Calendar size={20} />
                     </div>
                     <div>
-                      <h3 className="font-bold text-slate-900 dark:text-white">{formatDateDisplay(record.date)}</h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-bold text-slate-900 dark:text-white">{formatDateDisplay(record.date)}</h3>
+                        <span
+                          data-testid={`session-badge-${record.id}`}
+                          className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                        >
+                          {formatSessionLabel(record.session)}
+                        </span>
+                      </div>
                       {record.remark && (
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{record.remark}</p>
                       )}

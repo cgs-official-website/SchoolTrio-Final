@@ -50,6 +50,26 @@ export async function createStudent(req, res, next) {
 }
 
 /**
+ * Updates a student's performance trend status.
+ * PATCH /api/v1/students/:id/performance-status
+ */
+export async function updateStudentPerformanceStatus(req, res, next) {
+  try {
+    const schoolId = req.tenant.schoolId;
+    const actor = req.user || req.auth;
+    const updatedStudent = await studentService.updateStudentPerformanceStatus(
+      schoolId,
+      req.params.id,
+      req.body.status,
+      actor
+    );
+    return ApiResponse.success(res, updatedStudent, 'Student performance status updated successfully');
+  } catch (error) {
+    return next(error);
+  }
+}
+
+/**
  * Updates a student.
  * PATCH /api/v1/students/:id
  */

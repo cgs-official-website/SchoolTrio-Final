@@ -1,10 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as staffService from './staff.service.js';
 import * as staffRepository from './staff.repository.js';
+import * as authRepository from '../auth/auth.repository.js';
+import { RedisCacheService } from '../../services/redis-cache.service.js';
 import { prisma } from '../../database/prisma.client.js';
-import { ValidationError, TenantAccessError, NotFoundError } from '../../utils/app-error.js';
+import { ValidationError, TenantAccessError, NotFoundError, ConflictError } from '../../utils/app-error.js';
 
 vi.mock('./staff.repository.js');
+vi.mock('../auth/auth.repository.js', () => ({
+  revokeAllRefreshSessions: vi.fn().mockResolvedValue({ count: 1 })
+}));
+vi.mock('../../services/redis-cache.service.js', () => ({
+  RedisCacheService: {
+    del: vi.fn().mockResolvedValue(true)
+  }
+}));
 vi.mock('../../database/prisma.client.js', () => ({
   prisma: {
     $transaction: vi.fn(async (cb) => cb(prisma)),
@@ -14,7 +24,9 @@ vi.mock('../../database/prisma.client.js', () => ({
     class: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
-      findUnique: vi.fn()
+      findUnique: vi.fn(),
+      count: vi.fn().mockResolvedValue(0),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 })
     },
     section: {
       findMany: vi.fn(),
@@ -228,3 +240,271 @@ describe('BUG-002: Staff Assignment Tenant Validation & Stale ID Security Tests'
     expect(mockStaffProfile.customData.assignments.assignedSubjectIds).toEqual([subject1Id]);
   });
 });
+
+describe('SD-DEL-001: Staff Directory Deletion & Deactivation Invariants and Security', () => {
+  const schoolId = '11111111-1111-4111-8111-111111111111';
+  const targetStaffId = '33333333-3333-4333-8333-333333333333';
+  const targetUserId = '99999999-9999-4999-8999-999999999999';
+
+  const mockActiveStaff = {
+    id: targetStaffId,
+    schoolId,
+    userId: targetUserId,
+    name: 'Jane Doe',
+    status: 'Active',
+    assignedClassId: null,
+    customData: {
+      assignments: { assignedClassId: null }
+    },
+    user: {
+      id: targetUserId,
+      email: 'jane@school.com',
+      isActive: true,
+      roleAssignments: []
+    }
+  };
+
+  const adminActor = {
+    id: 'admin-id',
+    userId: 'admin-id',
+    email: 'admin@school.com',
+    systemRole: 'ADMIN'
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    staffRepository.findStaffById.mockResolvedValue({ ...mockActiveStaff });
+    staffRepository.findStaffByIdForUpdate.mockResolvedValue({ ...mockActiveStaff });
+    staffRepository.updateStaffProfile.mockResolvedValue({ ...mockActiveStaff });
+    staffRepository.updateUser.mockResolvedValue({});
+    staffRepository.deleteStaffProfile.mockResolvedValue({});
+    staffRepository.deleteUser.mockResolvedValue({});
+    staffRepository.removeUserRoleAssignments.mockResolvedValue({});
+    staffRepository.updateClassTeacher.mockResolvedValue({});
+    prisma.class.count.mockResolvedValue(0);
+    prisma.class.updateMany.mockResolvedValue({ count: 0 });
+    authRepository.revokeAllRefreshSessions.mockResolvedValue({ count: 1 });
+    RedisCacheService.del.mockResolvedValue(true);
+  });
+
+  it('1. Permanent deletion succeeds for a staff member with 0 protected dependencies', async () => {
+    staffRepository.countStaffDependencies.mockResolvedValue({
+      total: 0,
+      lessonPlans: 0,
+      payroll: 0,
+      chatRooms: 0,
+      ptms: 0,
+      timetables: 0
+    });
+
+    const result = await staffService.deleteStaff(schoolId, targetStaffId, adminActor);
+
+    expect(result).toBeNull();
+    expect(staffRepository.findStaffByIdForUpdate).toHaveBeenCalledWith(schoolId, targetStaffId, expect.anything());
+    expect(staffRepository.countStaffDependencies).toHaveBeenCalledWith(schoolId, targetStaffId, expect.anything());
+    expect(staffRepository.deleteStaffProfile).toHaveBeenCalledWith(schoolId, targetStaffId, expect.anything());
+    expect(staffRepository.removeUserRoleAssignments).toHaveBeenCalledWith(targetUserId, expect.anything());
+    expect(staffRepository.deleteUser).toHaveBeenCalledWith(targetUserId, expect.anything());
+  });
+
+  it('2. Permanent deletion returns ConflictError (409) when payroll history exists', async () => {
+    staffRepository.countStaffDependencies.mockResolvedValue({
+      total: 2,
+      lessonPlans: 0,
+      payroll: 2,
+      chatRooms: 0,
+      ptms: 0,
+      timetables: 0
+    });
+
+    await expect(
+      staffService.deleteStaff(schoolId, targetStaffId, adminActor)
+    ).rejects.toThrow(ConflictError);
+
+    await expect(
+      staffService.deleteStaff(schoolId, targetStaffId, adminActor)
+    ).rejects.toThrow(/payroll record\(s\).*Please deactivate the account instead/);
+
+    expect(staffRepository.deleteStaffProfile).not.toHaveBeenCalled();
+    expect(staffRepository.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it('3. Permanent deletion returns ConflictError (409) when chat rooms or timetables exist', async () => {
+    staffRepository.countStaffDependencies.mockResolvedValue({
+      total: 4,
+      lessonPlans: 0,
+      payroll: 0,
+      chatRooms: 1,
+      ptms: 0,
+      timetables: 3
+    });
+
+    await expect(
+      staffService.deleteStaff(schoolId, targetStaffId, adminActor)
+    ).rejects.toThrow(ConflictError);
+
+    await expect(
+      staffService.deleteStaff(schoolId, targetStaffId, adminActor)
+    ).rejects.toThrow(/1 chat room\(s\), 3 timetable period\(s\)/);
+
+    expect(staffRepository.deleteStaffProfile).not.toHaveBeenCalled();
+    expect(staffRepository.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it('4. Deactivation sets status to Inactive, sets user.isActive to false, increments tokenVersion, and revokes refresh sessions', async () => {
+    const inactiveStaffProfile = {
+      ...mockActiveStaff,
+      status: 'Inactive',
+      user: {
+        ...mockActiveStaff.user,
+        isActive: false
+      }
+    };
+    staffRepository.findStaffById
+      .mockResolvedValueOnce({ ...mockActiveStaff, status: 'Active' })
+      .mockResolvedValueOnce(inactiveStaffProfile);
+
+    await staffService.updateStaff(
+      schoolId,
+      targetStaffId,
+      { status: 'Inactive' },
+      adminActor
+    );
+
+    expect(staffRepository.updateStaffProfile).toHaveBeenCalledWith(
+      schoolId,
+      targetStaffId,
+      expect.objectContaining({ status: 'Inactive' }),
+      expect.anything()
+    );
+
+    expect(staffRepository.updateUser).toHaveBeenCalledWith(
+      targetUserId,
+      expect.objectContaining({
+        isActive: false,
+        tokenVersion: { increment: 1 }
+      }),
+      expect.anything()
+    );
+
+    expect(authRepository.revokeAllRefreshSessions).toHaveBeenCalledWith(
+      targetUserId,
+      expect.objectContaining({ tx: expect.anything() })
+    );
+
+    expect(RedisCacheService.del).toHaveBeenCalledWith(`rbac:perms:${schoolId}:${targetUserId}`);
+  });
+
+  it('5. Deactivation unassigns active class-teacher responsibilities while preserving custom data history', async () => {
+    const staffWithClass = {
+      ...mockActiveStaff,
+      status: 'Active',
+      assignedClassId: 'class-123',
+      customData: {
+        assignments: { assignedClassId: 'class-123' },
+        payrollHistory: [{ month: 'Jan', amount: 5000 }]
+      }
+    };
+    staffRepository.findStaffById
+      .mockResolvedValueOnce(staffWithClass)
+      .mockResolvedValueOnce({
+        ...staffWithClass,
+        status: 'Inactive',
+        assignedClassId: null
+      });
+    staffRepository.findStaffByIdForUpdate.mockResolvedValue(staffWithClass);
+
+    await staffService.updateStaff(
+      schoolId,
+      targetStaffId,
+      { status: 'Inactive' },
+      adminActor
+    );
+
+    expect(staffRepository.updateClassTeacher).toHaveBeenCalledWith(
+      schoolId,
+      'class-123',
+      null,
+      expect.anything()
+    );
+    expect(staffRepository.updateStaffProfile).toHaveBeenCalledWith(
+      schoolId,
+      targetStaffId,
+      expect.objectContaining({
+        status: 'Inactive'
+      }),
+      expect.anything()
+    );
+  });
+
+  it('6. Reactivation restores account activity according to existing policy', async () => {
+    const currentlyInactiveStaff = {
+      ...mockActiveStaff,
+      status: 'Inactive',
+      user: { ...mockActiveStaff.user, isActive: false }
+    };
+    staffRepository.findStaffById
+      .mockResolvedValueOnce(currentlyInactiveStaff)
+      .mockResolvedValueOnce({
+        ...currentlyInactiveStaff,
+        status: 'Active',
+        user: { ...currentlyInactiveStaff.user, isActive: true }
+      });
+    staffRepository.findStaffByIdForUpdate.mockResolvedValue(currentlyInactiveStaff);
+
+    await staffService.updateStaff(
+      schoolId,
+      targetStaffId,
+      { status: 'Active' },
+      adminActor
+    );
+
+    expect(staffRepository.updateStaffProfile).toHaveBeenCalledWith(
+      schoolId,
+      targetStaffId,
+      expect.objectContaining({ status: 'Active' }),
+      expect.anything()
+    );
+
+    expect(staffRepository.updateUser).toHaveBeenCalledWith(
+      targetUserId,
+      expect.objectContaining({ isActive: true }),
+      expect.anything()
+    );
+
+    // Refresh sessions are NOT revoked upon reactivation (only on deactivation)
+    expect(authRepository.revokeAllRefreshSessions).not.toHaveBeenCalled();
+
+    // Cache is cleared on status change
+    expect(RedisCacheService.del).toHaveBeenCalledWith(`rbac:perms:${schoolId}:${targetUserId}`);
+  });
+
+  it('7. Enforces tenant isolation for deletion and deactivation (TenantAccessError)', async () => {
+    await expect(
+      staffService.deleteStaff(null, targetStaffId, adminActor)
+    ).rejects.toThrow(TenantAccessError);
+
+    await expect(
+      staffService.updateStaff(null, targetStaffId, { status: 'Inactive' }, adminActor)
+    ).rejects.toThrow(TenantAccessError);
+
+    expect(staffRepository.deleteStaffProfile).not.toHaveBeenCalled();
+    expect(staffRepository.updateStaffProfile).not.toHaveBeenCalled();
+  });
+
+  it('8. Transaction rollback: failure of session revocation aborts deactivation cleanly', async () => {
+    authRepository.revokeAllRefreshSessions.mockRejectedValueOnce(
+      new Error('Redis/DB connection failed during session revocation')
+    );
+
+    await expect(
+      staffService.updateStaff(
+        schoolId,
+        targetStaffId,
+        { status: 'Inactive' },
+        adminActor
+      )
+    ).rejects.toThrow('Redis/DB connection failed during session revocation');
+  });
+});
+

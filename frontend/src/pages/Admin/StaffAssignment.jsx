@@ -4,7 +4,7 @@ import { listStaff, createStaff, bulkImportStaff, updateStaff, assignStaff, dele
 import { listClasses } from '../../api/classes';
 import { listSubjects } from '../../api/subjects';
 import { uploadFileToCloudinaryOrFirebase, uploadCustomDataFiles } from '../../utils/cloudinary';
-import { LuSearch as Search, LuShieldCheck as ShieldCheck, LuMail as Mail, LuUsers as Users, LuCircleCheck as CheckCircle2, LuX as X, LuCloudUpload as UploadCloud, LuFileText as FileText, LuLink as LinkIcon, LuDownload as Download, LuFileSpreadsheet as FileSpreadsheet, LuUserPlus as UserPlus, LuEye as Eye, LuFilter as Filter, LuTrash2 as Trash, LuFileDown as FileDown, LuUser as User, LuGraduationCap as GraduationCap, LuBriefcase as Briefcase, LuBuilding2 as Building2, LuCreditCard as CreditCard, LuChevronRight as ChevronRight, LuChevronLeft as ChevronLeft } from 'react-icons/lu';
+import { LuSearch as Search, LuShieldCheck as ShieldCheck, LuMail as Mail, LuUsers as Users, LuCircleCheck as CheckCircle2, LuX as X, LuCloudUpload as UploadCloud, LuFileText as FileText, LuLink as LinkIcon, LuDownload as Download, LuFileSpreadsheet as FileSpreadsheet, LuUserPlus as UserPlus, LuEye as Eye, LuFilter as Filter, LuTrash2 as Trash, LuFileDown as FileDown, LuUser as User, LuGraduationCap as GraduationCap, LuBriefcase as Briefcase, LuBuilding2 as Building2, LuCreditCard as CreditCard, LuChevronRight as ChevronRight, LuChevronLeft as ChevronLeft, LuUserX as UserX, LuUserCheck as UserCheck } from 'react-icons/lu';
 import { TableSkeleton } from '../../components/Skeleton';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -14,6 +14,24 @@ import { sortClassesAscending } from '../../utils/classSorting';
 import { normalizeGender, isMale, isFemale } from '../../utils/genderUtils';
 import { notifyDataChanged } from '../../utils/liveData';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+
+export function getStaffStatusBadgeClass(status) {
+  const normalized = (status || 'Active').toLowerCase();
+  if (normalized === 'active') {
+    return 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60';
+  }
+  return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700';
+}
+
+export function canDeactivateStaff(member, hasEditPermission) {
+  if (!hasEditPermission || !member) return false;
+  return (member.status || 'Active') === 'Active';
+}
+
+export function canReactivateStaff(member, hasEditPermission) {
+  if (!hasEditPermission || !member) return false;
+  return (member.status || 'Active') === 'Inactive';
+}
 
 export function normalizeStaffMember(s) {
   if (!s) return null;
@@ -377,6 +395,19 @@ export default function StaffAssignment() {
   const [uploading, setUploading] = useState(false);
 
   const [confirmDeleteState, setConfirmDeleteState] = useState({ isOpen: false, id: null, name: '' });
+  const [confirmStatusModalState, setConfirmStatusModalState] = useState({
+    isOpen: false,
+    id: null,
+    name: '',
+    targetStatus: 'Inactive'
+  });
+  const [deleteConflictState, setDeleteConflictState] = useState({
+    isOpen: false,
+    id: null,
+    name: '',
+    isAlreadyInactive: false,
+    reason: ''
+  });
   const [allRoles, setAllRoles] = useState([
     'Correspondent', 'Principal', 'Vice Principal', 'Subject Wise Head',
     'Class Incharge', 'Staffs', 'Administrative Officer', 'Finance Department',
@@ -403,16 +434,46 @@ export default function StaffAssignment() {
     }));
   };
 
+  const handleUpdateStaffStatus = async (staffId, targetStatus) => {
+    try {
+      await updateStaff(staffId, { status: targetStatus });
+      toast.success(`Staff member ${targetStatus === 'Inactive' ? 'deactivated' : 'reactivated'} successfully!`);
+      setConfirmStatusModalState({ isOpen: false, id: null, name: '', targetStatus: 'Inactive' });
+      setDeleteConflictState({ isOpen: false, id: null, name: '', isAlreadyInactive: false, reason: '' });
+      notifyDataChanged('staff');
+      await fetchStaffData();
+    } catch (error) {
+      console.error(`Error updating staff status to ${targetStatus}:`, error);
+      toast.error(error.message || `Failed to ${targetStatus.toLowerCase()} staff member.`);
+    }
+  };
+
   const handleDeleteStaff = async (staffId) => {
     try {
       await deleteStaff(staffId);
       toast.success("Staff member deleted successfully!");
       setConfirmDeleteState({ isOpen: false, id: null, name: '' });
+      notifyDataChanged('staff');
       await fetchStaffData();
     } catch (error) {
       console.error("Error deleting staff member:", error);
-      if (error.status === 409 || error.message?.includes('409') || error.message?.toLowerCase().includes('cannot delete')) {
-        toast.error(error.message || "Cannot delete staff member with active class assignments or historical records. Please deactivate the account instead.", { duration: 6000 });
+      const isConflict = error.status === 409 ||
+        error.message?.includes('409') ||
+        error.message?.toLowerCase().includes('cannot delete') ||
+        error.message?.toLowerCase().includes('deactivate');
+
+      if (isConflict) {
+        const targetMember = staff.find(s => s.id === staffId);
+        const targetName = targetMember?.name || confirmDeleteState.name || 'this staff member';
+        const isAlreadyInactive = (targetMember?.status || 'Active') === 'Inactive';
+        setConfirmDeleteState({ isOpen: false, id: null, name: '' });
+        setDeleteConflictState({
+          isOpen: true,
+          id: staffId,
+          name: targetName,
+          isAlreadyInactive,
+          reason: error.message || "Cannot delete staff member with existing historical activity. Please deactivate the account instead."
+        });
       } else {
         toast.error(error.message || "Failed to delete staff member.");
       }
@@ -1861,8 +1922,18 @@ export default function StaffAssignment() {
                           <div className="w-10 h-10 shrink-0 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
                             {name.charAt(0)}
                           </div>
-                          <div className="font-semibold text-slate-900 dark:text-white leading-snug">
-                            {name}
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-900 dark:text-white leading-snug">
+                                {name}
+                              </span>
+                              <span
+                                data-testid={`staff-status-${member.id}`}
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${getStaffStatusBadgeClass(member.status)}`}
+                              >
+                                {member.status || 'Active'}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -1921,6 +1992,36 @@ export default function StaffAssignment() {
                           >
                             <Eye size={18} />
                           </button>
+                          {canDeactivateStaff(member, hasEditPermission) && (
+                            <button
+                              onClick={() => setConfirmStatusModalState({
+                                isOpen: true,
+                                id: member.id,
+                                name,
+                                targetStatus: 'Inactive'
+                              })}
+                              className="p-2 text-slate-500 dark:text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                              title="Deactivate Staff Member"
+                              aria-label="Deactivate Staff Member"
+                            >
+                              <UserX size={18} />
+                            </button>
+                          )}
+                          {canReactivateStaff(member, hasEditPermission) && (
+                            <button
+                              onClick={() => setConfirmStatusModalState({
+                                isOpen: true,
+                                id: member.id,
+                                name,
+                                targetStatus: 'Active'
+                              })}
+                              className="p-2 text-slate-500 dark:text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                              title="Reactivate Staff Member"
+                              aria-label="Reactivate Staff Member"
+                            >
+                              <UserCheck size={18} />
+                            </button>
+                          )}
                           {hasDeletePermission && (
                             <button
                               onClick={() => setConfirmDeleteState({ isOpen: true, id: member.id, name: member.name || `${member.firstName} ${member.lastName}` })}
@@ -3796,6 +3897,51 @@ export default function StaffAssignment() {
         confirmText="Delete"
         cancelText="Cancel"
         type="danger"
+      />
+
+      <ConfirmModal
+        isOpen={deleteConflictState.isOpen}
+        title="Permanent Deletion Blocked"
+        message={
+          deleteConflictState.isAlreadyInactive
+            ? `Permanent deletion of "${deleteConflictState.name}" cannot be completed because historical activity records (payroll, chat, or timetable) must be preserved for audit and compliance. This account is already Inactive and cannot access the system.`
+            : `Permanent deletion of "${deleteConflictState.name}" cannot be completed because historical activity records (payroll, chat, or timetable) must be preserved for audit and compliance. Would you like to deactivate this account instead? Deactivation immediately revokes account access while safely preserving all historical data.`
+        }
+        onConfirm={() => {
+          if (!deleteConflictState.isAlreadyInactive && hasEditPermission) {
+            const { id, name } = deleteConflictState;
+            setDeleteConflictState({ isOpen: false, id: null, name: '', isAlreadyInactive: false, reason: '' });
+            setConfirmStatusModalState({
+              isOpen: true,
+              id,
+              name,
+              targetStatus: 'Inactive'
+            });
+          } else {
+            setDeleteConflictState({ isOpen: false, id: null, name: '', isAlreadyInactive: false, reason: '' });
+          }
+        }}
+        onClose={() => setDeleteConflictState({ isOpen: false, id: null, name: '', isAlreadyInactive: false, reason: '' })}
+        onCancel={() => setDeleteConflictState({ isOpen: false, id: null, name: '', isAlreadyInactive: false, reason: '' })}
+        confirmText={(!deleteConflictState.isAlreadyInactive && hasEditPermission) ? "Deactivate Instead" : "Close"}
+        cancelText={(!deleteConflictState.isAlreadyInactive && hasEditPermission) ? "Cancel" : "Dismiss"}
+        type={(!deleteConflictState.isAlreadyInactive && hasEditPermission) ? "warning" : "info"}
+      />
+
+      <ConfirmModal
+        isOpen={confirmStatusModalState.isOpen}
+        title={confirmStatusModalState.targetStatus === 'Inactive' ? "Deactivate Staff Member" : "Reactivate Staff Member"}
+        message={
+          confirmStatusModalState.targetStatus === 'Inactive'
+            ? `Are you sure you want to deactivate "${confirmStatusModalState.name}"? Deactivating this staff member will immediately prevent account login and access, while preserving historical payroll, timetable, chat, and other institutional records.`
+            : `Are you sure you want to reactivate "${confirmStatusModalState.name}"? Reactivating will restore account access, subject to the application's existing authorization and account rules.`
+        }
+        onConfirm={() => handleUpdateStaffStatus(confirmStatusModalState.id, confirmStatusModalState.targetStatus)}
+        onClose={() => setConfirmStatusModalState({ isOpen: false, id: null, name: '', targetStatus: 'Inactive' })}
+        onCancel={() => setConfirmStatusModalState({ isOpen: false, id: null, name: '', targetStatus: 'Inactive' })}
+        confirmText={confirmStatusModalState.targetStatus === 'Inactive' ? "Deactivate" : "Reactivate"}
+        cancelText="Cancel"
+        type={confirmStatusModalState.targetStatus === 'Inactive' ? "warning" : "info"}
       />
 
       {/* Export Columns & Filename Modal */}

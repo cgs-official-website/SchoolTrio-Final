@@ -1,4 +1,5 @@
 import * as staffRepository from './staff.repository.js';
+import * as authRepository from '../auth/auth.repository.js';
 import { prisma, basePrisma } from '../../database/prisma.client.js';
 import { createAuditLog } from '../audit/audit.repository.js';
 import {
@@ -770,6 +771,11 @@ export async function updateStaff(schoolId, id, data, actor = null) {
         await staffRepository.updateUser(existingStaff.userId, userUpdateData, tx);
       }
 
+      // Step C.1: Revoke active refresh sessions on deactivation
+      if (data.status === 'Inactive' && existingStaff.userId) {
+        await authRepository.revokeAllRefreshSessions(existingStaff.userId, { tx });
+      }
+
       // Step D: Update Role Assignment
       if (roleUpdateRequired) {
         await staffRepository.removeUserRoleAssignments(existingStaff.userId, tx);
@@ -844,7 +850,7 @@ export async function updateStaff(schoolId, id, data, actor = null) {
     modifiedFields
   });
 
-  if (roleUpdateRequired && updatedStaff?.userId) {
+  if ((roleUpdateRequired || modifiedFields.status) && updatedStaff?.userId) {
     await RedisCacheService.del(`rbac:perms:${schoolId}:${updatedStaff.userId}`);
   }
 

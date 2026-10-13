@@ -165,20 +165,17 @@ export async function updateStudentHealth(studentId, data) {
 }
 
 /**
- * Updates a student's performance status within customData via the verified REST Student API.
- * Calls PATCH /api/v1/students/:id.
+ * Updates a student's performance trend status via dedicated tenant-scoped REST endpoint.
+ * Calls PATCH /api/v1/students/:id/performance-status.
  *
  * @param {string} studentId - PostgreSQL Student UUID
  * @param {string} status - Performance status ('excellent' | 'improving' | 'stable' | 'warning' | 'critical')
- * @param {Object} [currentCustomData={}] - Existing customData to preserve other custom fields
  * @returns {Promise<{ success: boolean, data: Object, message?: string }>}
  */
-export async function updateStudentPerformanceStatus(studentId, status, currentCustomData = {}) {
-  return updateStudent(studentId, {
-    customData: {
-      ...currentCustomData,
-      performanceStatus: status
-    }
+export async function updateStudentPerformanceStatus(studentId, status) {
+  return apiClient(`/api/v1/students/${encodeURIComponent(studentId)}/performance-status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status })
   });
 }
 

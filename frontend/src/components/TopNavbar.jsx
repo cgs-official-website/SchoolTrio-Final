@@ -10,7 +10,65 @@ import { FiSun, FiMoon } from 'react-icons/fi';
 import { notifyDataChanged } from '../utils/liveData';
 import toast from 'react-hot-toast';
 
-export default function TopNavbar({ schoolName, schoolLogo, toggleSidebar, navItems = [] }) {
+/**
+ * Resolves the display identity for the TopNavbar.
+ * In Parent Portal, reflects active child if resolved, or safe loading/fallback.
+ * In Admin, Teacher, Super Admin portals, retains existing authenticated identity.
+ */
+export function resolveTopNavbarIdentity({ userProfile, activeChild = null, activeChildLoading = false, schoolName = '' } = {}) {
+  const role = userProfile?.role?.toLowerCase();
+  if (role === 'parent') {
+    if (activeChildLoading) {
+      return {
+        isParent: true,
+        loading: true,
+        displayName: 'Loading...',
+        subtitle: 'Loading child...',
+        label: 'Active Child',
+        avatarInitials: 'PA'
+      };
+    }
+    if (activeChild) {
+      const childName = activeChild.name || `${activeChild.firstName || ''} ${activeChild.lastName || ''}`.trim() || 'Student';
+      const initials = (childName.replace(/[^a-zA-Z]/g, '').substring(0, 2) || 'ST').toUpperCase();
+      return {
+        isParent: true,
+        loading: false,
+        displayName: childName,
+        subtitle: `Parent: ${userProfile?.name || userProfile?.email?.split('@')[0] || 'Parent'}`,
+        label: 'Active Child',
+        avatarInitials: initials
+      };
+    }
+    return {
+      isParent: true,
+      loading: false,
+      displayName: userProfile?.name || userProfile?.email?.split('@')[0] || 'Parent',
+      subtitle: 'Parent Portal',
+      label: null,
+      avatarInitials: ((userProfile?.name || 'PA').substring(0, 2)).toUpperCase()
+    };
+  }
+
+  const name = userProfile?.name || userProfile?.email?.split('@')[0] || 'User';
+  return {
+    isParent: false,
+    loading: false,
+    displayName: name,
+    subtitle: schoolName || userProfile?.role || 'Portal',
+    label: null,
+    avatarInitials: (name.substring(0, 2)).toUpperCase()
+  };
+}
+
+export default function TopNavbar({ 
+  schoolName, 
+  schoolLogo, 
+  toggleSidebar, 
+  navItems = [],
+  activeChild = null,
+  activeChildLoading = false
+}) {
   const { userProfile } = useAuth();
   const { unreadCounts, clearBadge } = useNotifications();
   const navigate = useNavigate();
@@ -477,23 +535,78 @@ export default function TopNavbar({ schoolName, schoolLogo, toggleSidebar, navIt
 
         <div className="hidden sm:block h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1 shrink-0"></div>
 
-        {/* User Profile */}
+        {/* User / Active Child Profile */}
         <div className="flex items-center gap-3 pl-1 min-w-0 shrink-0">
-          <div className="hidden md:flex flex-col text-right min-w-0 max-w-xs lg:max-w-sm overflow-hidden group">
-            <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
-              {userProfile?.name || userProfile?.email?.split('@')[0] || 'User'}
-            </p>
-            <div className="overflow-hidden whitespace-nowrap">
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider inline-block animate-marquee hover-pause pr-8">
-                {schoolName || userProfile?.role || 'Portal'}
+          {userProfile?.role === 'parent' ? (
+            activeChildLoading ? (
+              <div 
+                data-testid="topnavbar-loading-child"
+                className="hidden md:flex flex-col text-right min-w-0"
+              >
+                <p className="text-xs text-slate-400 dark:text-slate-500 animate-pulse font-medium">Loading child...</p>
+              </div>
+            ) : activeChild ? (
+              <div 
+                data-testid="topnavbar-active-child-container"
+                className="hidden md:flex flex-col text-right min-w-0 max-w-xs lg:max-w-sm overflow-hidden group"
+              >
+                <div className="flex items-center justify-end gap-1.5">
+                  <span 
+                    data-testid="topnavbar-active-child-label"
+                    className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 shrink-0"
+                  >
+                    Active Child
+                  </span>
+                  <p 
+                    data-testid="topnavbar-active-child-name"
+                    className="text-sm font-bold text-slate-900 dark:text-white truncate"
+                  >
+                    {activeChild.name || `${activeChild.firstName || ''} ${activeChild.lastName || ''}`.trim() || 'Student'}
+                  </p>
+                </div>
+                <p 
+                  data-testid="topnavbar-parent-identity"
+                  className="text-[11px] text-slate-400 dark:text-slate-500 font-medium truncate"
+                  title={`Parent Account: ${userProfile?.name || userProfile?.email || 'Parent'}`}
+                >
+                  Parent: {userProfile?.name || userProfile?.email?.split('@')[0] || 'Parent'}
+                </p>
+              </div>
+            ) : (
+              <div 
+                data-testid="topnavbar-parent-fallback-container"
+                className="hidden md:flex flex-col text-right min-w-0 max-w-xs lg:max-w-sm overflow-hidden group"
+              >
+                <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                  {userProfile?.name || userProfile?.email?.split('@')[0] || 'User'}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">
+                  Parent Portal
+                </p>
+              </div>
+            )
+          ) : (
+            <div className="hidden md:flex flex-col text-right min-w-0 max-w-xs lg:max-w-sm overflow-hidden group">
+              <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                {userProfile?.name || userProfile?.email?.split('@')[0] || 'User'}
               </p>
+              <div className="overflow-hidden whitespace-nowrap">
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider inline-block animate-marquee hover-pause pr-8">
+                  {schoolName || userProfile?.role || 'Portal'}
+                </p>
+              </div>
             </div>
-          </div>
-          <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0 shadow-sm relative z-10 overflow-hidden ${schoolLogo ? 'bg-white dark:bg-slate-900' : 'bg-emerald-500 text-white'}`}>
+          )}
+          <div 
+            data-testid="topnavbar-avatar"
+            className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0 shadow-sm relative z-10 overflow-hidden ${schoolLogo ? 'bg-white dark:bg-slate-900' : (userProfile?.role === 'parent' && activeChild ? 'bg-primary-600 text-white' : 'bg-emerald-500 text-white')}`}
+          >
             {schoolLogo ? (
               <img src={schoolLogo} alt="School Logo" className="w-full h-full object-contain" />
             ) : (
-              getInitials(userProfile?.name, userProfile?.email)
+              userProfile?.role === 'parent' && activeChild
+                ? getInitials(activeChild.name || activeChild.firstName, null)
+                : getInitials(userProfile?.name, userProfile?.email)
             )}
           </div>
         </div>

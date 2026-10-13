@@ -16,6 +16,202 @@ import { LuTrendingUp, LuSearch, LuDownload, LuAward, LuX, LuFileDown } from 're
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 
+export function getStatusColorClass(status) {
+  switch (status) {
+    case 'excellent': return 'text-purple-700 bg-purple-100';
+    case 'improving': return 'text-green-700 bg-green-100';
+    case 'stable': return 'text-blue-700 bg-blue-100';
+    case 'warning': return 'text-amber-700 bg-amber-100';
+    case 'critical': return 'text-red-700 bg-red-100';
+    default: return 'text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700';
+  }
+}
+
+export function applyStudentStatusUpdate(studentsList, studentId, newStatus) {
+  if (!Array.isArray(studentsList)) return [];
+  return studentsList.map(s => (s.id === studentId ? {
+    ...s,
+    performanceStatus: newStatus,
+    customData: { ...(s.customData || {}), performanceStatus: newStatus }
+  } : s));
+}
+
+/**
+ * Resolves an assessment's authoritative date timestamp in preferred order:
+ * 1. Valid assessment.date
+ * 2. Valid assessment.exam.startDate (if relation exists)
+ * 3. Valid assessment.createdAt
+ * Returns epoch timestamp (number) or null if no valid candidate exists.
+ */
+export function resolveAssessmentTimestamp(assessment) {
+  if (!assessment || typeof assessment !== 'object') return null;
+
+  const candidates = [
+    assessment.date,
+    assessment.exam?.startDate,
+    assessment.createdAt
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate !== null && candidate !== undefined && candidate !== '') {
+      const parsed = new Date(candidate).getTime();
+      if (!isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Computes academic grade metrics for a student from accessible assessments and grade records.
+ * Deterministically chooses the latest assessment score (with stable ID tie-breaker).
+ * Excludes absent/exempt records from ordinary numeric scores.
+ */
+export function calculateStudentGrades(studentId, assessmentsData, gradesMap) {
+  let totalObtained = 0;
+  let totalMax = 0;
+  let lastExamScore = '-';
+  let lastExamDate = -1;
+  let lastExamId = null;
+
+  if (!Array.isArray(assessmentsData) || !gradesMap || typeof gradesMap !== 'object') {
+    return { avgGrade: '-', avgPerc: null, lastExamScore: '-' };
+  }
+
+  assessmentsData.forEach(assessment => {
+    if (!assessment || !assessment.id) return;
+    const assessmentGrades = gradesMap[assessment.id];
+    if (!assessmentGrades || !Object.prototype.hasOwnProperty.call(assessmentGrades, studentId)) {
+      return;
+    }
+
+    const entry = assessmentGrades[studentId];
+    if (entry === undefined || entry === null || entry === '') return;
+
+    const isObj = typeof entry === 'object' && entry !== null;
+    const isAbsent = isObj && Boolean(entry.isAbsent);
+    const isExempt = isObj && Boolean(entry.isExempt);
+
+    // Absent or exempt records do not count as ordinary numeric marks
+    if (isAbsent || isExempt) return;
+
+    const numGrade = isObj ? Number(entry.marksObtained) : Number(entry);
+    const numTotal = Number(assessment.totalMarks);
+
+    // Validate that marks and maxMarks are finite numbers, and totalMarks > 0
+    if (!Number.isFinite(numGrade) || !Number.isFinite(numTotal) || numTotal <= 0) {
+      return;
+    }
+
+    totalObtained += numGrade;
+    totalMax += numTotal;
+
+    const rawDate = resolveAssessmentTimestamp(assessment);
+    const assessDate = rawDate !== null ? rawDate : 0;
+
+    // Latest assessment selection with deterministic tie-breaker:
+    // 1. First eligible assessment seen (lastExamDate === -1)
+    // 2. Later timestamp (assessDate > lastExamDate)
+    // 3. Identical timestamp: deterministic tie-breaker based on stable unique assessment.id
+    const isLater = lastExamDate === -1 || assessDate > lastExamDate;
+    const isTieBreakerWinner =
+      assessDate === lastExamDate &&
+      String(assessment.id).localeCompare(String(lastExamId || '')) > 0;
+
+    if (isLater || isTieBreakerWinner) {
+      lastExamDate = assessDate;
+      lastExamId = assessment.id;
+      lastExamScore = Math.round((numGrade / numTotal) * 100);
+    }
+  });
+
+  const avgPerc = totalMax > 0 ? (totalObtained / totalMax) * 100 : null;
+  let avgGrade = '-';
+  if (avgPerc !== null) {
+    if (avgPerc >= 90) avgGrade = 'A+';
+    else if (avgPerc >= 80) avgGrade = 'A';
+    else if (avgPerc >= 70) avgGrade = 'B';
+    else if (avgPerc >= 60) avgGrade = 'C';
+    else if (avgPerc >= 50) avgGrade = 'D';
+    else avgGrade = 'F';
+  }
+
+  return {
+    avgGrade,
+    avgPerc,
+    lastExamScore: lastExamScore !== '-' ? `${lastExamScore}%` : '-'
+  };
+}
+
+/**
+ * Paginates through all pages for an assessment grade endpoint to retrieve the complete grade roster.
+ */
+export async function fetchAllGradesForAssessment(assessmentId, fetchFn = getAssessmentGrades) {
+  let allGrades = [];
+  let page = 1;
+  const limit = 100;
+  let hasMore = true;
+  const maxPages = 50;
+
+  while (hasMore && page <= maxPages) {
+    const res = await fetchFn(assessmentId, { page, limit });
+    const items = Array.isArray(res?.data) ? res.data : [];
+    allGrades = allGrades.concat(items);
+
+    const pagination = res?.pagination;
+    if (pagination && typeof pagination.totalPages === 'number') {
+      hasMore = page < pagination.totalPages;
+    } else if (pagination && typeof pagination.hasNextPage === 'boolean') {
+      hasMore = pagination.hasNextPage;
+    } else {
+      hasMore = items.length === limit;
+    }
+    page++;
+  }
+
+  return allGrades;
+}
+
+/**
+ * BUG-PERF-006: Pure helper to compute class average percentage and letter grade.
+ * - Includes only students with finite numeric avgPerc (excluding null, undefined, NaN, Infinity).
+ * - Excludes students with no applicable numeric marks (e.g. absent/exempt-only).
+ * - Computes the arithmetic mean of individual student percentages.
+ * - Returns { classAvgPerc: null, classAvgGrade: '-' } when no applicable students exist.
+ * - Returns { classAvgPerc: 0, classAvgGrade: 'F' } when valid average is exactly 0.
+ * - Standard academic grade boundaries: >=90 A+, >=80 A, >=70 B, >=60 C, >=50 D, <50 F.
+ * - Rounds arithmetic mean to 1 decimal place matching percentage display precision.
+ */
+export function calculateClassAverageMetrics(processedStudents) {
+  if (!Array.isArray(processedStudents) || processedStudents.length === 0) {
+    return { classAvgPerc: null, classAvgGrade: '-' };
+  }
+
+  const scoredStudents = processedStudents.filter(
+    s => s && s.avgPerc !== null && s.avgPerc !== undefined && typeof s.avgPerc === 'number' && Number.isFinite(s.avgPerc)
+  );
+
+  if (scoredStudents.length === 0) {
+    return { classAvgPerc: null, classAvgGrade: '-' };
+  }
+
+  const total = scoredStudents.reduce((sum, s) => sum + s.avgPerc, 0);
+  const rawAvg = total / scoredStudents.length;
+  const classAvgPerc = Number(rawAvg.toFixed(1));
+
+  let classAvgGrade = 'F';
+  if (classAvgPerc >= 90) classAvgGrade = 'A+';
+  else if (classAvgPerc >= 80) classAvgGrade = 'A';
+  else if (classAvgPerc >= 70) classAvgGrade = 'B';
+  else if (classAvgPerc >= 60) classAvgGrade = 'C';
+  else if (classAvgPerc >= 50) classAvgGrade = 'D';
+  else classAvgGrade = 'F';
+
+  return { classAvgPerc, classAvgGrade };
+}
+
 export default function PerformanceTracking() {
   const { userProfile } = useAuth();
   const schoolId = userProfile?.schoolId;
@@ -28,6 +224,7 @@ export default function PerformanceTracking() {
   const [gradesMap, setGradesMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
+  const [partialError, setPartialError] = useState(false);
 
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportFileName, setExportFileName] = useState('');
@@ -103,42 +300,122 @@ export default function PerformanceTracking() {
   };
 
   const fetchPerformanceData = async (targetClassId) => {
+    setPartialError(false);
     try {
       const res = await listAssessments({ classId: targetClassId, limit: 100 });
       const assessments = res?.data || [];
       
       if (!mountedRef.current || currentClassIdRef.current !== targetClassId) return;
 
-      // Fetch grades concurrently for each assessment in the class
+      let hasPartialFailure = false;
       const gradesResults = await Promise.all(
         assessments.map(async (a) => {
-          const gRes = await getAssessmentGrades(a.id);
-          return { assessmentId: a.id, grades: gRes?.data || [] };
+          try {
+            const grades = await fetchAllGradesForAssessment(a.id);
+            return { assessmentId: a.id, grades, failed: false };
+          } catch (err) {
+            console.warn(`[PerformanceTracking] Failed to load grades for assessment ${a.id}:`, err?.message || err);
+            hasPartialFailure = true;
+            return { assessmentId: a.id, grades: null, failed: true };
+          }
         })
       );
 
       if (!mountedRef.current || currentClassIdRef.current !== targetClassId) return;
 
+      if (hasPartialFailure) {
+        setPartialError(true);
+        toast.error("Some assessment records could not be retrieved. Displayed data may be partial.");
+      }
+
       const map = {};
-      gradesResults.forEach(({ assessmentId, grades }) => {
+      const successfulAssessments = [];
+
+      gradesResults.forEach(({ assessmentId, grades, failed }) => {
+        if (failed || !Array.isArray(grades)) return;
+
+        const matchingAssessment = assessments.find(a => a.id === assessmentId);
+        if (matchingAssessment) {
+          successfulAssessments.push(matchingAssessment);
+        }
+
         map[assessmentId] = {};
         grades.forEach(g => {
-          if (g.studentId && g.marksObtained !== undefined && g.marksObtained !== null) {
-            map[assessmentId][g.studentId] = Number(g.marksObtained);
+          if (g && g.studentId) {
+            if (g.isAbsent || g.isExempt) {
+              map[assessmentId][g.studentId] = {
+                isAbsent: Boolean(g.isAbsent),
+                isExempt: Boolean(g.isExempt),
+                marksObtained: null
+              };
+            } else if (g.marksObtained !== undefined && g.marksObtained !== null && g.marksObtained !== '') {
+              const num = Number(g.marksObtained);
+              if (Number.isFinite(num)) {
+                map[assessmentId][g.studentId] = {
+                  isAbsent: false,
+                  isExempt: false,
+                  marksObtained: num
+                };
+              }
+            }
           }
         });
       });
 
-      setAssessmentsData(assessments);
+      setAssessmentsData(successfulAssessments);
       setGradesMap(map);
     } catch (error) {
       if (mountedRef.current && currentClassIdRef.current === targetClassId) {
         console.error("Error fetching performance assessment data:", error);
         toast.error("Failed to load performance assessment data.");
       }
-    } finally {
+    }
+  };
+
+  const fetchAttendanceData = async (targetClassId) => {
+    try {
+      const res = await listAttendanceSessions({ classId: targetClassId, limit: 100 });
+      if (!mountedRef.current || currentClassIdRef.current !== targetClassId) return;
+      const sessions = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+      const detailedSessions = await Promise.all(
+        sessions.map(async (s) => {
+          if (s.records && s.records.length > 0) return s;
+          try {
+            const det = await getAttendanceSession(s.id);
+            return det?.data || det?.session || det || s;
+          } catch {
+            return s;
+          }
+        })
+      );
+      if (!mountedRef.current || currentClassIdRef.current !== targetClassId) return;
+      const formatted = detailedSessions.map(s => {
+        const recs = {};
+        (s.records || []).forEach(r => {
+          if (r.studentId) recs[r.studentId] = r.status;
+        });
+        return { id: s.id, date: s.date, records: recs };
+      });
+      setAttendanceData(formatted);
+    } catch (err) {
+      console.error('Error fetching attendance in PerformanceTracking:', err);
       if (mountedRef.current && currentClassIdRef.current === targetClassId) {
-        setLoading(false);
+        setAttendanceData([]);
+      }
+    }
+  };
+
+  const fetchStudentsData = async (targetClassId) => {
+    try {
+      const res = await listStudents({ classId: targetClassId, limit: 100 });
+      if (!mountedRef.current || currentClassIdRef.current !== targetClassId) return;
+      const studentList = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+      setStudents(studentList);
+    } catch (err) {
+      console.error('Error fetching students in PerformanceTracking:', err);
+      if (mountedRef.current && currentClassIdRef.current === targetClassId) {
+        toast.error("Failed to load student roster.");
+        setStudents([]);
       }
     }
   };
@@ -147,62 +424,28 @@ export default function PerformanceTracking() {
     mountedRef.current = true;
     currentClassIdRef.current = classId;
 
-    if (!schoolId || !classId) return;
+    if (!schoolId || !classId) {
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
 
-    fetchPerformanceData(classId);
-
-    const fetchAttendanceData = async (targetClassId) => {
+    const loadAllClassData = async (targetClassId) => {
       try {
-        const res = await listAttendanceSessions({ classId: targetClassId, limit: 100 });
-        if (!mountedRef.current || currentClassIdRef.current !== targetClassId) return;
-        const sessions = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
-        const detailedSessions = await Promise.all(
-          sessions.map(async (s) => {
-            if (s.records && s.records.length > 0) return s;
-            try {
-              const det = await getAttendanceSession(s.id);
-              return det?.data || det?.session || det || s;
-            } catch {
-              return s;
-            }
-          })
-        );
-        if (!mountedRef.current || currentClassIdRef.current !== targetClassId) return;
-        const formatted = detailedSessions.map(s => {
-          const recs = {};
-          (s.records || []).forEach(r => {
-            if (r.studentId) recs[r.studentId] = r.status;
-          });
-          return { id: s.id, date: s.date, records: recs };
-        });
-        setAttendanceData(formatted);
-      } catch (err) {
-        console.error('Error fetching attendance in PerformanceTracking:', err);
+        await Promise.allSettled([
+          fetchPerformanceData(targetClassId),
+          fetchStudentsData(targetClassId),
+          fetchAttendanceData(targetClassId)
+        ]);
+      } finally {
         if (mountedRef.current && currentClassIdRef.current === targetClassId) {
-          setAttendanceData([]);
+          setLoading(false);
         }
       }
     };
 
-    fetchAttendanceData(classId);
-
-    const fetchStudentsData = async (targetClassId) => {
-      try {
-        const res = await listStudents({ classId: targetClassId, limit: 100 });
-        if (!mountedRef.current || currentClassIdRef.current !== targetClassId) return;
-        const studentList = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
-        setStudents(studentList);
-      } catch (err) {
-        console.error('Error fetching students in PerformanceTracking:', err);
-        if (mountedRef.current && currentClassIdRef.current === targetClassId) {
-          setStudents([]);
-        }
-      }
-    };
-
-    fetchStudentsData(classId);
+    loadAllClassData(classId);
 
     return () => {
       mountedRef.current = false;
@@ -224,48 +467,14 @@ export default function PerformanceTracking() {
     const attendancePerc = total > 0 ? Math.round((present / total) * 100) : 0;
 
     // 2. Calculate Grades
-    let totalObtained = 0, totalMax = 0;
-    let lastExamScore = '-';
-    let lastExamDate = 0;
-
-    assessmentsData.forEach(assessment => {
-      const assessmentGrades = gradesMap[assessment.id];
-      const hasGrade = assessmentGrades && Object.prototype.hasOwnProperty.call(assessmentGrades, student.id);
-      
-      if (hasGrade) {
-        const grade = assessmentGrades[student.id];
-        if (grade !== undefined && grade !== null && grade !== '') {
-          const numGrade = Number(grade);
-          const numTotal = Number(assessment.totalMarks);
-          totalObtained += numGrade;
-          totalMax += numTotal;
-
-          const assessDate = new Date(assessment.date).getTime();
-          if (assessDate > lastExamDate) {
-            lastExamDate = assessDate;
-            lastExamScore = Math.round((numGrade / numTotal) * 100);
-          }
-        }
-      }
-    });
-
-    const avgPerc = totalMax > 0 ? (totalObtained / totalMax) * 100 : null;
-    let avgGrade = '-';
-    if (avgPerc !== null) {
-      if (avgPerc >= 90) avgGrade = 'A+';
-      else if (avgPerc >= 80) avgGrade = 'A';
-      else if (avgPerc >= 70) avgGrade = 'B';
-      else if (avgPerc >= 60) avgGrade = 'C';
-      else if (avgPerc >= 50) avgGrade = 'D';
-      else avgGrade = 'F';
-    }
+    const { avgGrade, avgPerc, lastExamScore } = calculateStudentGrades(student.id, assessmentsData, gradesMap);
 
     return {
       ...student,
       attendancePerc,
       avgGrade,
       avgPerc,
-      lastExamScore: lastExamScore !== '-' ? `${lastExamScore}%` : '-',
+      lastExamScore,
       status: student.customData?.performanceStatus || student.performanceStatus || 'stable'
     };
   });
@@ -276,17 +485,7 @@ export default function PerformanceTracking() {
   );
 
   // Summary Metrics
-  const classAvgPerc = processedStudents.length > 0 
-    ? processedStudents.reduce((sum, s) => sum + (s.avgPerc || 0), 0) / processedStudents.filter(s => s.avgPerc !== null).length || 0 
-    : 0;
-  
-  let classAvgGrade = '-';
-  if (classAvgPerc >= 90) classAvgGrade = 'A+';
-  else if (classAvgPerc >= 80) classAvgGrade = 'A';
-  else if (classAvgPerc >= 70) classAvgGrade = 'B';
-  else if (classAvgPerc >= 60) classAvgGrade = 'C';
-  else if (classAvgPerc >= 50) classAvgGrade = 'D';
-  else if (classAvgPerc > 0) classAvgGrade = 'F';
+  const { classAvgPerc, classAvgGrade } = calculateClassAverageMetrics(processedStudents);
 
   const atRiskCount = processedStudents.filter(s => s.status === 'warning' || s.status === 'critical' || (s.avgPerc !== null && s.avgPerc < 50)).length;
   
@@ -296,33 +495,20 @@ export default function PerformanceTracking() {
 
 
   const handleStatusChange = async (studentId, newStatus) => {
+    if (updatingId === studentId) return;
     setUpdatingId(studentId);
     try {
-      const student = students.find(s => s.id === studentId);
-      await updateStudentPerformanceStatus(studentId, newStatus, student?.customData);
-      setStudents(prev => prev.map(s => (s.id === studentId ? {
-        ...s,
-        performanceStatus: newStatus,
-        customData: { ...(s.customData || {}), performanceStatus: newStatus }
-      } : s)));
+      await updateStudentPerformanceStatus(studentId, newStatus);
+      setStudents(prev => applyStudentStatusUpdate(prev, studentId, newStatus));
       toast.success("Status updated");
-    } catch {
-      toast.error("Failed to update status");
+    } catch (error) {
+      toast.error(error?.message || "Failed to update status");
     } finally {
       setUpdatingId(null);
     }
   };
 
-  const getStatusColor = (status) => {
-    switch(status) {
-      case 'excellent': return 'text-purple-700 bg-purple-100';
-      case 'improving': return 'text-green-700 bg-green-100';
-      case 'stable': return 'text-blue-700 bg-blue-100';
-      case 'warning': return 'text-amber-700 bg-amber-100';
-      case 'critical': return 'text-red-700 bg-red-100';
-      default: return 'text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700';
-    }
-  };
+  const getStatusColor = (status) => getStatusColorClass(status);
 
   const getGradeColor = (grade) => {
     if (grade.includes('A')) return 'text-green-600';
@@ -366,6 +552,13 @@ export default function PerformanceTracking() {
         </div>
       </div>
 
+      {partialError && (
+        <div className="mb-6 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-sm flex items-center gap-3 shrink-0">
+          <span className="font-bold">Notice:</span>
+          <span>Some assessment records could not be retrieved. Displayed performance metrics reflect currently accessible assessments.</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8 shrink-0">
         <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm col-span-1 md:col-span-2 flex items-center gap-6">
           <div className="w-16 h-16 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
@@ -375,7 +568,9 @@ export default function PerformanceTracking() {
             <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Class Average</p>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="text-3xl font-black text-slate-900 dark:text-white">{classAvgGrade}</span>
-              <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">{classAvgPerc > 0 ? `${classAvgPerc.toFixed(1)}%` : 'No data'}</span>
+              <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                {classAvgPerc !== null && Number.isFinite(classAvgPerc) ? `${classAvgPerc.toFixed(1)}%` : 'No data'}
+              </span>
             </div>
           </div>
         </div>

@@ -334,3 +334,24 @@ export const bulkImportStudentsSchema = {
   })
 };
 
+export const PERFORMANCE_STATUSES = Object.freeze([
+  'stable',
+  'improving',
+  'excellent',
+  'warning',
+  'critical'
+]);
+
+export const updateStudentPerformanceStatusSchema = {
+  params: z.object({
+    id: z.string({ required_error: 'Student ID is required' }).regex(REGEX.UUID, 'Invalid student ID format')
+  }),
+  body: z
+    .object({
+      status: z.enum(PERFORMANCE_STATUSES, {
+        errorMap: () => ({ message: `Status must be one of: ${PERFORMANCE_STATUSES.join(', ')}` })
+      })
+    })
+    .strict()
+};
+
