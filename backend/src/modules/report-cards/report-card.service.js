@@ -158,11 +158,12 @@ async function assertReportCardFinalizedForStudents(schoolId, reportCard, actor)
   if (!actor) return;
   const role = (actor.systemRole || actor.role || '').toUpperCase();
   if (role === SYSTEM_ROLES.STUDENT || role === 'STUDENT' || role === SYSTEM_ROLES.PARENT || role === 'PARENT') {
-    if (reportCard.examId) {
-      const exam = await runWithTenantContext({ schoolId }, () => findExamById(schoolId, reportCard.examId));
-      if (exam && exam.status && exam.status !== 'FINALIZED') {
-        throw new ForbiddenError('Report card is not yet finalized. Please wait until results are released.');
-      }
+    if (!reportCard.examId) {
+      throw new ForbiddenError('Continuous report cards are not published for public view.');
+    }
+    const exam = await runWithTenantContext({ schoolId }, () => findExamById(schoolId, reportCard.examId));
+    if (!exam || !['PUBLISHED', 'FINALIZED'].includes(exam.status)) {
+      throw new ForbiddenError('Report card is not yet published for this examination.');
     }
   }
 }
@@ -515,6 +516,21 @@ export async function publishReportCards(schoolId, input = {}, actor = null) {
     const results = [];
     const publishedTimestamp = new Date();
 
+    // If publishing for a formal examination that is still in DRAFT, transition to PUBLISHED
+    if (exam && exam.status === 'DRAFT') {
+      await tx.examination.update({
+        where: {
+          schoolId_id: {
+            schoolId,
+            id: exam.id
+          }
+        },
+        data: {
+          status: 'PUBLISHED'
+        }
+      });
+    }
+
     for (const card of studentCards) {
       // 1. Acquire pessimistic row-lock on student to prevent concurrent duplicate publishing
       await findStudentByIdForUpdate(schoolId, card.student.id, tx);
@@ -677,18 +693,20 @@ export async function listStudentReportCards(schoolId, studentId, query = {}, ac
 
   let filteredItems = result.items;
   if (isStudentOrParent) {
-    // Only return report cards where exam is null (continuous) OR exam status is FINALIZED
+    // Only return report cards belonging to explicitly published/finalized exams (never DRAFT or unlinked)
     const examIds = result.items.map(r => r.examId).filter(Boolean);
-    const finalizedExams = await prisma.examination.findMany({
-      where: {
-        id: { in: examIds },
-        schoolId,
-        status: 'FINALIZED'
-      },
-      select: { id: true }
-    });
-    const finalizedExamIdSet = new Set(finalizedExams.map(e => e.id));
-    filteredItems = result.items.filter(r => !r.examId || finalizedExamIdSet.has(r.examId));
+    const publishedExams = examIds.length > 0
+      ? await prisma.examination.findMany({
+          where: {
+            id: { in: examIds },
+            schoolId,
+            status: { in: ['PUBLISHED', 'FINALIZED'] }
+          },
+          select: { id: true }
+        })
+      : [];
+    const publishedExamIdSet = new Set(publishedExams.map(e => e.id));
+    filteredItems = result.items.filter(r => r.examId && publishedExamIdSet.has(r.examId));
   }
 
   const pagination = buildPaginationMetadata(isStudentOrParent ? filteredItems.length : result.total, paginationParams.page, paginationParams.limit);

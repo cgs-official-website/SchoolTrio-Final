@@ -203,12 +203,30 @@ export async function listAssessments(schoolId, query = {}, actor = null) {
     defaultOrder: 'desc'
   });
 
+  const isStudentOrParent = role === SYSTEM_ROLES.PARENT || role === 'PARENT' || role === SYSTEM_ROLES.STUDENT || role === 'STUDENT';
+  if (isStudentOrParent && query.examId) {
+    const exam = await prisma.examination.findFirst({
+      where: {
+        id: query.examId,
+        schoolId,
+        status: { in: ['PUBLISHED', 'FINALIZED'] }
+      }
+    });
+    if (!exam) {
+      return {
+        assessments: [],
+        pagination: buildPaginationMetadata(0, paginationParams.page, paginationParams.limit)
+      };
+    }
+  }
+
   const filterOptions = {
     classId: effectiveClassId,
     examId: query.examId,
     subjectId: effectiveSubjectId,
     search: query.search ? query.search.trim() : undefined,
-    date: query.date
+    date: query.date,
+    publishedExamsOnly: isStudentOrParent
   };
 
   const paginationOptions = {

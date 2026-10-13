@@ -313,6 +313,17 @@ export async function getAssessmentGrade(schoolId, assessmentId, studentId, acto
         throw new ForbiddenError('Access denied: Students can only view their own grades');
       }
     }
+
+    // Exam publication status check for parents and students
+    if ((role === SYSTEM_ROLES.PARENT || role === 'PARENT' || role === SYSTEM_ROLES.STUDENT || role === 'STUDENT') && assessment.examId) {
+      const exam = await prisma.examination.findFirst({
+        where: { id: assessment.examId, schoolId },
+        select: { status: true }
+      });
+      if (exam && exam.status === 'DRAFT') {
+        throw new ForbiddenError('Results for this examination have not yet been published');
+      }
+    }
   }
 
   const grade = await assessmentGradeRepository.findGrade(schoolId, assessmentId, studentId);

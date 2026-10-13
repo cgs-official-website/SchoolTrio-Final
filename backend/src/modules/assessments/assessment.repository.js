@@ -26,6 +26,13 @@ export async function findAssessments(schoolId, query = {}, pagination = {}) {
     where.examId = query.examId;
   }
 
+  if (query.publishedExamsOnly) {
+    where.OR = [
+      { examId: null },
+      { exam: { status: { in: ['PUBLISHED', 'FINALIZED'] } } }
+    ];
+  }
+
   if (query.subjectId) {
     where.subjectId = query.subjectId;
   }

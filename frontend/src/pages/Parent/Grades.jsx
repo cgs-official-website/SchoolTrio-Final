@@ -20,6 +20,8 @@ export default function ParentGrades() {
   const [selectedReport, setSelectedReport] = useState(null);
   const [activeTemplate, setActiveTemplate] = useState(null);
   const [activePreviewTab, setActivePreviewTab] = useState('pdf');
+  const [selectedExamId, setSelectedExamId] = useState('');
+  const [availableExams, setAvailableExams] = useState([]);
 
   const mountedRef = useRef(true);
   const currentStudentRef = useRef(studentId);
@@ -27,6 +29,7 @@ export default function ParentGrades() {
   useEffect(() => {
     setSelectedReport(null);
     setActivePreviewTab('pdf');
+    setSelectedExamId('');
   }, [location.pathname]);
 
   // Load the active published template configured by the school admin as fallback/context
@@ -47,7 +50,7 @@ export default function ParentGrades() {
     fetchActiveTemplate();
   }, [fetchActiveTemplate]);
 
-  const fetchReportCards = useCallback(async (targetStudentId, silent = false) => {
+  const fetchReportCards = useCallback(async (targetStudentId, silent = false, examFilter = '') => {
     if (!targetStudentId) {
       setReportCards([]);
       setLoading(false);
@@ -57,13 +60,29 @@ export default function ParentGrades() {
     if (!silent) setLoading(true);
 
     try {
-      const res = await getStudentReportCards(targetStudentId, { limit: 50, sortBy: 'publishedAt', sortOrder: 'desc' });
+      const queryParams = { limit: 50, sortBy: 'publishedAt', sortOrder: 'desc' };
+      if (examFilter) {
+        queryParams.examId = examFilter;
+      }
+
+      const res = await getStudentReportCards(targetStudentId, queryParams);
       if (!mountedRef.current || currentStudentRef.current !== targetStudentId) return;
 
       const rawList = res?.data || [];
       const adaptedList = adaptReportCards(rawList);
       adaptedList.sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
       setReportCards(adaptedList);
+
+      // Populate distinct published exams from full list (when not filtered)
+      if (!examFilter) {
+        const examsMap = new Map();
+        adaptedList.forEach(r => {
+          if (r.examId && r.examName) {
+            examsMap.set(r.examId, r.examName);
+          }
+        });
+        setAvailableExams(Array.from(examsMap.entries()).map(([id, name]) => ({ id, name })));
+      }
     } catch (error) {
       if (mountedRef.current && currentStudentRef.current === targetStudentId) {
         console.error("Error fetching report cards:", error);
@@ -77,6 +96,14 @@ export default function ParentGrades() {
     }
   }, []);
 
+  const handleExamChange = (newExamId) => {
+    setSelectedExamId(newExamId);
+    setSelectedReport(null);
+    if (studentId) {
+      fetchReportCards(studentId, false, newExamId);
+    }
+  };
+
   useEffect(() => {
     mountedRef.current = true;
     currentStudentRef.current = studentId;
@@ -88,7 +115,8 @@ export default function ParentGrades() {
     }
 
     setSelectedReport(null);
-    fetchReportCards(studentId, false);
+    setSelectedExamId('');
+    fetchReportCards(studentId, false, '');
 
     return () => {
       mountedRef.current = false;
@@ -624,14 +652,34 @@ export default function ParentGrades() {
 
   return (
     <div className="p-4 sm:p-8 max-w-5xl mx-auto pb-24 min-w-0 w-full">
-      <div className="flex items-center gap-3 mb-8 w-full">
-        <div className="w-12 h-12 bg-primary-50 text-primary-600 rounded-2xl flex items-center justify-center shadow-sm shrink-0">
-          <Award size={24} />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 w-full">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 bg-primary-50 text-primary-600 rounded-2xl flex items-center justify-center shadow-sm shrink-0">
+            <Award size={24} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight truncate">Academic Report Cards</h1>
+            <p className="text-slate-500 dark:text-slate-400 text-sm mt-0.5 font-medium">View and download your child's published academic progress records</p>
+          </div>
         </div>
-        <div className="min-w-0">
-          <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight truncate">Academic Report Cards</h1>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-0.5 font-medium">View and download your child's published academic progress records</p>
-        </div>
+
+        {availableExams.length > 0 && (
+          <div className="flex items-center gap-2 self-start sm:self-auto bg-white dark:bg-slate-900 p-2 px-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">Exam:</label>
+            <select
+              value={selectedExamId}
+              onChange={(e) => handleExamChange(e.target.value)}
+              className="bg-transparent text-sm font-bold text-slate-900 dark:text-white focus:outline-none cursor-pointer pr-2"
+            >
+              <option value="" className="text-slate-900 dark:text-white bg-white dark:bg-slate-900">All Published Exams</option>
+              {availableExams.map(ex => (
+                <option key={ex.id} value={ex.id} className="text-slate-900 dark:text-white bg-white dark:bg-slate-900">
+                  {ex.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {reportCards.length === 0 ? (

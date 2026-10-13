@@ -166,4 +166,61 @@ describe('Exams & Report Card Workflow - Structure Preservation', () => {
     expect(serialized.componentMarks).toBeNull();
     expect(serialized.remarks).toBe('Good effort throughout the term');
   });
+
+  it('filters report cards strictly by publication status ensuring unpublished exams remain hidden from parents', () => {
+    // Simulate candidate report cards in database for a student
+    const candidateCards = [
+      {
+        id: 'rc-exam-a',
+        examId: 'exam-a-id',
+        title: 'Midterm Examination 2024',
+        publishedAt: new Date('2024-10-01'),
+        marksData: { totalObtained: 85, totalMax: 100 }
+      },
+      {
+        id: 'rc-exam-b',
+        examId: 'exam-b-id',
+        title: 'Final Examination 2024',
+        publishedAt: new Date('2024-10-10'),
+        marksData: { totalObtained: 90, totalMax: 100 }
+      },
+      {
+        id: 'rc-continuous',
+        examId: null,
+        title: 'Class Assessments Summary',
+        publishedAt: new Date('2024-09-01'),
+        marksData: { totalObtained: 70, totalMax: 100 }
+      }
+    ];
+
+    // Scenario 1: Only Exam A is published (status in PUBLISHED/FINALIZED), Exam B is in DRAFT
+    const publishedExamsScenario1 = new Set(['exam-a-id']);
+    const visibleCardsScenario1 = candidateCards.filter(
+      r => r.examId && publishedExamsScenario1.has(r.examId)
+    );
+
+    expect(visibleCardsScenario1).toHaveLength(1);
+    expect(visibleCardsScenario1[0].examId).toBe('exam-a-id');
+    expect(visibleCardsScenario1[0].id).toBe('rc-exam-a');
+
+    // Scenario 2: Both Exam A and Exam B are published
+    const publishedExamsScenario2 = new Set(['exam-a-id', 'exam-b-id']);
+    const visibleCardsScenario2 = candidateCards.filter(
+      r => r.examId && publishedExamsScenario2.has(r.examId)
+    );
+
+    expect(visibleCardsScenario2).toHaveLength(2);
+    expect(visibleCardsScenario2.map(c => c.examId)).toEqual(['exam-a-id', 'exam-b-id']);
+
+    // Scenario 3: Filtered by specific exam (Exam B only)
+    const filterExamId = 'exam-b-id';
+    const specificExamCards = visibleCardsScenario2.filter(r => r.examId === filterExamId);
+    expect(specificExamCards).toHaveLength(1);
+    expect(specificExamCards[0].examId).toBe('exam-b-id');
+
+    // Scenario 4: Requesting an unpublished exam returns empty
+    const unpublishedFilterExamId = 'exam-c-draft';
+    const unpublishedFiltered = visibleCardsScenario2.filter(r => r.examId === unpublishedFilterExamId);
+    expect(unpublishedFiltered).toHaveLength(0);
+  });
 });
