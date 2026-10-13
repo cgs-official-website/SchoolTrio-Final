@@ -5,6 +5,40 @@ import { LuArrowLeft as ArrowLeft } from 'react-icons/lu';
 import { FiLoader as Loader, FiCheckCircle as CheckCircle } from 'react-icons/fi';
 import authApi from '../api/auth';
 
+/**
+ * Validates the email address entered into the Forgot Password form.
+ *
+ * @param {string} rawEmail
+ * @returns {{ valid: boolean, error: string|null, email?: string }}
+ */
+export const validateResetEmail = (rawEmail) => {
+  const targetEmail = (rawEmail || '').trim();
+  if (!targetEmail) {
+    return { valid: false, error: 'Please enter your email address.' };
+  }
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(targetEmail)) {
+    return { valid: false, error: 'Please enter a valid email address.' };
+  }
+  return { valid: true, error: null, email: targetEmail.toLowerCase() };
+};
+
+/**
+ * Formats API errors for display in the Forgot Password form.
+ *
+ * @param {Object} err
+ * @returns {string} User-facing error message
+ */
+export const getResetErrorMessage = (err) => {
+  if (err?.status === 429) {
+    return 'Too many requests. Please wait a few moments before trying again.';
+  }
+  if (err?.status === 400) {
+    return err?.message || 'Please provide a valid email address.';
+  }
+  return err?.message || 'Unable to process password reset request. Please try again later.';
+};
+
 export default function ForgotPassword() {
   const navigate = useNavigate();
   const reducedMotion = useReducedMotion();
@@ -16,15 +50,9 @@ export default function ForgotPassword() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const targetEmail = email.trim();
-    if (!targetEmail) {
-      setError("Please enter your email address.");
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(targetEmail)) {
-      setError("Please enter a valid email address.");
+    const validation = validateResetEmail(email);
+    if (!validation.valid) {
+      setError(validation.error);
       return;
     }
 
@@ -33,19 +61,13 @@ export default function ForgotPassword() {
     try {
       const frontendUrl = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : undefined;
       await authApi.passwordResetRequest({ 
-        email: targetEmail.toLowerCase(),
+        email: validation.email,
         frontendUrl
       });
       setSuccess(true);
     } catch (err) {
       console.error("[PASSWORD RESET REQUEST ERROR]", err);
-      if (err.status === 429) {
-        setError("Too many requests. Please wait a few moments before trying again.");
-      } else if (err.status === 400) {
-        setError(err.message || "Please provide a valid email address.");
-      } else {
-        setError(err.message || "Unable to process password reset request. Please try again later.");
-      }
+      setError(getResetErrorMessage(err));
     } finally {
       setLoading(false);
     }

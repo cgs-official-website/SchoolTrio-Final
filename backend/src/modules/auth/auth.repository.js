@@ -168,6 +168,42 @@ export const findUserByEmail = async (email, { schoolId = null, includePassword 
   });
 };
 
+/**
+ * Retrieves all active users matching an email address across school tenants.
+ * Used for tenant-aware password reset and disambiguation.
+ *
+ * @param {string} email - User email address
+ * @param {Object} [options] - Query options
+ * @param {Object} [options.tx] - Optional Prisma transaction client
+ * @returns {Promise<Array<Object>>} Array of user records
+ */
+export const findActiveUsersByEmail = async (email, { tx = null } = {}) => {
+  if (!email || typeof email !== 'string') {
+    return [];
+  }
+
+  const client = getClient(tx);
+  const normalizedEmail = email.toLowerCase().trim();
+
+  return client.user.findMany({
+    where: {
+      email: normalizedEmail,
+      isActive: true
+    },
+    select: {
+      ...SAFE_USER_SELECT,
+      school: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          status: true
+        }
+      }
+    }
+  });
+};
+
 
 /**
  * Retrieves a user by their legacy Firestore ID or Firebase UID.
@@ -657,6 +693,24 @@ export const invalidateUserResetTokens = async (userId, tokenType = 'RESET', { t
       usedAt: new Date()
     }
   });
+};
+
+/**
+ * Deletes a password reset token record (e.g. if email dispatch fails immediately).
+ *
+ * @param {string} tokenId - Token UUID
+ * @param {Object} [options]
+ * @param {Object} [options.tx] - Optional Prisma transaction client
+ * @returns {Promise<Object|null>}
+ */
+export const deletePasswordResetToken = async (tokenId, { tx = null } = {}) => {
+  if (!tokenId) {
+    return null;
+  }
+  const client = getClient(tx);
+  return client.passwordResetToken.delete({
+    where: { id: tokenId }
+  }).catch(() => null);
 };
 
 

@@ -5,6 +5,47 @@ import { LuEye as Eye, LuEyeOff as EyeOff, LuArrowLeft as ArrowLeft } from 'reac
 import { FiLoader as Loader, FiCheckCircle as CheckCircle, FiAlertTriangle as AlertTriangle } from 'react-icons/fi';
 import authApi from '../api/auth';
 
+/**
+ * Validates password against complexity requirements:
+ * 8-128 chars, at least one uppercase, one lowercase, and one number.
+ *
+ * @param {string} password
+ * @returns {{ hasMinLength: boolean, hasUppercase: boolean, hasLowercase: boolean, hasNumber: boolean, isPolicyMet: boolean }}
+ */
+export const checkPasswordPolicy = (password = '') => {
+  const pwd = password || '';
+  const hasMinLength = pwd.length >= 8 && pwd.length <= 128;
+  const hasUppercase = /[A-Z]/.test(pwd);
+  const hasLowercase = /[a-z]/.test(pwd);
+  const hasNumber = /[0-9]/.test(pwd);
+  return {
+    hasMinLength,
+    hasUppercase,
+    hasLowercase,
+    hasNumber,
+    isPolicyMet: hasMinLength && hasUppercase && hasLowercase && hasNumber
+  };
+};
+
+/**
+ * Maps confirmation API errors to user-friendly messages.
+ *
+ * @param {Object} err
+ * @returns {string} User-facing error message
+ */
+export const getConfirmErrorMessage = (err) => {
+  if (err?.status === 401 || err?.code === 'INVALID_TOKEN') {
+    return 'This reset link is invalid, expired, or has already been used. Please request a new one.';
+  }
+  if (err?.status === 429) {
+    return 'Too many attempts. Please wait a few moments before trying again.';
+  }
+  if (err?.status === 400) {
+    return err?.message || 'Password does not meet complexity requirements.';
+  }
+  return err?.message || 'Unable to update password. Please try again later.';
+};
+
 export default function ResetPassword() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -24,11 +65,12 @@ export default function ResetPassword() {
   const [error, setError] = useState(null);
 
   // Password Policy Checks
-  const hasMinLength = password.length >= 8 && password.length <= 128;
-  const hasUppercase = /[A-Z]/.test(password);
-  const hasLowercase = /[a-z]/.test(password);
-  const hasNumber = /[0-9]/.test(password);
-  const isPolicyMet = hasMinLength && hasUppercase && hasLowercase && hasNumber;
+  const policyStatus = checkPasswordPolicy(password);
+  const isPolicyMet = policyStatus.isPolicyMet;
+  const hasMinLength = policyStatus.hasMinLength;
+  const hasUppercase = policyStatus.hasUppercase;
+  const hasLowercase = policyStatus.hasLowercase;
+  const hasNumber = policyStatus.hasNumber;
   const doPasswordsMatch = password.length > 0 && password === confirmPassword;
 
   const handleSubmit = async (e) => {
@@ -60,15 +102,7 @@ export default function ResetPassword() {
       setSuccess(true);
     } catch (err) {
       console.error('[RESET PASSWORD ERROR]', err);
-      if (err.status === 401 || err.code === 'INVALID_TOKEN') {
-        setError('This reset link is invalid, expired, or has already been used. Please request a new one.');
-      } else if (err.status === 429) {
-        setError('Too many attempts. Please wait a few moments before trying again.');
-      } else if (err.status === 400) {
-        setError(err.message || 'Password does not meet complexity requirements.');
-      } else {
-        setError(err.message || 'Unable to update password. Please try again later.');
-      }
+      setError(getConfirmErrorMessage(err));
     } finally {
       setLoading(false);
     }

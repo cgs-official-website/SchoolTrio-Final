@@ -15,6 +15,13 @@ const sentEmailsQueue = [];
 let cachedTransporter = null;
 
 /**
+ * Resets cached transporter (useful for isolated testing of environment changes).
+ */
+export const resetTransporterCache = () => {
+  cachedTransporter = null;
+};
+
+/**
  * Initializes or returns the cached Nodemailer SMTP transporter.
  * @returns {nodemailer.Transporter|null}
  */
@@ -24,8 +31,8 @@ export const getTransporter = () => {
   }
 
   const rawHost = env.SMTP_HOST || 'smtp.gmail.com';
-  const rawUser = env.SMTP_USER || 'carrezzaglobalsolutions@gmail.com';
-  const rawPass = env.SMTP_PASS || 'bkggeprbspgvobde';
+  const rawUser = env.SMTP_USER || '';
+  const rawPass = env.SMTP_PASS || '';
 
   const cleanUser = rawUser ? rawUser.trim() : '';
   const cleanPass = rawPass ? rawPass.replace(/["']/g, '').replace(/\s+/g, '') : '';
@@ -44,7 +51,7 @@ export const getTransporter = () => {
           greetingTimeout: 10000,
           socketTimeout: 15000,
           tls: {
-            rejectUnauthorized: false
+            rejectUnauthorized: true
           }
         }
       : {
@@ -59,7 +66,7 @@ export const getTransporter = () => {
           greetingTimeout: 10000,
           socketTimeout: 15000,
           tls: {
-            rejectUnauthorized: false
+            rejectUnauthorized: true
           }
         };
 
@@ -150,6 +157,97 @@ const wrapEmailHtml = (title, content, schoolName = 'School Management System') 
  * @param {string} [options.from] - Sender address
  * @returns {Promise<{ success: boolean, messageId: string }>}
  */
+/**
+ * Validates and sanitizes requesting frontend URL against trusted domains to prevent reset-link poisoning.
+ * Canonical fallback: https://school-trio-final-frontend.vercel.app (or local dev URL in non-production).
+ *
+ * @param {string|null} candidateUrl
+ * @returns {string} Sanitized trusted frontend base URL (no trailing slash)
+ */
+export const getTrustedFrontendUrl = (candidateUrl = null) => {
+  const canonicalProduction = 'https://school-trio-final-frontend.vercel.app';
+  const canonicalLocal = env.FRONTEND_URL || 'http://localhost:5173';
+  const defaultFallback = env.isProduction ? canonicalProduction : canonicalLocal;
+
+  if (!candidateUrl || typeof candidateUrl !== 'string' || !candidateUrl.trim()) {
+    return defaultFallback;
+  }
+
+  const clean = candidateUrl.trim().replace(/\/+$/, '');
+  let parsed;
+  try {
+    parsed = new URL(clean);
+  } catch {
+    return defaultFallback;
+  }
+
+  const origin = parsed.origin;
+  const hostname = parsed.hostname.toLowerCase();
+
+  // 1. Allow local development origins
+  if (
+    origin === 'http://localhost:5173' ||
+    origin === 'http://localhost:3000' ||
+    origin === 'http://127.0.0.1:5173' ||
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1'
+  ) {
+    return origin;
+  }
+
+  // 2. Allow verified production deployment domain
+  if (
+    origin === canonicalProduction ||
+    hostname === 'school-trio-final-frontend.vercel.app'
+  ) {
+    return canonicalProduction;
+  }
+
+  // 3. Allow verified custom domain (.teamzuna.in)
+  if (
+    hostname === 'schooltrio.teamzuna.in' ||
+    hostname === 'teamzuna.in' ||
+    hostname.endsWith('.teamzuna.in')
+  ) {
+    return origin;
+  }
+
+  // 4. Strict check against explicit CORS origins
+  if (Array.isArray(env.parsedCorsOrigins) && env.parsedCorsOrigins.length > 0) {
+    const isAllowed = env.parsedCorsOrigins.some(allowed => {
+      const cleanAllowed = allowed.toLowerCase().trim().replace(/\/+$/, '');
+      if (cleanAllowed === '*') return false; // wildcard cannot be an email reset domain
+      if (cleanAllowed.startsWith('*.')) {
+        return hostname.endsWith(cleanAllowed.slice(1));
+      }
+      return cleanAllowed === origin.toLowerCase();
+    });
+    if (isAllowed) {
+      return origin;
+    }
+  }
+
+  // Reject untrusted origins (e.g. arbitrary phishing domains) and use default
+  logger.warn({
+    msg: '[EMAIL SERVICE] Untrusted candidate frontendUrl rejected; using default fallback',
+    candidateUrl: clean,
+    fallbackUrl: defaultFallback
+  });
+
+  return defaultFallback;
+};
+
+/**
+ * Generic mail dispatcher via Nodemailer Gmail/SMTP transport.
+ *
+ * @param {Object} options
+ * @param {string|string[]} options.to - Recipient email(s)
+ * @param {string} options.subject - Subject line
+ * @param {string} [options.html] - HTML body
+ * @param {string} [options.text] - Plaintext body
+ * @param {string} [options.from] - Sender address
+ * @returns {Promise<{ success: boolean, messageId: string, provider: string }>}
+ */
 export const sendMail = async ({ to, subject, html, text, from = env.SMTP_FROM }) => {
   const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   const recipientStr = Array.isArray(to) ? to.join(', ') : to;
@@ -171,9 +269,20 @@ export const sendMail = async ({ to, subject, html, text, from = env.SMTP_FROM }
 
   sentEmailsQueue.push(emailRecord);
 
-  const transporter = getTransporter();
+  // In test mode, capture in memory queue and return immediately without network egress
+  if (env.isTest) {
+    logger.info({
+      msg: '[EMAIL SERVICE] Email captured in queue (test mode)',
+      messageId,
+      recipient: maskEmail(recipientStr),
+      subject
+    });
+    return { success: true, messageId, provider: 'mock' };
+  }
 
-  if (transporter && !env.isTest) {
+  // Pure Nodemailer SMTP dispatch
+  const transporter = getTransporter();
+  if (transporter) {
     try {
       const info = await transporter.sendMail({
         from: resolvedFrom,
@@ -190,7 +299,7 @@ export const sendMail = async ({ to, subject, html, text, from = env.SMTP_FROM }
         subject
       });
 
-      return { success: true, messageId: info.messageId || messageId };
+      return { success: true, messageId: info.messageId || messageId, provider: 'smtp' };
     } catch (err) {
       logger.error({
         msg: '[EMAIL SERVICE] Failed to send email via SMTP',
@@ -202,15 +311,18 @@ export const sendMail = async ({ to, subject, html, text, from = env.SMTP_FROM }
     }
   }
 
-  // Safe logging in dev / test mode without active SMTP
-  logger.info({
-    msg: '[EMAIL SERVICE] Email captured in queue (mock/dev mode)',
-    messageId,
-    recipient: maskEmail(recipientStr),
-    subject
-  });
+  // Fallback dev mode without configured credentials
+  if (!env.isProduction) {
+    logger.info({
+      msg: '[EMAIL SERVICE] Email captured in queue (mock/dev mode - SMTP unconfigured)',
+      messageId,
+      recipient: maskEmail(recipientStr),
+      subject
+    });
+    return { success: true, messageId, provider: 'mock' };
+  }
 
-  return { success: true, messageId };
+  throw new Error('SMTP credentials are not configured on production server');
 };
 
 /**
@@ -220,15 +332,11 @@ export const sendMail = async ({ to, subject, html, text, from = env.SMTP_FROM }
  * @param {string} params.to - Recipient email address
  * @param {string} params.resetToken - Raw 64-character hex reset token
  * @param {string} [params.schoolName] - Optional school tenant name
+ * @param {string|null} [params.frontendUrl] - Requesting frontend URL
  * @returns {Promise<{ success: boolean, messageId: string }>}
  */
 export const sendPasswordResetEmail = async ({ to, resetToken, schoolName = 'School Management System', frontendUrl = null }) => {
-  const baseUrl = (frontendUrl && typeof frontendUrl === 'string' && frontendUrl.trim())
-    ? frontendUrl.trim().replace(/\/+$/, '')
-    : (env.FRONTEND_URL && !env.FRONTEND_URL.includes('localhost'))
-      ? env.FRONTEND_URL.replace(/\/+$/, '')
-      : (env.isProduction ? 'https://school-trio-final-frontend.vercel.app' : (env.FRONTEND_URL || 'http://localhost:5173'));
-
+  const baseUrl = getTrustedFrontendUrl(frontendUrl);
   const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
   const subject = `Password Reset Request - ${schoolName}`;
 
@@ -265,12 +373,7 @@ export const sendPasswordResetEmail = async ({ to, resetToken, schoolName = 'Sch
  * @returns {Promise<{ success: boolean, messageId: string }>}
  */
 export const sendPasswordSetupEmail = async ({ to, setupToken, schoolName = 'School Management System', frontendUrl = null }) => {
-  const baseUrl = (frontendUrl && typeof frontendUrl === 'string' && frontendUrl.trim())
-    ? frontendUrl.trim().replace(/\/+$/, '')
-    : (env.FRONTEND_URL && !env.FRONTEND_URL.includes('localhost'))
-      ? env.FRONTEND_URL.replace(/\/+$/, '')
-      : (env.isProduction ? 'https://school-trio-final-frontend.vercel.app' : (env.FRONTEND_URL || 'http://localhost:5173'));
-
+  const baseUrl = getTrustedFrontendUrl(frontendUrl);
   const setupUrl = `${baseUrl}/setup-password?token=${setupToken}`;
   const subject = `Account Setup Invitation - ${schoolName}`;
 

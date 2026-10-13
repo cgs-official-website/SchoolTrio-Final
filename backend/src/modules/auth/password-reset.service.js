@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
-import { AUTH_CONSTANTS, TOKEN_TYPES, ERROR_CODES } from '../../config/constants.js';
-import { UnauthorizedError, ForbiddenError, ValidationError } from '../../utils/app-error.js';
+import { AUTH_CONSTANTS, TOKEN_TYPES, ERROR_CODES, HTTP_STATUS } from '../../config/constants.js';
+import { AppError, UnauthorizedError, ForbiddenError, ValidationError } from '../../utils/app-error.js';
 import * as authRepository from './auth.repository.js';
 import { validatePasswordPolicy, hashPassword, verifyPassword, isLockedPassword } from './password.service.js';
 import * as emailService from '../../services/email.service.js';
@@ -36,12 +36,14 @@ export const hashToken = (rawToken) => {
 
 /**
  * Initiates a password reset request.
- * Dispatches an email with a 15-minute single-use reset token if the account is eligible.
+ * Dispatches an email with a single-use reset token if the account is eligible.
+ * Resolves tenant ambiguity safely across school tenants.
  * Returns a standardized generic response to prevent account enumeration.
  *
  * @param {Object} params
  * @param {string} params.email - User email address
  * @param {string|null} [params.ipAddress] - Requesting client IP
+ * @param {string|null} [params.frontendUrl] - Requesting frontend URL
  * @returns {Promise<{ success: boolean, message: string }>}
  */
 export const requestPasswordReset = async ({ email, ipAddress = null, frontendUrl = null }) => {
@@ -56,11 +58,11 @@ export const requestPasswordReset = async ({ email, ipAddress = null, frontendUr
 
   const normalizedEmail = email.toLowerCase().trim();
 
-  // 1. Locate user record
-  const user = await authRepository.findUserByEmail(normalizedEmail);
+  // 1. Locate active user records across all school tenants (tenant-aware lookup)
+  const activeUsers = await authRepository.findActiveUsersByEmail(normalizedEmail);
 
   // 2. Return generic success if account does not exist or is inactive (enumeration resistance)
-  if (!user || !user.isActive) {
+  if (!activeUsers || activeUsers.length === 0) {
     logger.warn({
       msg: '[PASSWORD RESET] User account not found or inactive for requested email',
       email: emailService.maskEmail(normalizedEmail)
@@ -69,41 +71,80 @@ export const requestPasswordReset = async ({ email, ipAddress = null, frontendUr
   }
 
   // 3. Reject reset for suspended school tenants silently
-  if (user.schoolId && user.school && user.school.status === 'suspended') {
+  const eligibleUsers = activeUsers.filter((user) => {
+    if (user.schoolId && user.school && user.school.status === 'suspended') {
+      return false;
+    }
+    return true;
+  });
+
+  if (eligibleUsers.length === 0) {
     return genericResponse;
   }
 
-  // 4. Invalidate any previously issued active RESET tokens for this user
-  await authRepository.invalidateUserResetTokens(user.id, TOKEN_TYPES.RESET);
+  // 4. For each eligible tenant user account, generate token and dispatch email
+  let successfulDispatches = 0;
+  let lastDeliveryError = null;
 
-  // 5. Generate secure 256-bit token
-  const { rawToken, tokenHash } = generateSecureToken();
-  const expiresAt = new Date(
-    Date.now() + (AUTH_CONSTANTS.PASSWORD_RESET_TOKEN_EXPIRY_MINUTES || 60) * 60 * 1000
-  );
+  for (const user of eligibleUsers) {
+    // Invalidate any previously issued active RESET tokens for this user
+    await authRepository.invalidateUserResetTokens(user.id, TOKEN_TYPES.RESET);
 
-  // 6. Persist hashed token
-  await authRepository.createPasswordResetToken({
-    userId: user.id,
-    tokenHash,
-    tokenType: TOKEN_TYPES.RESET,
-    ipAddress,
-    expiresAt
-  });
+    // Generate secure 256-bit token
+    const { rawToken, tokenHash } = generateSecureToken();
+    const expiresAt = new Date(
+      Date.now() + (AUTH_CONSTANTS.PASSWORD_RESET_TOKEN_EXPIRY_MINUTES || 60) * 60 * 1000
+    );
 
-  // 7. Dispatch transactional email asynchronously so slow SMTP handshakes never cause HTTP 504 gateway timeouts
-  emailService.sendPasswordResetEmail({
-    to: user.email,
-    resetToken: rawToken,
-    schoolName: user.school?.name || 'School Management System',
-    frontendUrl
-  }).catch((err) => {
-    logger.error({
-      msg: '[PASSWORD RESET] Background email delivery error via Nodemailer',
-      recipient: emailService.maskEmail(user.email),
-      error: err.message
+    // Persist hashed token
+    const createdToken = await authRepository.createPasswordResetToken({
+      userId: user.id,
+      tokenHash,
+      tokenType: TOKEN_TYPES.RESET,
+      ipAddress,
+      expiresAt
     });
-  });
+
+    // Dispatch transactional email (bounded wait so provider acceptance is verified)
+    try {
+      await emailService.sendPasswordResetEmail({
+        to: user.email,
+        resetToken: rawToken,
+        schoolName: user.school?.name || 'School Management System',
+        frontendUrl
+      });
+      successfulDispatches += 1;
+    } catch (deliveryError) {
+      // Rollback newly created token for this user so they are not left with an undelivered token
+      if (createdToken?.id) {
+        await authRepository.deletePasswordResetToken(createdToken.id);
+      }
+      logger.error({
+        msg: '[PASSWORD RESET] Email delivery failed or rejected by provider',
+        recipient: emailService.maskEmail(user.email),
+        error: deliveryError.message
+      });
+      lastDeliveryError = deliveryError;
+    }
+  }
+
+  // If all eligible dispatches failed, throw 503 so caller/operator is notified
+  if (successfulDispatches === 0 && lastDeliveryError) {
+    throw new AppError(
+      'Unable to process password reset request at this time. Please try again later.',
+      HTTP_STATUS.SERVICE_UNAVAILABLE,
+      ERROR_CODES.SERVICE_UNAVAILABLE
+    );
+  }
+
+  // If partial delivery occurred in a multi-tenant account, log safe operator warning
+  if (successfulDispatches > 0 && lastDeliveryError) {
+    logger.warn({
+      msg: '[PASSWORD RESET] Partial delivery failure in multi-tenant password reset',
+      email: emailService.maskEmail(normalizedEmail),
+      successfulCount: successfulDispatches
+    });
+  }
 
   return genericResponse;
 };

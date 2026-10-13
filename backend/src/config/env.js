@@ -37,7 +37,7 @@ export const envSchema = z.object({
   FIREBASE_SERVICE_ACCOUNT_KEY: z.string().optional(),
   FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional(),
 
-  // SMTP Email Delivery Configuration (Nodemailer)
+  // Transactional Email Configuration (Gmail SMTP / Nodemailer)
   SMTP_HOST: z.string().default('smtp.gmail.com'),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
   SMTP_SECURE: z
@@ -45,9 +45,9 @@ export const envSchema = z.object({
     .transform(v => v === 'true' || v === '1')
     .optional()
     .default('false'),
-  SMTP_USER: z.string().default('carrezzaglobalsolutions@gmail.com'),
-  SMTP_PASS: z.string().default('bkggeprbspgvobde'),
-  SMTP_FROM: z.string().default('School Trio <carrezzaglobalsolutions@gmail.com>'),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
   FRONTEND_URL: z.string().default('https://school-trio-final-frontend.vercel.app')
 });
 
