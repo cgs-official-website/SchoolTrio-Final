@@ -8,6 +8,7 @@ import { getSchoolSettings, getSidebarSettings } from '../api/settings';
 import { listCustomModules } from '../api/customModules';
 import TopNavbar from '../components/TopNavbar';
 import useSchoolBranding from '../hooks/useSchoolBranding';
+
 import { useNotifications } from '../context/NotificationContext';
 
 export const allNavItems = [
