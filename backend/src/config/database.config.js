@@ -16,13 +16,13 @@ export const buildResilientDatabaseUrl = (rawUrl) => {
     const urlObj = new URL(rawUrl);
 
     if (!urlObj.searchParams.has('connect_timeout')) {
-      urlObj.searchParams.set('connect_timeout', '10');
+      urlObj.searchParams.set('connect_timeout', '15');
     }
     if (!urlObj.searchParams.has('pool_timeout')) {
-      urlObj.searchParams.set('pool_timeout', '10');
+      urlObj.searchParams.set('pool_timeout', '25');
     }
     if (!urlObj.searchParams.has('connection_limit')) {
-      urlObj.searchParams.set('connection_limit', '10');
+      urlObj.searchParams.set('connection_limit', '15');
     }
     if (!urlObj.searchParams.has('options')) {
       urlObj.searchParams.set('options', '-c statement_timeout=30000');

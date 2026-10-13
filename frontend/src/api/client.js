@@ -243,6 +243,15 @@ export const apiClient = async (endpoint, options = {}) => {
     return retryResponse.json();
   }
 
+  // Handle 503 Service Unavailable (e.g. transient database connection pool busy) with auto-retry
+  if (response.status === 503 && !options._retried503) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    return apiClient(endpoint, {
+      ...options,
+      _retried503: true
+    });
+  }
+
   // Handle other error statuses
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));

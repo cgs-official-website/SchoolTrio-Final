@@ -446,7 +446,7 @@ export async function createStaff(schoolId, data, actor = null) {
       }
 
       return profile;
-    }, { maxWait: 15000, timeout: 30000 });
+    }, { maxWait: 25000, timeout: 30000 });
   } catch (error) {
     if (error.code === 'P2002') {
       const target = error.meta?.target;
