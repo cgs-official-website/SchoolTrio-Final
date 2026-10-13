@@ -1,8 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { staffApi } from '../../api/staff';
+import { authApi } from '../../api/auth';
+import { setAccessToken } from '../../services/tokenService';
 import toast from 'react-hot-toast';
-import { LuUser, LuMapPin, LuBriefcase, LuCreditCard, LuSave, LuBookOpen, LuShieldCheck } from 'react-icons/lu';
+import {
+  LuUser,
+  LuMapPin,
+  LuBriefcase,
+  LuCreditCard,
+  LuSave,
+  LuBookOpen,
+  LuShieldCheck,
+  LuKeyRound,
+  LuEye,
+  LuEyeOff,
+  LuLock,
+  LuCircleCheck
+} from 'react-icons/lu';
 import { normalizeGender } from '../../utils/genderUtils';
 
 export default function ProfileSetup() {
@@ -10,6 +25,17 @@ export default function ProfileSetup() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [staffId, setStaffId] = useState(null);
+
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [passwordStatus, setPasswordStatus] = useState(null);
   
   const [formData, setFormData] = useState({
     // Personal Info
@@ -198,6 +224,64 @@ export default function ProfileSetup() {
       toast.error("Failed to update profile: " + (error.message || error));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePasswordChange = (e) => {
+    const { name, value } = e.target;
+    setPasswordData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleResetPassword = async (e) => {
+    if (e) e.preventDefault();
+    if (!passwordData.newPassword) {
+      toast.error('Please enter a new password');
+      return;
+    }
+    if (passwordData.newPassword.length < 8) {
+      toast.error('Password must be at least 8 characters long');
+      return;
+    }
+    if (!/[A-Z]/.test(passwordData.newPassword) || !/[a-z]/.test(passwordData.newPassword) || !/[0-9]/.test(passwordData.newPassword)) {
+      toast.error('Password must contain uppercase, lowercase letters and numbers');
+      return;
+    }
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast.error('New password and confirm password do not match');
+      return;
+    }
+
+    setResettingPassword(true);
+    try {
+      const res = await authApi.changePassword({
+        currentPassword: passwordData.currentPassword.trim() || undefined,
+        newPassword: passwordData.newPassword
+      });
+
+      if (res?.data?.accessToken) {
+        setAccessToken(res.data.accessToken);
+      }
+
+      toast.success(res?.message || 'Password reset successfully! You can now log in with your new password.');
+      setPasswordData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
+      setPasswordStatus({
+        type: 'success',
+        message: 'Password successfully updated in database. You can now use this new password to log in.'
+      });
+      setTimeout(() => setPasswordStatus(null), 6000);
+    } catch (err) {
+      const msg = err?.message || 'Failed to reset password. Please check your current password and try again.';
+      toast.error(msg);
+      setPasswordStatus({
+        type: 'error',
+        message: msg
+      });
+    } finally {
+      setResettingPassword(false);
     }
   };
 
@@ -399,6 +483,133 @@ export default function ProfileSetup() {
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">IFSC Code</label>
               <input type="text" name="ifscCode" value={formData.ifscCode} onChange={handleChange} placeholder="IFSC code" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none uppercase transition-all text-sm" />
             </div>
+          </div>
+        </div>
+
+        {/* Reset Password Section */}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 transition-all hover:shadow-md">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <LuKeyRound className="text-amber-500" /> Reset Password
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Update your account password. This will update your login credentials in the database immediately.
+              </p>
+            </div>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200/50 dark:border-amber-800/40 w-fit">
+              <LuLock size={13} /> Security Section
+            </span>
+          </div>
+
+          {passwordStatus && (
+            <div
+              className={`mb-4 p-3.5 rounded-xl text-sm flex items-start gap-2.5 ${
+                passwordStatus.type === 'success'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40'
+                  : 'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/40'
+              }`}
+            >
+              {passwordStatus.type === 'success' && <LuCircleCheck className="shrink-0 mt-0.5 text-emerald-600" size={17} />}
+              <span>{passwordStatus.message}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">
+                Current Password
+                <span className="text-xs font-normal text-slate-400 ml-1.5">(leave blank if first setup)</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showCurrentPassword ? 'text' : 'password'}
+                  name="currentPassword"
+                  value={passwordData.currentPassword}
+                  onChange={handlePasswordChange}
+                  placeholder="Current password"
+                  autoComplete="current-password"
+                  className="w-full pl-4 pr-11 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-amber-500 outline-none transition-all text-sm bg-white dark:bg-slate-800"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+                  aria-label={showCurrentPassword ? 'Hide current password' : 'Show current password'}
+                >
+                  {showCurrentPassword ? <LuEyeOff size={16} /> : <LuEye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">
+                New Password <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showNewPassword ? 'text' : 'password'}
+                  name="newPassword"
+                  value={passwordData.newPassword}
+                  onChange={handlePasswordChange}
+                  placeholder="Min. 8 characters"
+                  autoComplete="new-password"
+                  className="w-full pl-4 pr-11 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-amber-500 outline-none transition-all text-sm bg-white dark:bg-slate-800"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+                  aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
+                >
+                  {showNewPassword ? <LuEyeOff size={16} /> : <LuEye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">
+                Confirm New Password <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  name="confirmPassword"
+                  value={passwordData.confirmPassword}
+                  onChange={handlePasswordChange}
+                  placeholder="Repeat new password"
+                  autoComplete="new-password"
+                  className="w-full pl-4 pr-11 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-amber-500 outline-none transition-all text-sm bg-white dark:bg-slate-800"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+                  aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                >
+                  {showConfirmPassword ? <LuEyeOff size={16} /> : <LuEye size={16} />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Must be at least 8 characters with at least one uppercase letter, one lowercase letter, and one number.
+            </p>
+            <button
+              type="button"
+              onClick={handleResetPassword}
+              disabled={resettingPassword}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-xl shadow-sm hover:shadow transition-all disabled:opacity-50 text-sm shrink-0"
+            >
+              {resettingPassword ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              ) : (
+                <LuKeyRound size={16} />
+              )}
+              {resettingPassword ? 'Updating Database...' : 'Reset Password'}
+            </button>
           </div>
         </div>
 

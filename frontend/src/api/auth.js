@@ -139,6 +139,23 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ token, newPassword })
     });
+  },
+
+  /**
+   * Resets / changes the password for the currently authenticated user.
+   * @param {Object} params
+   * @param {string} [params.currentPassword] - Current password (optional)
+   * @param {string} params.newPassword - New password
+   * @returns {Promise<{ success: boolean, data?: { accessToken: string, user: Object }, message?: string }>}
+   */
+  async changePassword({ currentPassword, newPassword }) {
+    return apiClient('/api/v1/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...(currentPassword ? { currentPassword } : {}),
+        newPassword
+      })
+    });
   }
 };
 

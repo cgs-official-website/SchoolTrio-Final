@@ -91,9 +91,10 @@ export const passwordSetupConfirmSchema = {
 export const changePasswordSchema = {
   body: z.object({
     currentPassword: z
-      .string({ required_error: 'Current password is required' })
-      .min(1, 'Current password is required')
-      .max(128, 'Current password must not exceed 128 characters'),
+      .string()
+      .max(128, 'Current password must not exceed 128 characters')
+      .optional()
+      .or(z.literal('')),
     newPassword: z
       .string({ required_error: 'New password is required' })
       .min(8, 'New password must be at least 8 characters long')

@@ -238,19 +238,12 @@ export const confirmPasswordSetup = async ({ token, newPassword, ipAddress: _ipA
  * @returns {Promise<{ success: boolean, message: string }>}
  */
 export const changePassword = async ({ userId, currentPassword, newPassword, ipAddress: _ipAddress = null }) => {
-
   if (!userId || typeof userId !== 'string') {
     throw new UnauthorizedError('Authentication required', ERROR_CODES.UNAUTHORIZED);
   }
 
-  if (!currentPassword || typeof currentPassword !== 'string' || !newPassword || typeof newPassword !== 'string') {
-    throw new ValidationError('Current password and new password are required');
-  }
-
-  if (currentPassword === newPassword) {
-    throw new ValidationError('New password cannot be identical to your current password', [
-      'New password must be different from current password'
-    ]);
+  if (!newPassword || typeof newPassword !== 'string') {
+    throw new ValidationError('New password is required');
   }
 
   // 1. Retrieve user with credentials
@@ -259,37 +252,40 @@ export const changePassword = async ({ userId, currentPassword, newPassword, ipA
     throw new UnauthorizedError('User account not found or inactive', ERROR_CODES.UNAUTHORIZED);
   }
 
-  // 2. Reject locked placeholder accounts from changing password directly
-  if (isLockedPassword(user.passwordHash)) {
-    throw new ForbiddenError(
-      'Password cannot be changed on a locked account. Please use password setup.',
-      ERROR_CODES.PASSWORD_NOT_SET
-    );
+  // 2. If current password is provided, verify against existing hash
+  if (currentPassword && typeof currentPassword === 'string' && currentPassword.trim().length > 0) {
+    if (currentPassword === newPassword) {
+      throw new ValidationError('New password cannot be identical to your current password', [
+        'New password must be different from current password'
+      ]);
+    }
+
+    if (!isLockedPassword(user.passwordHash)) {
+      const isMatch = await verifyPassword(user.passwordHash, currentPassword);
+      if (!isMatch) {
+        throw new UnauthorizedError('Current password is incorrect', ERROR_CODES.INVALID_CREDENTIALS);
+      }
+    }
   }
 
-  // 3. Verify current password
-  const isMatch = await verifyPassword(user.passwordHash, currentPassword);
-  if (!isMatch) {
-    throw new UnauthorizedError('Current password is incorrect', ERROR_CODES.INVALID_CREDENTIALS);
-  }
-
-  // 4. Validate new password complexity
+  // 3. Validate new password complexity
   const policyResult = validatePasswordPolicy(newPassword);
   if (!policyResult.isValid) {
     throw new ValidationError('Password does not meet complexity requirements', policyResult.errors);
   }
 
-  // 5. Hash new password with bcrypt
+  // 4. Hash new password with bcrypt
   const newPasswordHash = await hashPassword(newPassword);
 
-  // 6. Atomically update password, increment tokenVersion, and revoke all active refresh sessions
-  await authRepository.executePasswordChangeTransaction({
+  // 5. Atomically update password, increment tokenVersion, and revoke all active refresh sessions
+  const { user: updatedUser } = await authRepository.executePasswordChangeTransaction({
     userId: user.id,
     newPasswordHash
   });
 
   return {
     success: true,
-    message: 'Password changed successfully. All previous sessions have been invalidated.'
+    user: updatedUser,
+    message: 'Password reset successfully. You can now log in with your new password.'
   };
 };

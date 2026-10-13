@@ -1,6 +1,6 @@
 {
   "name": "school-management-system-backend",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Backend API Foundation for School Management System SaaS",
   "type": "module",
   "engines": {

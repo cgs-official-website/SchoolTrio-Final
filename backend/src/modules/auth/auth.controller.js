@@ -4,7 +4,8 @@ import { ApiResponse } from '../../utils/api-response.js';
 import { UnauthorizedError } from '../../utils/app-error.js';
 import * as authService from './auth.service.js';
 import * as passwordResetService from './password-reset.service.js';
-import { verifyAccessToken } from './token.service.js';
+import * as sessionService from './session.service.js';
+import { issueAccessToken, verifyAccessToken } from './token.service.js';
 
 /**
  * Cookie Extraction and Security Configuration Helpers
@@ -355,6 +356,7 @@ export const changePassword = async (req, res, next) => {
     const userId = resolveUserId(req);
     const { currentPassword, newPassword } = req.body;
     const ipAddress = req.ip || req.headers['x-forwarded-for'] || null;
+    const deviceInfo = req.headers['user-agent'] || null;
 
     const result = await passwordResetService.changePassword({
       userId,
@@ -363,10 +365,28 @@ export const changePassword = async (req, res, next) => {
       ipAddress
     });
 
-    // Clear refresh token cookie on caller
-    res.clearCookie(AUTH_CONSTANTS.REFRESH_COOKIE_NAME, getClearRefreshCookieOptions());
+    // Establish a fresh session and tokens for the caller so active session remains valid
+    const { rawToken: rawRefreshToken } = await sessionService.createSession(
+      { id: userId },
+      { ipAddress, deviceInfo }
+    );
+    const accessToken = issueAccessToken({
+      sub: userId,
+      schoolId: req.user?.schoolId || null,
+      systemRole: req.user?.systemRole || 'TENANT_USER',
+      tokenVersion: result.user?.tokenVersion || 1
+    });
 
-    return ApiResponse.success(res, null, result.message);
+    res.cookie(AUTH_CONSTANTS.REFRESH_COOKIE_NAME, rawRefreshToken, getRefreshCookieOptions());
+
+    return ApiResponse.success(
+      res,
+      {
+        accessToken,
+        user: result.user
+      },
+      result.message
+    );
   } catch (err) {
     next(err);
   }
