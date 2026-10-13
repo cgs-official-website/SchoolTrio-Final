@@ -8,18 +8,31 @@ import {
   sendMail,
   getTrustedFrontendUrl,
   maskEmail,
-  createIpv4Socket
+  createIpv4Socket,
+  getResendClient,
+  resetResendClientCache,
+  setResendClient,
+  sendViaResend,
+  sendPasswordResetEmail,
+  sendPasswordResetEmailViaSmtp,
+  sanitizeErrorMessage,
+  getSentEmails,
+  clearSentEmails
 } from './email.service.js';
 import { env } from '../config/env.js';
 
-describe('FORGOT-PASSWORD-006: Explicit IPv4 Gmail SMTP Configuration & Security Suite', () => {
+describe('FORGOT-PASSWORD-009: Resend HTTPS Password-Reset & SMTP Fallback Security Suite', () => {
   beforeEach(() => {
     resetTransporterCache();
+    resetResendClientCache();
+    clearSentEmails();
     vi.clearAllMocks();
   });
 
   afterEach(() => {
     resetTransporterCache();
+    resetResendClientCache();
+    clearSentEmails();
   });
 
   describe('1. Explicit SMTP Transport Configuration & IPv4 getSocket', () => {
@@ -189,7 +202,7 @@ describe('FORGOT-PASSWORD-006: Explicit IPv4 Gmail SMTP Configuration & Security
     });
   });
 
-  describe('3. sendMail Behavior & No Resend Invocations', () => {
+  describe('3. sendMail Behavior (SMTP Transport & Test Queue)', () => {
     it('captures in test queue without outbound network calls during tests', async () => {
       const result = await sendMail({
         to: 'test.user@example.com',
@@ -203,13 +216,330 @@ describe('FORGOT-PASSWORD-006: Explicit IPv4 Gmail SMTP Configuration & Security
       expect(result.messageId).toMatch(/^msg_/);
     });
 
-    it('does not contain any Resend HTTP API invocations or dependencies', () => {
-      const fetchSpy = vi.spyOn(globalThis, 'fetch');
-      expect(fetchSpy).not.toHaveBeenCalled();
+    it('does not dispatch through Resend when sendMail is invoked', async () => {
+      const mockResend = { emails: { send: vi.fn() } };
+      setResendClient(mockResend);
+
+      await sendMail({
+        to: 'test.user@example.com',
+        subject: 'General Email',
+        html: '<p>Hello</p>'
+      });
+
+      expect(mockResend.emails.send).not.toHaveBeenCalled();
     });
   });
 
-  describe('4. Masked Email Logging', () => {
+  describe('4. Resend HTTPS Password-Reset Integration (FORGOT-PASSWORD-009)', () => {
+    describe('4.1 Resend Client Lifecycle & Configuration Management', () => {
+      it('returns null from getResendClient when RESEND_API_KEY is not configured', () => {
+        const originalKey = env.RESEND_API_KEY;
+        env.RESEND_API_KEY = '';
+        try {
+          resetResendClientCache();
+          expect(getResendClient()).toBeNull();
+        } finally {
+          env.RESEND_API_KEY = originalKey;
+        }
+      });
+
+      it('instantiates and caches Resend client when RESEND_API_KEY is present', () => {
+        const originalKey = env.RESEND_API_KEY;
+        env.RESEND_API_KEY = 're_test_key_1234567890';
+        try {
+          resetResendClientCache();
+          const client = getResendClient();
+          expect(client).not.toBeNull();
+          expect(client).toHaveProperty('emails');
+          expect(typeof client.emails.send).toBe('function');
+
+          // Verifies cache memoization
+          const cachedAgain = getResendClient();
+          expect(cachedAgain).toBe(client);
+        } finally {
+          env.RESEND_API_KEY = originalKey;
+        }
+      });
+
+      it('clears cache on resetResendClientCache', () => {
+        const originalKey = env.RESEND_API_KEY;
+        env.RESEND_API_KEY = 're_test_key_1234567890';
+        try {
+          resetResendClientCache();
+          const client1 = getResendClient();
+          resetResendClientCache();
+          const client2 = getResendClient();
+          expect(client1).not.toBe(client2);
+        } finally {
+          env.RESEND_API_KEY = originalKey;
+        }
+      });
+    });
+
+    describe('4.2 Missing Configuration Fail-Safe Validation', () => {
+      it('throws an actionable, sanitized error when RESEND_API_KEY is missing', async () => {
+        const originalKey = env.RESEND_API_KEY;
+        const originalFrom = env.RESEND_FROM_EMAIL;
+        env.RESEND_API_KEY = '';
+        env.RESEND_FROM_EMAIL = 'SchoolTrio <noreply@schooltrio.teamzuna.in>';
+
+        try {
+          await expect(
+            sendPasswordResetEmail({
+              to: 'teacher@school.org',
+              resetToken: 'a'.repeat(64),
+              schoolName: 'Test School'
+            })
+          ).rejects.toThrow('Resend API key is not configured');
+        } finally {
+          env.RESEND_API_KEY = originalKey;
+          env.RESEND_FROM_EMAIL = originalFrom;
+        }
+      });
+
+      it('throws an actionable, sanitized error when RESEND_FROM_EMAIL is missing', async () => {
+        const originalKey = env.RESEND_API_KEY;
+        const originalFrom = env.RESEND_FROM_EMAIL;
+        env.RESEND_API_KEY = 're_valid_api_key_123';
+        env.RESEND_FROM_EMAIL = '';
+
+        try {
+          await expect(
+            sendPasswordResetEmail({
+              to: 'teacher@school.org',
+              resetToken: 'a'.repeat(64),
+              schoolName: 'Test School'
+            })
+          ).rejects.toThrow('Resend sender email is not configured');
+        } finally {
+          env.RESEND_API_KEY = originalKey;
+          env.RESEND_FROM_EMAIL = originalFrom;
+        }
+      });
+    });
+
+    describe('4.3 Successful Resend API Submission', () => {
+      it('submits password reset email via Resend HTTPS API with correct payload and trusted URL', async () => {
+        const originalKey = env.RESEND_API_KEY;
+        const originalFrom = env.RESEND_FROM_EMAIL;
+        env.RESEND_API_KEY = 're_mock_test_key';
+        env.RESEND_FROM_EMAIL = 'SchoolTrio <noreply@schooltrio.teamzuna.in>';
+
+        const mockSend = vi.fn().mockResolvedValue({
+          data: { id: 're_message_id_success_999' },
+          error: null
+        });
+        setResendClient({ emails: { send: mockSend } });
+
+        try {
+          const rawToken = 'f'.repeat(64);
+          const result = await sendPasswordResetEmail({
+            to: 'teacher@school.org',
+            resetToken: rawToken,
+            schoolName: 'Springmount Public School',
+            frontendUrl: 'https://schooltrio.teamzuna.in'
+          });
+
+          expect(result.success).toBe(true);
+          expect(result.messageId).toBe('re_message_id_success_999');
+          expect(result.provider).toBe('resend');
+
+          expect(mockSend).toHaveBeenCalledTimes(1);
+          const [payload, options] = mockSend.mock.calls[0];
+
+          expect(payload.from).toBe('SchoolTrio <noreply@schooltrio.teamzuna.in>');
+          expect(payload.to).toBe('teacher@school.org');
+          expect(payload.subject).toBe('Password Reset Request - Springmount Public School');
+          expect(payload.html).toContain('https://schooltrio.teamzuna.in/reset-password?token=' + rawToken);
+          expect(payload.text).toContain('https://schooltrio.teamzuna.in/reset-password?token=' + rawToken);
+          expect(options).toHaveProperty('signal');
+
+          // Verify recorded in sent emails queue
+          const sentQueue = getSentEmails();
+          expect(sentQueue.length).toBe(1);
+          expect(sentQueue[0].messageId).toBe('re_message_id_success_999');
+          expect(sentQueue[0].provider).toBe('resend');
+        } finally {
+          env.RESEND_API_KEY = originalKey;
+          env.RESEND_FROM_EMAIL = originalFrom;
+        }
+      });
+
+      it('sendViaResend dispatches correctly when invoked directly', async () => {
+        const originalKey = env.RESEND_API_KEY;
+        const originalFrom = env.RESEND_FROM_EMAIL;
+        env.RESEND_API_KEY = 're_mock_test_key';
+        env.RESEND_FROM_EMAIL = 'SchoolTrio <noreply@schooltrio.teamzuna.in>';
+
+        const mockSend = vi.fn().mockResolvedValue({
+          data: { id: 're_direct_dispatch_id' },
+          error: null
+        });
+        setResendClient({ emails: { send: mockSend } });
+
+        try {
+          const result = await sendViaResend({
+            to: 'admin@school.org',
+            subject: 'Direct Test',
+            html: '<p>Direct test content</p>',
+            text: 'Direct test content'
+          });
+
+          expect(result.success).toBe(true);
+          expect(result.messageId).toBe('re_direct_dispatch_id');
+          expect(result.provider).toBe('resend');
+          expect(mockSend).toHaveBeenCalledTimes(1);
+        } finally {
+          env.RESEND_API_KEY = originalKey;
+          env.RESEND_FROM_EMAIL = originalFrom;
+        }
+      });
+    });
+
+    describe('4.4 Provider Rejection, Timeout & Network Error Handling', () => {
+      it('handles Resend provider rejection (e.g. unverified domain) with safe sanitized error', async () => {
+        const originalKey = env.RESEND_API_KEY;
+        const originalFrom = env.RESEND_FROM_EMAIL;
+        env.RESEND_API_KEY = 're_mock_key';
+        env.RESEND_FROM_EMAIL = 'admin@unverified.org';
+
+        const mockSend = vi.fn().mockResolvedValue({
+          data: null,
+          error: {
+            message: 'Domain unverified.org is not verified in Resend dashboard',
+            statusCode: 422
+          }
+        });
+        setResendClient({ emails: { send: mockSend } });
+
+        try {
+          await expect(
+            sendPasswordResetEmail({
+              to: 'user@school.org',
+              resetToken: 'b'.repeat(64),
+              schoolName: 'Test School'
+            })
+          ).rejects.toThrow('Domain unverified.org is not verified in Resend dashboard');
+        } finally {
+          env.RESEND_API_KEY = originalKey;
+          env.RESEND_FROM_EMAIL = originalFrom;
+        }
+      });
+
+      it('handles request timeout gracefully with explicit timeout message', async () => {
+        const originalKey = env.RESEND_API_KEY;
+        const originalFrom = env.RESEND_FROM_EMAIL;
+        env.RESEND_API_KEY = 're_mock_key';
+        env.RESEND_FROM_EMAIL = 'SchoolTrio <noreply@schooltrio.teamzuna.in>';
+
+        const timeoutErr = new Error('The operation was aborted due to timeout');
+        timeoutErr.name = 'TimeoutError';
+        const mockSend = vi.fn().mockRejectedValue(timeoutErr);
+        setResendClient({ emails: { send: mockSend } });
+
+        try {
+          await expect(
+            sendPasswordResetEmail({
+              to: 'user@school.org',
+              resetToken: 'c'.repeat(64),
+              schoolName: 'Test School'
+            })
+          ).rejects.toThrow('Resend API request timed out after 10000ms');
+        } finally {
+          env.RESEND_API_KEY = originalKey;
+          env.RESEND_FROM_EMAIL = originalFrom;
+        }
+      });
+
+      it('propagates network connection errors safely without crashing', async () => {
+        const originalKey = env.RESEND_API_KEY;
+        const originalFrom = env.RESEND_FROM_EMAIL;
+        env.RESEND_API_KEY = 're_mock_key';
+        env.RESEND_FROM_EMAIL = 'SchoolTrio <noreply@schooltrio.teamzuna.in>';
+
+        const netErr = new Error('getaddrinfo ENOTFOUND api.resend.com');
+        const mockSend = vi.fn().mockRejectedValue(netErr);
+        setResendClient({ emails: { send: mockSend } });
+
+        try {
+          await expect(
+            sendPasswordResetEmail({
+              to: 'user@school.org',
+              resetToken: 'd'.repeat(64),
+              schoolName: 'Test School'
+            })
+          ).rejects.toThrow('getaddrinfo ENOTFOUND api.resend.com');
+        } finally {
+          env.RESEND_API_KEY = originalKey;
+          env.RESEND_FROM_EMAIL = originalFrom;
+        }
+      });
+    });
+
+    describe('4.5 Credential Redaction & Sanitization', () => {
+      it('redacts sensitive API key and SMTP password from error messages', () => {
+        const originalKey = env.RESEND_API_KEY;
+        const originalPass = env.SMTP_PASS;
+        env.RESEND_API_KEY = 're_super_secret_api_key_xyz987';
+        env.SMTP_PASS = 'super_secret_smtp_password_abc123';
+
+        try {
+          const rawError = 'Failed to authenticate with re_super_secret_api_key_xyz987 using pass super_secret_smtp_password_abc123';
+          const sanitized = sanitizeErrorMessage(rawError);
+
+          expect(sanitized).not.toContain('re_super_secret_api_key_xyz987');
+          expect(sanitized).not.toContain('super_secret_smtp_password_abc123');
+          expect(sanitized).toContain('[REDACTED_API_KEY]');
+          expect(sanitized).toContain('[REDACTED_SMTP_PASS]');
+        } finally {
+          env.RESEND_API_KEY = originalKey;
+          env.SMTP_PASS = originalPass;
+        }
+      });
+    });
+
+    describe('4.6 Documented Gmail SMTP Fallback', () => {
+      it('provides sendPasswordResetEmailViaSmtp as a documented fallback route', async () => {
+        const result = await sendPasswordResetEmailViaSmtp({
+          to: 'teacher@school.org',
+          resetToken: 'e'.repeat(64),
+          schoolName: 'Springmount School'
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.provider).toBe('mock'); // Test mode SMTP capture
+      });
+
+      it('does NOT automatically fall back to SMTP when Resend fails (prevents duplicate sends)', async () => {
+        const originalKey = env.RESEND_API_KEY;
+        const originalFrom = env.RESEND_FROM_EMAIL;
+        env.RESEND_API_KEY = 're_mock_key';
+        env.RESEND_FROM_EMAIL = 'SchoolTrio <noreply@schooltrio.teamzuna.in>';
+
+        const mockSend = vi.fn().mockRejectedValue(new Error('Resend timeout'));
+        setResendClient({ emails: { send: mockSend } });
+
+        const sendMailSpy = vi.spyOn(nodemailer, 'createTransport');
+
+        try {
+          await expect(
+            sendPasswordResetEmail({
+              to: 'teacher@school.org',
+              resetToken: 'e'.repeat(64)
+            })
+          ).rejects.toThrow('Resend API request timed out after 10000ms');
+
+          // SMTP transport must NOT be created or attempted automatically
+          expect(sendMailSpy).not.toHaveBeenCalled();
+        } finally {
+          env.RESEND_API_KEY = originalKey;
+          env.RESEND_FROM_EMAIL = originalFrom;
+        }
+      });
+    });
+  });
+
+  describe('5. Masked Email Logging', () => {
     it('masks emails cleanly for safe operator logging without leaking full PII', () => {
       expect(maskEmail('principal@greenschool.org')).toBe('p***l@greenschool.org');
       expect(maskEmail('a@b.com')).toBe('a***@b.com');
@@ -220,7 +550,7 @@ describe('FORGOT-PASSWORD-006: Explicit IPv4 Gmail SMTP Configuration & Security
     });
   });
 
-  describe('5. Strict Frontend URL Sanitization', () => {
+  describe('6. Strict Frontend URL Sanitization', () => {
     it('falls back to default fallback URL when candidate is empty or untrusted', () => {
       const fallback = env.isProduction ? 'https://school-trio-final-frontend.vercel.app' : (env.FRONTEND_URL || 'http://localhost:5173');
       expect(getTrustedFrontendUrl(null)).toBe(fallback);

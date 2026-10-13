@@ -1,25 +1,83 @@
 import nodemailer from 'nodemailer';
 import net from 'node:net';
+import { Resend } from 'resend';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 
 /**
- * Email Service (Nodemailer SMTP Delivery)
+ * Email Service (Transactional Delivery)
  *
- * Handles transactional email dispatch for authentication workflows (password reset, account setup, alerts).
- * Configures an SMTP transport when SMTP_HOST is present; falls back to an in-memory test queue in test/dev.
+ * Primary Password-Reset Delivery: Resend HTTPS API (bypasses container egress firewall blocks on ports 465/587).
+ * Fallback & General Email Delivery: Nodemailer SMTP (configured with IPv4 TCP sockets).
+ * Testing/Dev Mode: In-memory test queue with zero unmocked network egress.
  */
 
 // In-memory email store for testing and local verification
 const sentEmailsQueue = [];
 
 let cachedTransporter = null;
+let cachedResendClient = null;
+
+/**
+ * Strips sensitive credentials (API keys, SMTP passwords) from error messages
+ * before logging or propagating to callers.
+ *
+ * @param {string} msg - Error message to sanitize
+ * @returns {string} Sanitized message with sensitive tokens redacted
+ */
+export const sanitizeErrorMessage = (msg) => {
+  if (!msg || typeof msg !== 'string') return 'Unknown error';
+  let sanitized = msg;
+  if (env.RESEND_API_KEY && env.RESEND_API_KEY.length > 5) {
+    sanitized = sanitized.replaceAll(env.RESEND_API_KEY, '[REDACTED_API_KEY]');
+  }
+  if (env.SMTP_PASS && env.SMTP_PASS.length > 3) {
+    sanitized = sanitized.replaceAll(env.SMTP_PASS, '[REDACTED_SMTP_PASS]');
+  }
+  return sanitized;
+};
 
 /**
  * Resets cached transporter (useful for isolated testing of environment changes).
  */
 export const resetTransporterCache = () => {
   cachedTransporter = null;
+};
+
+/**
+ * Resets cached Resend client (useful for isolated testing of environment changes).
+ */
+export const resetResendClientCache = () => {
+  cachedResendClient = null;
+};
+
+/**
+ * Explicitly sets the cached Resend client instance (for mock injection in tests).
+ *
+ * @param {Object|null} client - Custom/mocked Resend client instance
+ */
+export const setResendClient = (client) => {
+  cachedResendClient = client;
+};
+
+/**
+ * Initializes or returns the cached Resend HTTPS client.
+ * Returns null if RESEND_API_KEY is not configured.
+ *
+ * @returns {Resend|null}
+ */
+export const getResendClient = () => {
+  if (cachedResendClient) {
+    return cachedResendClient;
+  }
+
+  const rawKey = env.RESEND_API_KEY ? env.RESEND_API_KEY.trim() : '';
+  if (rawKey) {
+    cachedResendClient = new Resend(rawKey);
+    return cachedResendClient;
+  }
+
+  return null;
 };
 
 /**
@@ -223,7 +281,7 @@ export const getTrustedFrontendUrl = (candidateUrl = null) => {
   const clean = candidateUrl.trim().replace(/\/+$/, '');
   let parsed;
   try {
-    parsed = new URL(clean);
+    parsed = new globalThis.URL(clean);
   } catch {
     return defaultFallback;
   }
@@ -373,16 +431,185 @@ export const sendMail = async ({ to, subject, html, text, from = env.SMTP_FROM }
 };
 
 /**
- * Dispatches a password reset email to a user.
+ * Dispatches an email via Resend HTTPS REST API.
+ * Used exclusively for password reset delivery to bypass container egress firewall blocks on ports 465/587.
+ *
+ * Enforces an explicit 10-second request timeout via AbortSignal.timeout(10000).
+ * Sanitizes provider errors and logs to prevent credential leakage.
+ *
+ * @param {Object} options
+ * @param {string|string[]} options.to - Recipient email(s)
+ * @param {string} options.subject - Subject line
+ * @param {string} [options.html] - HTML body
+ * @param {string} [options.text] - Plaintext body
+ * @param {string} [options.from] - Sender address (defaults to env.RESEND_FROM_EMAIL)
+ * @returns {Promise<{ success: boolean, messageId: string, provider: string }>}
+ */
+export const sendViaResend = async ({ to, subject, html, text, from = env.RESEND_FROM_EMAIL }) => {
+  const apiKey = env.RESEND_API_KEY ? env.RESEND_API_KEY.trim() : '';
+  const fromEmail = (from || env.RESEND_FROM_EMAIL || '').trim();
+
+  if (!apiKey) {
+    const err = new Error('Resend API key is not configured (RESEND_API_KEY is missing)');
+    logger.error({
+      msg: '[EMAIL SERVICE] Resend delivery rejected: missing RESEND_API_KEY',
+      provider: 'resend'
+    });
+    throw err;
+  }
+
+  if (!fromEmail) {
+    const err = new Error('Resend sender email is not configured (RESEND_FROM_EMAIL is missing)');
+    logger.error({
+      msg: '[EMAIL SERVICE] Resend delivery rejected: missing RESEND_FROM_EMAIL',
+      provider: 'resend'
+    });
+    throw err;
+  }
+
+  const resend = getResendClient();
+  if (!resend) {
+    const err = new Error('Failed to initialize Resend client');
+    logger.error({
+      msg: '[EMAIL SERVICE] Resend client initialization failed',
+      provider: 'resend'
+    });
+    throw err;
+  }
+
+  const recipientStr = Array.isArray(to) ? to.join(', ') : to;
+
+  // Record payload in sentEmailsQueue for testing & verification
+  const emailRecord = {
+    messageId: '',
+    from: fromEmail,
+    to: recipientStr,
+    subject,
+    html,
+    text,
+    sentAt: new Date(),
+    provider: 'resend'
+  };
+
+  try {
+    const payload = {
+      from: fromEmail,
+      to: recipientStr,
+      subject,
+      html,
+      text
+    };
+
+    const response = await resend.emails.send(payload, {
+      signal: globalThis.AbortSignal?.timeout ? globalThis.AbortSignal.timeout(10000) : undefined
+    });
+
+    if (response?.error) {
+      const rawErrorMsg = response.error.message || 'Resend provider rejected email delivery';
+      const sanitizedErrorMsg = sanitizeErrorMessage(rawErrorMsg);
+
+      logger.error({
+        msg: '[EMAIL SERVICE] Resend provider rejected email delivery',
+        recipient: maskEmail(recipientStr),
+        error: sanitizedErrorMsg,
+        statusCode: response.error.statusCode || null,
+        provider: 'resend'
+      });
+
+      const err = new Error(`Resend delivery rejected: ${sanitizedErrorMsg}`);
+      if (response.error.statusCode) {
+        err.statusCode = response.error.statusCode;
+      }
+      throw err;
+    }
+
+    const messageId = response?.data?.id || `resend_${Date.now()}`;
+    emailRecord.messageId = messageId;
+    sentEmailsQueue.push(emailRecord);
+
+    logger.info({
+      msg: '[EMAIL SERVICE] Email dispatched successfully via Resend HTTPS API',
+      messageId,
+      recipient: maskEmail(recipientStr),
+      subject,
+      provider: 'resend'
+    });
+
+    return {
+      success: true,
+      messageId,
+      provider: 'resend'
+    };
+  } catch (err) {
+    const rawMsg = err.name === 'TimeoutError' || err.message?.includes('timeout')
+      ? 'Resend API request timed out after 10000ms'
+      : err.message || 'Unknown Resend delivery error';
+
+    const sanitizedMsg = sanitizeErrorMessage(rawMsg);
+
+    logger.error({
+      msg: '[EMAIL SERVICE] Failed to deliver email via Resend HTTPS API',
+      recipient: maskEmail(recipientStr),
+      error: sanitizedMsg,
+      provider: 'resend'
+    });
+
+    const safeError = new Error(sanitizedMsg);
+    if (err.statusCode) {
+      safeError.statusCode = err.statusCode;
+    }
+    throw safeError;
+  }
+};
+
+/**
+ * Dispatches a password reset email to a user via Resend HTTPS API.
+ * Active delivery path for password reset workflows.
  *
  * @param {Object} params
  * @param {string} params.to - Recipient email address
  * @param {string} params.resetToken - Raw 64-character hex reset token
  * @param {string} [params.schoolName] - Optional school tenant name
  * @param {string|null} [params.frontendUrl] - Requesting frontend URL
- * @returns {Promise<{ success: boolean, messageId: string }>}
+ * @returns {Promise<{ success: boolean, messageId: string, provider: string }>}
  */
 export const sendPasswordResetEmail = async ({ to, resetToken, schoolName = 'School Management System', frontendUrl = null }) => {
+  const baseUrl = getTrustedFrontendUrl(frontendUrl);
+  const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
+  const subject = `Password Reset Request - ${schoolName}`;
+
+  const htmlContent = `
+    <h2 style="margin-top:0; color:#1e293b;">Password Reset Request</h2>
+    <p>We received a request to reset the password for your account at <strong>${schoolName}</strong>.</p>
+    <p>Click the button below to choose a new password:</p>
+    <p style="text-align: center;">
+      <a href="${resetUrl}" class="btn">Reset Password</a>
+    </p>
+    <p class="muted">If the button doesn't work, copy and paste this link into your browser:<br><a href="${resetUrl}" style="color:#4f46e5;">${resetUrl}</a></p>
+    <p class="muted">This link is valid for 1 hour. If you did not request this, you can safely ignore this email.</p>
+  `;
+
+  const html = wrapEmailHtml('Password Reset Request', htmlContent, schoolName);
+  const text = `Password Reset Request - ${schoolName}\n\nWe received a request to reset your password. Use the following link to reset your password:\n${resetUrl}\n\nThis link expires in 1 hour.`;
+
+  // Active path: Dispatches via Resend HTTPS API (bypassing blocked SMTP egress ports 465/587)
+  return sendViaResend({
+    to,
+    subject,
+    html,
+    text
+  });
+};
+
+/**
+ * Fallback password reset email dispatcher via Gmail SMTP.
+ * Kept intact as a documented, manually switchable fallback option.
+ *
+ * CRITICAL: Automatic fallback from Resend to SMTP is intentionally NOT performed
+ * upon Resend error to prevent duplicate email dispatches (e.g. if Resend accepted the request
+ * before a client-side timeout occurred).
+ */
+export const sendPasswordResetEmailViaSmtp = async ({ to, resetToken, schoolName = 'School Management System', frontendUrl = null }) => {
   const baseUrl = getTrustedFrontendUrl(frontendUrl);
   const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
   const subject = `Password Reset Request - ${schoolName}`;

@@ -2,9 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as passwordResetService from './password-reset.service.js';
 import * as authRepository from './auth.repository.js';
 import * as emailService from '../../services/email.service.js';
-import { AppError, UnauthorizedError, ValidationError } from '../../utils/app-error.js';
-import { HTTP_STATUS, ERROR_CODES, TOKEN_TYPES } from '../../config/constants.js';
-import { env } from '../../config/env.js';
+import { AppError, UnauthorizedError } from '../../utils/app-error.js';
+import { TOKEN_TYPES } from '../../config/constants.js';
 
 vi.mock('./auth.repository.js', () => ({
   findActiveUsersByEmail: vi.fn(),
@@ -34,7 +33,6 @@ describe('FORGOT-PASSWORD-002: Gmail SMTP Delivery, Security & Disambiguation Su
 
   describe('1. Trusted Frontend URL Sanitization (Reset-Link Poisoning Prevention)', () => {
     it('falls back to canonical production URL when candidate is missing or invalid', () => {
-      const canonical = 'https://school-trio-final-frontend.vercel.app';
       expect(emailService.getTrustedFrontendUrl(null)).toBeTruthy();
       expect(emailService.getTrustedFrontendUrl('')).toBeTruthy();
       expect(emailService.getTrustedFrontendUrl('not-a-valid-url')).toBeTruthy();
@@ -214,6 +212,36 @@ describe('FORGOT-PASSWORD-002: Gmail SMTP Delivery, Security & Disambiguation Su
       ).rejects.toThrow(AppError);
 
       expect(authRepository.deletePasswordResetToken).toHaveBeenCalledWith('token-uuid-rollback');
+    });
+
+    it('rolls back created token and throws 503 SERVICE_UNAVAILABLE when Resend provider rejects delivery', async () => {
+      const mockUser = {
+        id: 'user-uuid-resend-fail',
+        email: 'teacher@school.edu',
+        isActive: true,
+        schoolId: 'school-uuid-1',
+        school: {
+          id: 'school-uuid-1',
+          name: 'Greenfield High School',
+          status: 'active'
+        }
+      };
+
+      authRepository.findActiveUsersByEmail.mockResolvedValue([mockUser]);
+      authRepository.invalidateUserResetTokens.mockResolvedValue({ count: 0 });
+      authRepository.createPasswordResetToken.mockResolvedValue({ id: 'token-uuid-resend-rollback' });
+      authRepository.deletePasswordResetToken.mockResolvedValue({ id: 'token-uuid-resend-rollback' });
+      emailService.sendPasswordResetEmail.mockRejectedValue(
+        new Error('Resend delivery rejected: Domain unverified.org is not verified in Resend dashboard')
+      );
+
+      await expect(
+        passwordResetService.requestPasswordReset({
+          email: 'teacher@school.edu'
+        })
+      ).rejects.toThrow(AppError);
+
+      expect(authRepository.deletePasswordResetToken).toHaveBeenCalledWith('token-uuid-resend-rollback');
     });
   });
 
@@ -395,6 +423,18 @@ describe('FORGOT-PASSWORD-002: Gmail SMTP Delivery, Security & Disambiguation Su
           userId: 'user-valid'
         })
       );
+    });
+  });
+
+  describe('8. Isolation from Other Workflows (School Registration)', () => {
+    it('confirms password reset service does not affect or intercept school registration workflows', () => {
+      // Password reset service exports only reset/setup domain methods
+      expect(typeof passwordResetService.requestPasswordReset).toBe('function');
+      expect(typeof passwordResetService.confirmPasswordReset).toBe('function');
+      expect(typeof passwordResetService.confirmPasswordSetup).toBe('function');
+      expect(typeof passwordResetService.changePassword).toBe('function');
+      // Verifies no registration methods are exposed or coupled
+      expect(passwordResetService).not.toHaveProperty('registerSchool');
     });
   });
 });

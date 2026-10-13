@@ -48,7 +48,11 @@ export const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().optional(),
-  FRONTEND_URL: z.string().default('https://school-trio-final-frontend.vercel.app')
+  FRONTEND_URL: z.string().default('https://school-trio-final-frontend.vercel.app'),
+
+  // Temporary Resend HTTPS API Configuration (Password Reset Delivery)
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_FROM_EMAIL: z.string().optional()
 });
 
 
