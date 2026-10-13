@@ -1,15 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import nodemailer from 'nodemailer';
+import net from 'node:net';
+import { EventEmitter } from 'node:events';
 import {
   getTransporter,
   resetTransporterCache,
   sendMail,
   getTrustedFrontendUrl,
-  maskEmail
+  maskEmail,
+  createIpv4Socket
 } from './email.service.js';
 import { env } from '../config/env.js';
 
-describe('FORGOT-PASSWORD-004: Explicit Gmail SMTP Configuration & Security Suite', () => {
+describe('FORGOT-PASSWORD-006: Explicit IPv4 Gmail SMTP Configuration & Security Suite', () => {
   beforeEach(() => {
     resetTransporterCache();
     vi.clearAllMocks();
@@ -19,8 +22,8 @@ describe('FORGOT-PASSWORD-004: Explicit Gmail SMTP Configuration & Security Suit
     resetTransporterCache();
   });
 
-  describe('1. Explicit SMTP Transport Configuration (No service: "gmail" Overrides)', () => {
-    it('creates transport using explicit host, port 587, and secure: false for STARTTLS', () => {
+  describe('1. Explicit SMTP Transport Configuration & IPv4 getSocket', () => {
+    it('creates transport with explicit host, port 587, secure: false, and IPv4 getSocket', () => {
       const createTransportSpy = vi.spyOn(nodemailer, 'createTransport').mockReturnValue({
         sendMail: vi.fn().mockResolvedValue({ messageId: 'test-msg' }),
         verify: vi.fn().mockResolvedValue(true)
@@ -55,7 +58,8 @@ describe('FORGOT-PASSWORD-004: Explicit Gmail SMTP Configuration & Security Suit
             socketTimeout: 15000,
             tls: {
               rejectUnauthorized: true
-            }
+            },
+            getSocket: createIpv4Socket
           })
         );
         // CRITICAL: Must NOT contain service: 'gmail', which forces port 465
@@ -97,7 +101,8 @@ describe('FORGOT-PASSWORD-004: Explicit Gmail SMTP Configuration & Security Suit
             secure: true,
             tls: {
               rejectUnauthorized: true
-            }
+            },
+            getSocket: createIpv4Socket
           })
         );
       } finally {
@@ -125,7 +130,66 @@ describe('FORGOT-PASSWORD-004: Explicit Gmail SMTP Configuration & Security Suit
     });
   });
 
-  describe('2. sendMail Behavior & No Resend Invocations', () => {
+  describe('2. IPv4 Socket Enforcement & Error Handling (FORGOT-PASSWORD-006)', () => {
+    it('creates socket strictly with family: 4 to prevent unreachable IPv6 attempts', () => {
+      const mockSocket = new EventEmitter();
+      mockSocket.destroy = vi.fn();
+      const connectSpy = vi.spyOn(net, 'connect').mockReturnValue(mockSocket);
+
+      let callbackResult = null;
+      createIpv4Socket({ host: 'smtp.gmail.com', port: 587, connectionTimeout: 5000 }, (err, res) => {
+        callbackResult = { err, res };
+      });
+
+      expect(connectSpy).toHaveBeenCalledWith({
+        host: 'smtp.gmail.com',
+        port: 587,
+        family: 4
+      });
+
+      mockSocket.emit('connect');
+      expect(callbackResult).toEqual({
+        err: null,
+        res: { connection: mockSocket }
+      });
+    });
+
+    it('propagates socket connection errors safely without credential leaks', () => {
+      const mockSocket = new EventEmitter();
+      mockSocket.destroy = vi.fn();
+      vi.spyOn(net, 'connect').mockReturnValue(mockSocket);
+
+      let callbackResult = null;
+      createIpv4Socket({ host: 'smtp.gmail.com', port: 587 }, (err, res) => {
+        callbackResult = { err, res };
+      });
+
+      const networkError = new Error('connect ECONNREFUSED 192.178.211.109:587');
+      mockSocket.emit('error', networkError);
+
+      expect(callbackResult.err).toBe(networkError);
+      expect(mockSocket.destroy).toHaveBeenCalled();
+    });
+
+    it('handles connection timeout safely by destroying socket and returning ETIMEDOUT', async () => {
+      const mockSocket = new EventEmitter();
+      mockSocket.destroy = vi.fn();
+      vi.spyOn(net, 'connect').mockReturnValue(mockSocket);
+
+      let callbackResult = null;
+      createIpv4Socket({ host: 'smtp.gmail.com', port: 587, connectionTimeout: 20 }, (err, res) => {
+        callbackResult = { err, res };
+      });
+
+      await new Promise(r => setTimeout(r, 50));
+
+      expect(callbackResult).not.toBeNull();
+      expect(callbackResult.err.code).toBe('ETIMEDOUT');
+      expect(mockSocket.destroy).toHaveBeenCalled();
+    });
+  });
+
+  describe('3. sendMail Behavior & No Resend Invocations', () => {
     it('captures in test queue without outbound network calls during tests', async () => {
       const result = await sendMail({
         to: 'test.user@example.com',
@@ -145,7 +209,7 @@ describe('FORGOT-PASSWORD-004: Explicit Gmail SMTP Configuration & Security Suit
     });
   });
 
-  describe('3. Masked Email Logging', () => {
+  describe('4. Masked Email Logging', () => {
     it('masks emails cleanly for safe operator logging without leaking full PII', () => {
       expect(maskEmail('principal@greenschool.org')).toBe('p***l@greenschool.org');
       expect(maskEmail('a@b.com')).toBe('a***@b.com');
@@ -156,7 +220,7 @@ describe('FORGOT-PASSWORD-004: Explicit Gmail SMTP Configuration & Security Suit
     });
   });
 
-  describe('4. Strict Frontend URL Sanitization', () => {
+  describe('5. Strict Frontend URL Sanitization', () => {
     it('falls back to default fallback URL when candidate is empty or untrusted', () => {
       const fallback = env.isProduction ? 'https://school-trio-final-frontend.vercel.app' : (env.FRONTEND_URL || 'http://localhost:5173');
       expect(getTrustedFrontendUrl(null)).toBe(fallback);

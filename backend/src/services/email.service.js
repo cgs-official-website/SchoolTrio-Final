@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import net from 'node:net';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 
@@ -19,6 +20,67 @@ let cachedTransporter = null;
  */
 export const resetTransporterCache = () => {
   cachedTransporter = null;
+};
+
+/**
+ * Creates an outbound IPv4 TCP connection socket for Nodemailer SMTP.
+ *
+ * Enforces `family: 4` to prevent Nodemailer from attempting unreachable
+ * IPv6 addresses in container/cloud environments lacking an outbound IPv6 route (e.g. Railway).
+ * Bounded by connectionTimeout with clean error and timeout propagation.
+ *
+ * @param {Object} options - Nodemailer connection options
+ * @param {Function} callback - Node callback (err, socketOptions)
+ */
+export const createIpv4Socket = (options, callback) => {
+  const timeoutMs = Number(options.connectionTimeout) || 10000;
+  let finished = false;
+  let socket = null;
+
+  const onConnectError = (err) => {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timer);
+    if (socket) {
+      socket.destroy();
+    }
+    callback(err);
+  };
+
+  const timer = setTimeout(() => {
+    if (finished) return;
+    finished = true;
+    if (socket) {
+      socket.removeListener('error', onConnectError);
+      socket.destroy();
+    }
+    const err = new Error('Connection timeout');
+    err.code = 'ETIMEDOUT';
+    callback(err);
+  }, timeoutMs);
+
+  try {
+    socket = net.connect({
+      host: options.host || env.SMTP_HOST || 'smtp.gmail.com',
+      port: Number(options.port) || Number(env.SMTP_PORT) || 587,
+      family: 4
+    });
+
+    socket.once('connect', () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      socket.removeListener('error', onConnectError);
+      callback(null, { connection: socket });
+    });
+
+    socket.once('error', onConnectError);
+  } catch (err) {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timer);
+    callback(err);
+  }
 };
 
 /**
@@ -51,7 +113,8 @@ export const getTransporter = () => {
       socketTimeout: 15000,
       tls: {
         rejectUnauthorized: true
-      }
+      },
+      getSocket: createIpv4Socket
     };
 
     cachedTransporter = nodemailer.createTransport(transportConfig);
