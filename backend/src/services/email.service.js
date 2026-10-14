@@ -289,14 +289,19 @@ export const getTrustedFrontendUrl = (candidateUrl = null) => {
   const origin = parsed.origin;
   const hostname = parsed.hostname.toLowerCase();
 
-  // 1. Allow local development origins
-  if (
+  // 1. Local development origins: never allow localhost in production; prefer configured live FRONTEND_URL
+  const isLocalOrigin = (
     origin === 'http://localhost:5173' ||
     origin === 'http://localhost:3000' ||
     origin === 'http://127.0.0.1:5173' ||
     hostname === 'localhost' ||
     hostname === '127.0.0.1'
-  ) {
+  );
+
+  if (isLocalOrigin) {
+    if (env.isProduction || (env.FRONTEND_URL && !env.FRONTEND_URL.includes('localhost') && !env.isTest)) {
+      return defaultFallback;
+    }
     return origin;
   }
 
@@ -431,6 +436,69 @@ export const sendMail = async ({ to, subject, html, text, from = env.SMTP_FROM }
 };
 
 /**
+ * Resolves, normalizes, and validates the sender address for Resend delivery.
+ *
+ * Requirements & Fallback rules:
+ * 1. Resend requires the format `email@domain.com` or `Display Name <email@domain.com>`.
+ * 2. Unverified public free-mail domains (@gmail.com, @yahoo.com, etc.) cannot be verified
+ *    in Resend and are permanently rejected by Resend API.
+ * 3. In such cases or when unconfigured, automatically resolves to the verified custom domain
+ *    `School Trio <noreply@teamzuna.in>`.
+ *
+ * @param {string|null} fromInput - Candidate sender address
+ * @returns {string} Fully normalized sender address valid for Resend delivery
+ */
+export const resolveResendSender = (fromInput = null) => {
+  const candidate = fromInput !== undefined && fromInput !== null
+    ? String(fromInput).trim()
+    : (env.RESEND_FROM_EMAIL || '').trim();
+
+  if (!candidate) {
+    return null;
+  }
+
+  // Extract display name and email address if separated without angle brackets
+  // e.g. "SchholTrio carrezzaglobalsolutions@gmail.com"
+  let displayName = '';
+  let emailAddress = '';
+
+  const angleMatch = candidate.match(/^(.*?)\s*<([^>]+)>$/);
+  if (angleMatch) {
+    displayName = angleMatch[1].trim();
+    emailAddress = angleMatch[2].trim();
+  } else {
+    const spaceMatch = candidate.match(/^(.+?)\s+([^\s@]+@[^\s@]+)$/);
+    if (spaceMatch) {
+      displayName = spaceMatch[1].trim();
+      emailAddress = spaceMatch[2].trim();
+    } else {
+      emailAddress = candidate;
+    }
+  }
+
+  const atIndex = emailAddress.indexOf('@');
+  if (atIndex === -1) {
+    return candidate;
+  }
+
+  const domain = emailAddress.slice(atIndex + 1).toLowerCase();
+  const unverifiedPublicDomains = ['gmail.com', 'googlemail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com'];
+
+  if (unverifiedPublicDomains.includes(domain)) {
+    logger.warn({
+      msg: `[EMAIL SERVICE] Configured sender email uses public domain '${domain}' which cannot be verified on Resend; resolving to verified domain 'teamzuna.in'`,
+      candidate
+    });
+    return displayName ? `${displayName.replace(/["']/g, '')} <noreply@teamzuna.in>` : 'School Trio <noreply@teamzuna.in>';
+  }
+
+  if (displayName) {
+    return `${displayName.replace(/["']/g, '')} <${emailAddress}>`;
+  }
+  return emailAddress;
+};
+
+/**
  * Dispatches an email via Resend HTTPS REST API.
  * Used exclusively for password reset delivery to bypass container egress firewall blocks on ports 465/587.
  *
@@ -447,7 +515,7 @@ export const sendMail = async ({ to, subject, html, text, from = env.SMTP_FROM }
  */
 export const sendViaResend = async ({ to, subject, html, text, from = env.RESEND_FROM_EMAIL }) => {
   const apiKey = env.RESEND_API_KEY ? env.RESEND_API_KEY.trim() : '';
-  const fromEmail = (from || env.RESEND_FROM_EMAIL || '').trim();
+  const fromEmail = resolveResendSender(from);
 
   if (!apiKey) {
     const err = new Error('Resend API key is not configured (RESEND_API_KEY is missing)');

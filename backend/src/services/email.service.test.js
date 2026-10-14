@@ -16,6 +16,7 @@ import {
   sendPasswordResetEmail,
   sendPasswordResetEmailViaSmtp,
   sanitizeErrorMessage,
+  resolveResendSender,
   getSentEmails,
   clearSentEmails
 } from './email.service.js';
@@ -393,6 +394,23 @@ describe('FORGOT-PASSWORD-009: Resend HTTPS Password-Reset & SMTP Fallback Secur
           env.RESEND_API_KEY = originalKey;
           env.RESEND_FROM_EMAIL = originalFrom;
         }
+      });
+
+      it('automatically resolves and normalizes unbracketed or public domain sender addresses', () => {
+        // Missing angle brackets with gmail -> resolves to verified teamzuna.in
+        expect(resolveResendSender('SchoolTrio carrezzaglobalsolutions@gmail.com')).toBe('SchoolTrio <noreply@teamzuna.in>');
+
+        // Pure gmail email -> resolves to default verified sender
+        expect(resolveResendSender('carrezzaglobalsolutions@gmail.com')).toBe('School Trio <noreply@teamzuna.in>');
+
+        // Valid custom domain with angle brackets -> preserved
+        expect(resolveResendSender('School Trio <noreply@teamzuna.in>')).toBe('School Trio <noreply@teamzuna.in>');
+
+        // Valid custom domain without display name -> preserved
+        expect(resolveResendSender('admin@unverified.org')).toBe('admin@unverified.org');
+
+        // Empty explicit input -> returns null so missing config validation is triggered
+        expect(resolveResendSender('')).toBeNull();
       });
     });
 

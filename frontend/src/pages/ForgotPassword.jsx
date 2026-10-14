@@ -59,7 +59,9 @@ export default function ForgotPassword() {
     setLoading(true);
     setError(null);
     try {
-      const frontendUrl = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : undefined;
+      const frontendUrl = typeof window !== 'undefined' && window.location?.origin && !window.location.origin.includes('localhost')
+        ? window.location.origin
+        : undefined;
       await authApi.passwordResetRequest({ 
         email: validation.email,
         frontendUrl
