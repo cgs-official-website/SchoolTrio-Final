@@ -229,7 +229,7 @@ export default function ClassRoster() {
   }, [schoolId, classId, sectionId, todayDate]);
 
   const filteredStudents = students.filter(student => {
-    const fullName = `${student.firstName} ${student.lastName}`.toLowerCase();
+    const fullName = `${student.firstName || ''} ${student.lastName || ''} ${student.name || ''}`.trim().toLowerCase();
     return fullName.includes(searchQuery.toLowerCase()) || 
            (student.admissionNumber && student.admissionNumber.toLowerCase().includes(searchQuery.toLowerCase()));
   });
@@ -438,11 +438,11 @@ export default function ClassRoster() {
                     <td className="p-4 pl-6">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-sm border border-primary-200 shadow-sm">
-                          {student.firstName.charAt(0)}{student.lastName.charAt(0)}
+                          {(student.firstName?.charAt(0) || student.name?.charAt(0) || 'S').toUpperCase()}{(student.lastName?.charAt(0) || '').toUpperCase()}
                         </div>
                         <div>
                           <div className="font-bold text-slate-900 dark:text-white">
-                            {student.firstName} {student.lastName}
+                            {student.firstName || student.lastName ? `${student.firstName || ''} ${student.lastName || ''}`.trim() : (student.name || 'Student')}
                           </div>
                           <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5">
                             <CheckCircle2 size={10} className="text-green-500"/> Active
