@@ -7,7 +7,8 @@ import {
   updateAttendanceSession,
   getAttendanceDashboardStats,
   listAbsenteeFlags,
-  resolveAbsenteeFlag
+  resolveAbsenteeFlag,
+  getAttendanceSettings
 } from '../../api/attendance';
 import { listClasses } from '../../api/classes';
 import { listStudents } from '../../api/students';
@@ -56,8 +57,9 @@ export default function Attendance() {
   const [historicalSessions, setHistoricalSessions] = useState([]);
   const [reportStats, setReportStats] = useState({});
 
-  // Cutoff state (Standard SOP default 09:30 AM)
-  const cutoffTime = '09:30';
+  // Cutoff state (Standard SOP default 09:30 AM until loaded from settings)
+  const [cutoffTime, setCutoffTime] = useState('09:30');
+  const [attendanceTimezone, setAttendanceTimezone] = useState('Asia/Kolkata');
   const [isPastCutoff, setIsPastCutoff] = useState(false);
 
   // Tabs, Dashboard & Analytics States
@@ -103,6 +105,28 @@ export default function Attendance() {
     };
   }, []);
 
+  // Fetch Attendance Settings (REST)
+  const fetchAttendanceConfig = useCallback(async () => {
+    try {
+      const res = await getAttendanceSettings();
+      const data = res?.data || res;
+      if (data?.cutoffTime && mountedRef.current) {
+        setCutoffTime(data.cutoffTime);
+      }
+      if (data?.timezone && mountedRef.current) {
+        setAttendanceTimezone(data.timezone);
+      }
+    } catch (err) {
+      console.warn('[Admin Attendance] Using default cutoff 09:30:', err?.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAttendanceConfig();
+  }, [fetchAttendanceConfig]);
+
+  useLiveDataRefresh('attendance_settings', fetchAttendanceConfig);
+
   // Check Cutoff interval
   useEffect(() => {
     if (selectedDate !== today) {
@@ -111,15 +135,30 @@ export default function Attendance() {
     }
     const checkCutoff = () => {
       const now = new Date();
-      const [h, m] = cutoffTime.split(':').map(Number);
-      const cutoffDate = new Date();
-      cutoffDate.setHours(h, m, 0, 0);
-      setIsPastCutoff(now > cutoffDate);
+      let currentHour, currentMinute;
+      try {
+        const timeStr = now.toLocaleTimeString('en-GB', {
+          timeZone: attendanceTimezone,
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        });
+        const [h, m] = timeStr.split(':').map(Number);
+        currentHour = h;
+        currentMinute = m;
+      } catch {
+        currentHour = now.getHours();
+        currentMinute = now.getMinutes();
+      }
+      const [cutoffH, cutoffM] = (cutoffTime || '09:30').split(':').map(Number);
+      const nowMinutes = currentHour * 60 + currentMinute;
+      const cutoffMinutes = cutoffH * 60 + cutoffM;
+      setIsPastCutoff(nowMinutes > cutoffMinutes);
     };
     checkCutoff();
     const interval = setInterval(checkCutoff, 60000);
     return () => clearInterval(interval);
-  }, [selectedDate, today]);
+  }, [selectedDate, today, cutoffTime, attendanceTimezone]);
 
   // ============================================================
   // 1. LOAD ALL CLASSES (REST)
@@ -775,6 +814,14 @@ export default function Attendance() {
       if (matches) filteredByClass[classId] = data;
     });
 
+    const filteredPending = (dashboardStats.pendingClassList || []).filter(c => {
+      const gradeLevel = c.gradeLevel || '';
+      return assignedGrades.some(g =>
+        g.toLowerCase() === gradeLevel.toLowerCase() ||
+        gradeLevel.toLowerCase().includes(g.toLowerCase())
+      );
+    });
+
     const schoolWide = { total: 0, present: 0, absent: 0, late: 0, percentage: 100 };
     Object.values(filteredByGrade).forEach((g) => {
       schoolWide.total += g.total;
@@ -794,6 +841,7 @@ export default function Attendance() {
       schoolWide,
       byGrade: filteredByGrade,
       byClass: filteredByClass,
+      pendingClassList: filteredPending,
       classesMarked,
       classesTotal,
       classesPending: Math.max(0, classesTotal - classesMarked)
@@ -959,88 +1007,109 @@ export default function Attendance() {
                     </div>
                   </div>
                   <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {Object.entries(scopedStats.byGrade || {})
-                      .sort(([gradeA], [gradeB]) => gradeA.localeCompare(gradeB, undefined, { numeric: true, sensitivity: 'base' }))
-                      .map(([gradeId, gradeData]) => {
-                        const isExpanded = !!expandedGrades[gradeId];
-                        const classSections = Object.values(scopedStats.byClass || {})
-                          .filter(s => (s.gradeLevel || 'General') === gradeId || s.className?.startsWith(gradeId))
-                          .sort((a, b) => (a.className || '').localeCompare(b.className || '', undefined, { numeric: true, sensitivity: 'base' }));
+                    {(() => {
+                      const gradeMap = new Map();
+                      Object.entries(scopedStats.byGrade || {}).forEach(([gradeId, data]) => {
+                        gradeMap.set(gradeId, { ...data });
+                      });
+                      (scopedStats.pendingClassList || []).forEach(c => {
+                        const gradeId = c.gradeLevel || 'General';
+                        if (!gradeMap.has(gradeId)) {
+                          gradeMap.set(gradeId, { total: 0, present: 0, absent: 0, late: 0, percentage: 0 });
+                        }
+                      });
+                      return Array.from(gradeMap.entries()).sort(([gradeA], [gradeB]) =>
+                        gradeA.localeCompare(gradeB, undefined, { numeric: true, sensitivity: 'base' })
+                      );
+                    })().map(([gradeId, gradeData]) => {
+                      const isExpanded = !!expandedGrades[gradeId];
+                      const markedClasses = Object.values(scopedStats.byClass || {})
+                        .filter(s => (s.gradeLevel || 'General') === gradeId || s.className?.startsWith(gradeId));
+                      const pendingClasses = (scopedStats.pendingClassList || [])
+                        .filter(s => (s.gradeLevel || 'General') === gradeId || s.className?.startsWith(gradeId));
+                      const combinedClasses = [...markedClasses, ...pendingClasses];
+                      const classSections = combinedClasses
+                        .flatMap(c => Array.isArray(c.sections) && c.sections.length > 0 ? c.sections : [c])
+                        .sort((a, b) => (a.formattedName || a.className || '').localeCompare(b.formattedName || b.className || '', undefined, { numeric: true, sensitivity: 'base' }));
 
-                        return (
-                          <div key={gradeId} className="group">
-                            <div
-                              onClick={() => toggleGrade(gradeId)}
-                              className="flex items-center justify-between px-6 py-4 hover:bg-slate-50/50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors"
-                            >
-                              <div className="flex items-center gap-3">
-                                <span className="font-bold text-slate-800 dark:text-slate-100 text-base">Grade {gradeId}</span>
-                                <span className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                                  {classSections.length} Classes
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-8">
-                                <div className="flex items-center gap-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                                  <span>Present: <b className="text-green-600">{gradeData.present}</b></span>
-                                  <span>Absent: <b className="text-red-600">{gradeData.absent}</b></span>
-                                  <span>Late: <b className="text-amber-600">{gradeData.late}</b></span>
-                                </div>
-                                <span className={`text-sm font-black px-3 py-1 rounded-full border ${
-                                  gradeData.percentage >= 75
-                                    ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800'
-                                    : gradeData.percentage >= 50
-                                      ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
-                                      : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
-                                }`}>
-                                  {gradeData.percentage}%
-                                </span>
-                                {isExpanded ? <ChevronUp className="text-slate-400 dark:text-slate-300" size={18} /> : <ChevronDown className="text-slate-400 dark:text-slate-300" size={18} />}
-                              </div>
+                      return (
+                        <div key={gradeId} className="group">
+                          <div
+                            onClick={() => toggleGrade(gradeId)}
+                            className="flex items-center justify-between px-6 py-4 hover:bg-slate-50/50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="font-bold text-slate-800 dark:text-slate-100 text-base">
+                                {gradeId === 'General' ? 'All Classes' : (gradeId.toLowerCase().startsWith('grade') ? gradeId : `Grade ${gradeId}`)}
+                              </span>
+                              <span className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                                {classSections.length} {classSections.length === 1 ? 'Class / Section' : 'Classes / Sections'}
+                              </span>
                             </div>
-
-                            {isExpanded && (
-                              <div className="bg-slate-50/40 dark:bg-slate-800/40 px-6 py-2 border-t border-slate-100 dark:border-slate-800">
-                                <table className="w-full text-left border-collapse my-2">
-                                  <thead>
-                                    <tr className="text-slate-400 dark:text-slate-300 font-bold text-[10px] uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
-                                      <th className="pb-2">Class / Section</th>
-                                      <th className="pb-2">Total Students</th>
-                                      <th className="pb-2 text-green-600">Present</th>
-                                      <th className="pb-2 text-red-600">Absent</th>
-                                      <th className="pb-2 text-amber-600">Late</th>
-                                      <th className="pb-2 text-right">Percentage</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {classSections.map((sec, sIdx) => (
-                                      <tr key={sIdx} className="border-b border-slate-100/50 dark:border-slate-800/50 last:border-0 hover:bg-slate-100/40 dark:hover:bg-slate-800/40 text-sm">
-                                        <td className="py-2.5 font-bold text-slate-700 dark:text-slate-200">{sec.className}</td>
-                                        <td className="py-2.5 font-medium text-slate-500 dark:text-slate-400">{sec.total}</td>
-                                        <td className="py-2.5 font-semibold text-green-600">{sec.present}</td>
-                                        <td className="py-2.5 font-semibold text-red-600">{sec.absent}</td>
-                                        <td className="py-2.5 font-semibold text-amber-600">{sec.late}</td>
-                                        <td className="py-2.5 text-right">
-                                          <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded-lg border ${
-                                            sec.total === 0
-                                              ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                                              : sec.percentage >= 75
-                                                ? 'bg-green-50 text-green-600 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800'
-                                                : sec.percentage >= 50
-                                                  ? 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
-                                                  : 'bg-red-50 text-red-600 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
-                                          }`}>
-                                            {sec.total === 0 ? 'Unmarked' : `${sec.percentage}%`}
-                                          </span>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
+                            <div className="flex items-center gap-8">
+                              <div className="flex items-center gap-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                <span>Present: <b className="text-green-600">{gradeData.present}</b></span>
+                                <span>Absent: <b className="text-red-600">{gradeData.absent}</b></span>
+                                <span>Late: <b className="text-amber-600">{gradeData.late}</b></span>
                               </div>
-                            )}
+                              <span className={`text-sm font-black px-3 py-1 rounded-full border ${
+                                gradeData.percentage >= 75
+                                  ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800'
+                                  : gradeData.percentage >= 50
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                                    : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
+                              }`}>
+                                {gradeData.percentage}%
+                              </span>
+                              {isExpanded ? <ChevronUp className="text-slate-400 dark:text-slate-300" size={18} /> : <ChevronDown className="text-slate-400 dark:text-slate-300" size={18} />}
+                            </div>
                           </div>
-                        );
-                      })}
+
+                          {isExpanded && (
+                            <div className="bg-slate-50/40 dark:bg-slate-800/40 px-6 py-2 border-t border-slate-100 dark:border-slate-800">
+                              <table className="w-full text-left border-collapse my-2">
+                                <thead>
+                                  <tr className="text-slate-400 dark:text-slate-300 font-bold text-[10px] uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                                    <th className="pb-2">Class / Section</th>
+                                    <th className="pb-2">Total Students</th>
+                                    <th className="pb-2 text-green-600">Present</th>
+                                    <th className="pb-2 text-red-600">Absent</th>
+                                    <th className="pb-2 text-amber-600">Late</th>
+                                    <th className="pb-2 text-right">Percentage</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {classSections.map((sec, sIdx) => (
+                                    <tr key={sec.key || sec.id || sIdx} className="border-b border-slate-100/50 dark:border-slate-800/50 last:border-0 hover:bg-slate-100/40 dark:hover:bg-slate-800/40 text-sm">
+                                      <td className="py-2.5 font-bold text-slate-700 dark:text-slate-200">
+                                        {sec.formattedName || (sec.sectionName ? `${sec.className} - Section ${sec.sectionName}` : sec.className)}
+                                      </td>
+                                      <td className="py-2.5 font-medium text-slate-500 dark:text-slate-400">{sec.total}</td>
+                                      <td className="py-2.5 font-semibold text-green-600">{sec.present}</td>
+                                      <td className="py-2.5 font-semibold text-red-600">{sec.absent}</td>
+                                      <td className="py-2.5 font-semibold text-amber-600">{sec.late}</td>
+                                      <td className="py-2.5 text-right">
+                                        <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded-lg border ${
+                                          sec.total === 0 || sec.isUnmarked
+                                            ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                                            : sec.percentage >= 75
+                                              ? 'bg-green-50 text-green-600 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800'
+                                              : sec.percentage >= 50
+                                                ? 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                                                : 'bg-red-50 text-red-600 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
+                                        }`}>
+                                          {sec.total === 0 || sec.isUnmarked ? 'Unmarked' : `${sec.percentage}%`}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -1048,48 +1117,71 @@ export default function Attendance() {
               {/* Right Column: Pending Alert Panel */}
               <div className="xl:col-span-1">
                 <div className="bg-white dark:bg-slate-900 rounded-3xl border border-red-200 dark:border-red-900/60 overflow-hidden shadow-sm sticky top-6">
-                  <div className="border-b border-red-100 dark:border-red-900/40 px-6 py-4 bg-red-50/55 dark:bg-red-950/30 flex items-center justify-between">
-                    <h2 className="text-base font-bold text-red-800 dark:text-red-300 flex items-center gap-2">
-                      <AlertCircle className="text-red-600 dark:text-red-400" size={20} /> Pending Class Logs
-                    </h2>
-                    <span className="bg-red-100 dark:bg-red-900/60 text-red-800 dark:text-red-200 text-xs px-2.5 py-0.5 rounded-full font-black">
-                      {scopedStats.classesPending ?? 0}
-                    </span>
-                  </div>
-                  {(scopedStats.classesPending || 0) === 0 ? (
-                    <div className="p-8 text-center text-slate-400 dark:text-slate-300">
-                      <CheckCircle2 className="mx-auto mb-2 text-green-500" size={28} />
-                      <p className="font-bold text-sm text-slate-700 dark:text-slate-200">All Attendance Logged</p>
-                      <p className="text-xs mt-0.5">All class attendance sessions recorded for {selectedDate}.</p>
-                    </div>
-                  ) : (
-                    <div className="p-6 space-y-4 max-h-[480px] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-                      {Object.values(scopedStats.byClass || {})
-                        .filter(s => s.total === 0)
-                        .map((c) => (
-                          <div key={c.classId} className="flex items-start justify-between gap-4 pt-3 first:pt-0">
-                            <div>
-                              <p className="font-bold text-slate-800 dark:text-slate-100 text-sm">Attendance Pending</p>
-                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                Class: {c.className}
-                              </p>
-                              <p className="text-[10px] text-slate-400 dark:text-slate-300 mt-0.5">
-                                Date: {selectedDate}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => {
-                                setSelectedClassId(c.classId);
-                                setActiveTab('marking');
-                              }}
-                              className="text-xs font-bold text-primary-600 hover:text-primary-700 bg-primary-50 dark:bg-primary-950/40 px-3 py-1.5 rounded-xl transition-colors shrink-0"
-                            >
-                              Mark Now
-                            </button>
+                  {(() => {
+                    const pendingClassSections = (() => {
+                      if (Array.isArray(scopedStats.pendingClassList) && scopedStats.pendingClassList.length > 0) {
+                        return scopedStats.pendingClassList.flatMap(c =>
+                          Array.isArray(c.sections) && c.sections.length > 0 ? c.sections : [c]
+                        );
+                      }
+                      const pendingFromByClass = Object.values(scopedStats.byClass || {}).flatMap(c =>
+                        Array.isArray(c.sections)
+                          ? c.sections.filter(s => s.isUnmarked || s.total === 0)
+                          : (c.isUnmarked || c.total === 0 ? [c] : [])
+                      );
+                      if (pendingFromByClass.length > 0) return pendingFromByClass;
+                      const markedIds = new Set(Object.keys(scopedStats.byClass || {}));
+                      return flattenClassesWithSections(classes).filter(c => !markedIds.has(c.classId));
+                    })();
+
+                    const pendingCount = pendingClassSections.length > 0 ? pendingClassSections.length : (scopedStats.classesPending ?? 0);
+
+                    return (
+                      <>
+                        <div className="border-b border-red-100 dark:border-red-900/40 px-6 py-4 bg-red-50/55 dark:bg-red-950/30 flex items-center justify-between">
+                          <h2 className="text-base font-bold text-red-800 dark:text-red-300 flex items-center gap-2">
+                            <AlertCircle className="text-red-600 dark:text-red-400" size={20} /> Pending Class Logs
+                          </h2>
+                          <span className="bg-red-100 dark:bg-red-900/60 text-red-800 dark:text-red-200 text-xs px-2.5 py-0.5 rounded-full font-black">
+                            {pendingCount}
+                          </span>
+                        </div>
+                        {pendingCount === 0 ? (
+                          <div className="p-8 text-center text-slate-400 dark:text-slate-300">
+                            <CheckCircle2 className="mx-auto mb-2 text-green-500" size={28} />
+                            <p className="font-bold text-sm text-slate-700 dark:text-slate-200">All Attendance Logged</p>
+                            <p className="text-xs mt-0.5">All class attendance sessions recorded for {selectedDate}.</p>
                           </div>
-                        ))}
-                    </div>
-                  )}
+                        ) : (
+                          <div className="p-6 space-y-4 max-h-[480px] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+                            {pendingClassSections.map((item, pIdx) => (
+                              <div key={item.key || item.id || pIdx} className="flex items-start justify-between gap-4 pt-3 first:pt-0">
+                                <div>
+                                  <p className="font-bold text-slate-800 dark:text-slate-100 text-sm">Attendance Pending</p>
+                                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                    Class: {item.formattedName || item.label || (item.sectionName ? `${item.className} - Section ${item.sectionName}` : item.className)}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 dark:text-slate-300 mt-0.5">
+                                    Date: {selectedDate}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    setSelectedClassId(item.classId);
+                                    setSelectedSectionId(item.sectionId || null);
+                                    setActiveTab('marking');
+                                  }}
+                                  className="text-xs font-bold text-primary-600 hover:text-primary-700 bg-primary-50 dark:bg-primary-950/40 px-3 py-1.5 rounded-xl transition-colors shrink-0"
+                                >
+                                  Mark Now
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

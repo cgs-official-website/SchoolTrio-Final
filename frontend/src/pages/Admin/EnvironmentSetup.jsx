@@ -10,6 +10,7 @@ import { listRoles } from '../../api/staff';
 import { LuSave as Save, LuBuilding2 as Building2, LuMapPin as MapPin, LuPhone as Phone, LuGlobe as Globe, LuImage as ImageIcon, LuPalette as Palette, LuCalendar as Calendar, LuCircleCheck as CheckCircle2, LuSettings as Settings, LuPlus as Plus, LuPencil as Pencil, LuTrash as Trash, LuX as X, LuIndianRupee as IndianRupee, LuClock as Clock, LuTriangleAlert as AlertTriangle, LuUserCheck as UserCheck } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
+import { notifyDataChanged } from '../../utils/liveData';
 
 export default function EnvironmentSetup() {
   const { userProfile, updateProfileData } = useAuth(); // Assume we can refresh auth context
@@ -191,6 +192,8 @@ export default function EnvironmentSetup() {
     setSavingAttendance(true);
     try {
       await updateAttendanceSettings(attendanceConfig);
+      notifyDataChanged('attendance_settings');
+      notifyDataChanged('attendance');
       toast.success('Attendance settings updated successfully.');
     } catch (err) {
       console.error(err);
@@ -418,6 +421,16 @@ export default function EnvironmentSetup() {
         academicConfig: formData.academicConfig || {},
         customData: customData || {}
       });
+
+      // Synchronize and persist attendance settings
+      try {
+        await updateAttendanceSettings(attendanceConfig);
+        notifyDataChanged('attendance_settings');
+        notifyDataChanged('attendance');
+      } catch (attErr) {
+        console.error('Failed to persist attendance configuration during setup save:', attErr);
+      }
+
       setSuccessMsg('Environment settings saved successfully!');
 
       updateFaviconInDom(branding.faviconUrl || branding.logoUrl);
@@ -856,7 +869,7 @@ export default function EnvironmentSetup() {
                 <input
                   type="time" required
                   value={attendanceConfig.cutoffTime}
-                  onChange={(e) => setAttendanceConfig({ ...attendanceConfig, cutoffTime: e.target.value })}
+                  onChange={(e) => setAttendanceConfig({ ...attendanceConfig, cutoffTime: e.target.value, lateThreshold: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500"
                 />
               </div>

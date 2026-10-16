@@ -634,6 +634,134 @@ export async function getDashboardStats(schoolId, dateStr = null, sessionFilter 
         : Number((((classPresent + classLate) / classStrength) * 100).toFixed(1));
     }
 
+    // Calculate per-section statistics if class has sections defined
+    const classSectionsList = Array.isArray(classObj?.sections) ? classObj.sections : [];
+    const studentSectionMap = new Map();
+    enrolledStudents.forEach(s => {
+      if (s.id && s.sectionId) {
+        studentSectionMap.set(s.id, s.sectionId);
+      }
+    });
+
+    const computedSections = [];
+    if (classSectionsList.length > 0) {
+      for (const sec of classSectionsList) {
+        const secEnrolledStudents = enrolledStudents.filter(s => s.sectionId === sec.id);
+        const secStudentIds = new Set(secEnrolledStudents.map(s => s.id));
+
+        // If enrolled students list was not provided, fallback to records
+        if (secStudentIds.size === 0) {
+          for (const sess of classSessions) {
+            if (sess.sectionId === sec.id) {
+              for (const r of sess.records || []) {
+                if (r.studentId) secStudentIds.add(r.studentId);
+              }
+            }
+          }
+        }
+        const secStrength = secStudentIds.size;
+
+        let secRawPresent = 0;
+        let secRawAbsent = 0;
+        let secRawLate = 0;
+        let secHasRecords = false;
+        let secSessionCount = 0;
+
+        for (const sess of classSessions) {
+          const isSecSession = sess.sectionId === sec.id;
+          const isClassWide = !sess.sectionId;
+          if (!isSecSession && !isClassWide) continue;
+
+          let sessionHadSecRecords = false;
+          for (const r of sess.records || []) {
+            const belongsToSec = isSecSession ||
+              (studentSectionMap.get(r.studentId) === sec.id) ||
+              (classSectionsList.length === 1);
+
+            if (belongsToSec) {
+              sessionHadSecRecords = true;
+              secHasRecords = true;
+              if (r.status === 'Present') secRawPresent++;
+              else if (r.status === 'Absent') secRawAbsent++;
+              else if (r.status === 'Late') secRawLate++;
+            }
+          }
+          if (sessionHadSecRecords || isSecSession) {
+            secSessionCount++;
+          }
+        }
+
+        let secPresent = 0;
+        let secAbsent = 0;
+        let secLate = 0;
+        let secPercentage = 100;
+
+        if (secHasRecords) {
+          if (normalizedSession === 'ALL') {
+            const divisor = Math.max(1, secSessionCount);
+            secPresent = Math.round(secRawPresent / divisor);
+            secAbsent = Math.round(secRawAbsent / divisor);
+            secLate = Math.round(secRawLate / divisor);
+
+            const totalRawSlots = secRawPresent + secRawAbsent + secRawLate;
+            if (totalRawSlots > 0) {
+              secPercentage = Number((((secRawPresent + secRawLate) / totalRawSlots) * 100).toFixed(1));
+            } else if (secStrength > 0) {
+              secPercentage = Number((((secPresent + secLate) / secStrength) * 100).toFixed(1));
+            } else {
+              secPercentage = 100;
+            }
+          } else {
+            secPresent = secRawPresent;
+            secAbsent = secRawAbsent;
+            secLate = secRawLate;
+            secPercentage = secStrength === 0
+              ? 100
+              : Number((((secPresent + secLate) / secStrength) * 100).toFixed(1));
+          }
+        } else {
+          secPercentage = 0;
+        }
+
+        const secName = (sec.name || '').trim();
+        const formattedName = secName ? `${className} - Section ${secName}` : className;
+
+        computedSections.push({
+          id: `${classId}_${sec.id}`,
+          key: `${classId}:${sec.id}`,
+          classId,
+          sectionId: sec.id,
+          className,
+          sectionName: secName,
+          formattedName,
+          gradeLevel,
+          total: secStrength,
+          present: secPresent,
+          absent: secAbsent,
+          late: secLate,
+          percentage: secPercentage,
+          isUnmarked: !secHasRecords
+        });
+      }
+    } else {
+      computedSections.push({
+        id: classId,
+        key: `${classId}:all`,
+        classId,
+        sectionId: null,
+        className,
+        sectionName: null,
+        formattedName: className,
+        gradeLevel,
+        total: classStrength,
+        present: classPresent,
+        absent: classAbsent,
+        late: classLate,
+        percentage: classPercentage,
+        isUnmarked: classSessions.length === 0
+      });
+    }
+
     byClass[classId] = {
       classId,
       className,
@@ -642,7 +770,8 @@ export async function getDashboardStats(schoolId, dateStr = null, sessionFilter 
       present: classPresent,
       absent: classAbsent,
       late: classLate,
-      percentage: classPercentage
+      percentage: classPercentage,
+      sections: computedSections
     };
 
     // Aggregate counts for grade-level roll-up
@@ -689,12 +818,73 @@ export async function getDashboardStats(schoolId, dateStr = null, sessionFilter 
     ? 100
     : Number((((schoolWide.present + schoolWide.late) / schoolWide.total) * 100).toFixed(1));
 
+  // Build granular pending class and section details
+  const pendingClassList = allClasses
+    .filter(c => !markedClassIds.has(c.id))
+    .map(c => {
+      const gradeLevel = c.gradeLevel ? String(c.gradeLevel) : 'General';
+      const enrolled = Array.isArray(c.students) ? c.students : [];
+      const secList = Array.isArray(c.sections) ? c.sections : [];
+
+      const sections = secList.length > 0
+        ? secList.map(s => {
+            const secStudents = enrolled.filter(stu => stu.sectionId === s.id);
+            const secName = (s.name || '').trim();
+            return {
+              id: `${c.id}_${s.id}`,
+              key: `${c.id}:${s.id}`,
+              classId: c.id,
+              sectionId: s.id,
+              className: c.name,
+              sectionName: secName,
+              formattedName: secName ? `${c.name} - Section ${secName}` : c.name,
+              gradeLevel,
+              total: secStudents.length,
+              present: 0,
+              absent: 0,
+              late: 0,
+              percentage: 0,
+              isUnmarked: true
+            };
+          })
+        : [{
+            id: c.id,
+            key: `${c.id}:all`,
+            classId: c.id,
+            sectionId: null,
+            className: c.name,
+            sectionName: null,
+            formattedName: c.name,
+            gradeLevel,
+            total: enrolled.length,
+            present: 0,
+            absent: 0,
+            late: 0,
+            percentage: 0,
+            isUnmarked: true
+          }];
+
+      return {
+        classId: c.id,
+        className: c.name,
+        gradeLevel,
+        total: enrolled.length,
+        present: 0,
+        absent: 0,
+        late: 0,
+        percentage: 0,
+        isUnmarked: true,
+        sections
+      };
+    });
+
   return {
     date: targetDate,
     session: normalizedSession,
     classesTotal: allClasses.length,
     classesMarked: markedClassIds.size,
     classesPending: pendingClasses.length,
+    pendingClassList,
     schoolWide,
     byGrade,
     byClass

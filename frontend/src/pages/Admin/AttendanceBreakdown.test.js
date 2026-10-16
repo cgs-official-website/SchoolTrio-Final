@@ -51,4 +51,21 @@ describe('ATT-001: Admin Attendance Grade & Section Breakdown Session Filter', (
     expect(totalStudents).toBe(8); // 4 + 4 = 8 unique students across 2 classes
     expect(presentStudents).toBe(7); // 3 + 4 = 7 present
   });
+
+  it('7. Table displays formatted section name for each individual class section', () => {
+    expect(fileContent).toContain('{sec.formattedName || (sec.sectionName ? `${sec.className} - Section ${sec.sectionName}` : sec.className)}');
+  });
+
+  it('8. Accordion header formats General grade level as "All Classes"', () => {
+    expect(fileContent).toContain("gradeId === 'General' ? 'All Classes' :");
+  });
+
+  it('9. Pending alert panel sets both classId and sectionId on Mark Now', () => {
+    expect(fileContent).toContain('setSelectedClassId(item.classId);');
+    expect(fileContent).toContain('setSelectedSectionId(item.sectionId || null);');
+  });
+
+  it('10. Unmarked badge is displayed for unmarked or zero-attendance sections', () => {
+    expect(fileContent).toContain("sec.total === 0 || sec.isUnmarked ? 'Unmarked' : `${sec.percentage}%`");
+  });
 });

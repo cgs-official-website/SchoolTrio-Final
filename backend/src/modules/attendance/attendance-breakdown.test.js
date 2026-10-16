@@ -413,4 +413,87 @@ describe('ATT-001: Attendance Breakdown Student Strength & Session Filter', () =
     expect(result.classesPending).toBe(1);
     expect(result.classesTotal).toBe(1);
   });
+
+  it('13. Multi-section class breaks down into individual sections with distinct stats', async () => {
+    const multiSecClassId = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+    const mockMultiSecClass = [
+      {
+        id: multiSecClassId,
+        name: 'Class I',
+        gradeLevel: 1,
+        sections: [
+          { id: 'sec-1-a', name: 'A' },
+          { id: 'sec-1-b', name: 'B' }
+        ],
+        students: [
+          { id: 'stu-a1', sectionId: 'sec-1-a' },
+          { id: 'stu-a2', sectionId: 'sec-1-a' },
+          { id: 'stu-b1', sectionId: 'sec-1-b' },
+          { id: 'stu-b2', sectionId: 'sec-1-b' }
+        ]
+      }
+    ];
+
+    // Session for Section A only
+    const sessionSecA = {
+      id: 'sess-sec-a',
+      classId: multiSecClassId,
+      sectionId: 'sec-1-a',
+      session: 'FN',
+      class: { id: multiSecClassId, name: 'Class I', gradeLevel: 1 },
+      records: [
+        { studentId: 'stu-a1', status: 'Present' },
+        { studentId: 'stu-a2', status: 'Present' }
+      ]
+    };
+
+    attendanceRepository.findClassesForDashboard.mockResolvedValue(mockMultiSecClass);
+    attendanceRepository.findDailySessionsForDashboard.mockResolvedValue([sessionSecA]);
+
+    const result = await attendanceService.getDashboardStats(schoolId, targetDate, 'FN');
+
+    expect(result.byClass[multiSecClassId]).toBeDefined();
+    expect(result.byClass[multiSecClassId].sections).toHaveLength(2);
+
+    const [secA, secB] = result.byClass[multiSecClassId].sections;
+
+    // Section A is marked: 2 students, 2 present, 100%
+    expect(secA.sectionName).toBe('A');
+    expect(secA.formattedName).toBe('Class I - Section A');
+    expect(secA.total).toBe(2);
+    expect(secA.present).toBe(2);
+    expect(secA.percentage).toBe(100);
+    expect(secA.isUnmarked).toBe(false);
+
+    // Section B is unmarked: 2 students, 0 present, isUnmarked: true
+    expect(secB.sectionName).toBe('B');
+    expect(secB.formattedName).toBe('Class I - Section B');
+    expect(secB.total).toBe(2);
+    expect(secB.present).toBe(0);
+    expect(secB.isUnmarked).toBe(true);
+  });
+
+  it('14. pendingClassList includes unmarked classes and sections with formatted names', async () => {
+    const unrecordedClass = [
+      {
+        id: 'unmarked-class-id',
+        name: 'Class II',
+        gradeLevel: 2,
+        sections: [{ id: 'sec-2-a', name: 'A' }],
+        students: [{ id: 'stu-2a', sectionId: 'sec-2-a' }]
+      }
+    ];
+
+    attendanceRepository.findClassesForDashboard.mockResolvedValue(unrecordedClass);
+    attendanceRepository.findDailySessionsForDashboard.mockResolvedValue([]);
+
+    const result = await attendanceService.getDashboardStats(schoolId, targetDate, 'all');
+
+    expect(result.classesPending).toBe(1);
+    expect(result.pendingClassList).toHaveLength(1);
+    expect(result.pendingClassList[0].className).toBe('Class II');
+    expect(result.pendingClassList[0].sections[0].formattedName).toBe('Class II - Section A');
+    expect(result.pendingClassList[0].sections[0].isUnmarked).toBe(true);
+  });
 });
+

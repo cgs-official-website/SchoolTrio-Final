@@ -4,7 +4,8 @@ import {
   listAttendanceSessions,
   getAttendanceSession,
   createAttendanceSession,
-  updateAttendanceSession
+  updateAttendanceSession,
+  getAttendanceSettings
 } from '../../api/attendance';
 import { getClass, listClasses } from '../../api/classes';
 import { listStudents } from '../../api/students';
@@ -70,8 +71,9 @@ export default function Attendance() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportFileName, setExportFileName] = useState('');
 
-  // Cutoff state (defaults to 09:30 AM)
-  const cutoffTime = '09:30';
+  // Cutoff state (Standard SOP default 09:30 AM until loaded from settings)
+  const [cutoffTime, setCutoffTime] = useState('09:30');
+  const [attendanceTimezone, setAttendanceTimezone] = useState('Asia/Kolkata');
   const [isPastCutoff, setIsPastCutoff] = useState(false);
 
   const mountedRef = useRef(true);
@@ -86,6 +88,28 @@ export default function Attendance() {
     currentSessionRef.current = selectedSession;
   });
 
+  // Fetch Attendance Settings (REST)
+  const fetchAttendanceConfig = useCallback(async () => {
+    try {
+      const res = await getAttendanceSettings();
+      const data = res?.data || res;
+      if (data?.cutoffTime && mountedRef.current) {
+        setCutoffTime(data.cutoffTime);
+      }
+      if (data?.timezone && mountedRef.current) {
+        setAttendanceTimezone(data.timezone);
+      }
+    } catch (err) {
+      console.warn('[Teacher Attendance] Using default cutoff 09:30:', err?.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAttendanceConfig();
+  }, [fetchAttendanceConfig]);
+
+  useLiveDataRefresh('attendance_settings', fetchAttendanceConfig);
+
   // Check Cutoff interval
   useEffect(() => {
     if (selectedDate !== today) {
@@ -94,15 +118,30 @@ export default function Attendance() {
     }
     const checkCutoff = () => {
       const now = new Date();
-      const [h, m] = cutoffTime.split(':').map(Number);
-      const cutoffDate = new Date();
-      cutoffDate.setHours(h, m, 0, 0);
-      setIsPastCutoff(now > cutoffDate);
+      let currentHour, currentMinute;
+      try {
+        const timeStr = now.toLocaleTimeString('en-GB', {
+          timeZone: attendanceTimezone,
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        });
+        const [h, m] = timeStr.split(':').map(Number);
+        currentHour = h;
+        currentMinute = m;
+      } catch {
+        currentHour = now.getHours();
+        currentMinute = now.getMinutes();
+      }
+      const [cutoffH, cutoffM] = (cutoffTime || '09:30').split(':').map(Number);
+      const nowMinutes = currentHour * 60 + currentMinute;
+      const cutoffMinutes = cutoffH * 60 + cutoffM;
+      setIsPastCutoff(nowMinutes > cutoffMinutes);
     };
     checkCutoff();
     const interval = setInterval(checkCutoff, 60000);
     return () => clearInterval(interval);
-  }, [selectedDate, today]);
+  }, [selectedDate, today, cutoffTime, attendanceTimezone]);
 
   // ============================================================
   // 1. FETCH CLASS DETAILS & STUDENT ROSTER (REST)
@@ -724,6 +763,17 @@ export default function Attendance() {
           />
         </div>
       </div>
+
+      {/* Amber Cutoff Warning Banner */}
+      {viewMode === 'daily' && isPastCutoff && !hasExistingRecord && (
+        <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 rounded-xl mb-6">
+          <AlertCircle size={20} className="shrink-0 text-amber-600" />
+          <div>
+            <p className="font-bold text-sm">Attendance not marked — past cutoff ({cutoffTime})</p>
+            <p className="text-xs text-amber-700 dark:text-amber-300">Unrecorded students will default to Late status unless marked otherwise.</p>
+          </div>
+        </div>
+      )}
 
       {/* Main Roster / Table */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex-1">
