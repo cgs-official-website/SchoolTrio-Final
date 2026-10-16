@@ -86,7 +86,7 @@ export async function deleteSession(req, res, next) {
 export async function getDashboardStats(req, res, next) {
   try {
     const schoolId = req.tenant.schoolId;
-    const stats = await attendanceService.getDashboardStats(schoolId, req.query.date);
+    const stats = await attendanceService.getDashboardStats(schoolId, req.query.date, req.query.session);
     return ApiResponse.success(res, stats, 'Attendance dashboard stats retrieved successfully');
   } catch (error) {
     return next(error);

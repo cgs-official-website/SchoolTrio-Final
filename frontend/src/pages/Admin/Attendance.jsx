@@ -64,6 +64,7 @@ export default function Attendance() {
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'marking' | 'analytics'
   const [dashboardStats, setDashboardStats] = useState(null);
   const [loadingStats, setLoadingStats] = useState(false);
+  const [breakdownSession, setBreakdownSession] = useState('all'); // 'all' | 'FN' | 'AN'
   const [expandedGrades, setExpandedGrades] = useState({});
 
   // Analytics states
@@ -84,6 +85,7 @@ export default function Attendance() {
   const currentDateRef = useRef(selectedDate);
   const currentSessionRef = useRef(selectedSession);
   const currentTabRef = useRef(activeTab);
+  const currentBreakdownSessionRef = useRef(breakdownSession);
 
   useEffect(() => {
     currentClassRef.current = selectedClassId;
@@ -91,6 +93,7 @@ export default function Attendance() {
     currentDateRef.current = selectedDate;
     currentSessionRef.current = selectedSession;
     currentTabRef.current = activeTab;
+    currentBreakdownSessionRef.current = breakdownSession;
   });
 
   useEffect(() => {
@@ -313,31 +316,37 @@ export default function Attendance() {
   // ============================================================
   // 4. LOAD DASHBOARD OVERVIEW METRICS (REST)
   // ============================================================
-  const fetchDashboardStats = useCallback(async (targetDate) => {
+  const fetchDashboardStats = useCallback(async (targetDate, targetSession = breakdownSession) => {
     if (!targetDate) return;
     setLoadingStats(true);
     try {
-      const res = await getAttendanceDashboardStats({ date: targetDate });
-      if (!mountedRef.current || currentDateRef.current !== targetDate) return;
+      const query = { date: targetDate };
+      if (targetSession && targetSession !== 'all') {
+        query.session = targetSession;
+      } else {
+        query.session = 'all';
+      }
+      const res = await getAttendanceDashboardStats(query);
+      if (!mountedRef.current || currentDateRef.current !== targetDate || currentBreakdownSessionRef.current !== targetSession) return;
       setDashboardStats(res?.data || res);
     } catch (err) {
-      if (mountedRef.current && currentDateRef.current === targetDate) {
+      if (mountedRef.current && currentDateRef.current === targetDate && currentBreakdownSessionRef.current === targetSession) {
         console.error('[Admin Attendance] Error loading dashboard stats:', err);
         toast.error('Failed to load dashboard statistics.');
         setDashboardStats(null);
       }
     } finally {
-      if (mountedRef.current && currentDateRef.current === targetDate) {
+      if (mountedRef.current && currentDateRef.current === targetDate && currentBreakdownSessionRef.current === targetSession) {
         setLoadingStats(false);
       }
     }
-  }, []);
+  }, [breakdownSession]);
 
   useEffect(() => {
     if (activeTab === 'dashboard') {
-      fetchDashboardStats(selectedDate);
+      fetchDashboardStats(selectedDate, breakdownSession);
     }
-  }, [activeTab, selectedDate, fetchDashboardStats]);
+  }, [activeTab, selectedDate, breakdownSession, fetchDashboardStats]);
 
   // ============================================================
   // 5. LOAD ANALYTICS TAB DATA (REST ABSENTEE FLAGS & MONTHLY SESSIONS)
@@ -575,13 +584,13 @@ export default function Attendance() {
 
   const handleLiveRefresh = useCallback(() => {
     if (activeTab === 'dashboard') {
-      fetchDashboardStats(selectedDate);
+      fetchDashboardStats(selectedDate, breakdownSession);
     } else if (activeTab === 'marking' && selectedClassId && students.length > 0) {
       fetchDailySession(selectedClassId, selectedSectionId, selectedDate, selectedSession, true);
     } else if (activeTab === 'analytics') {
       fetchAnalyticsData(selectedDate);
     }
-  }, [activeTab, selectedDate, selectedClassId, selectedSectionId, students.length, selectedSession, fetchDashboardStats, fetchDailySession, fetchAnalyticsData]);
+  }, [activeTab, selectedDate, breakdownSession, selectedClassId, selectedSectionId, students.length, selectedSession, fetchDashboardStats, fetchDailySession, fetchAnalyticsData]);
 
   // Canonical live-data synchronization for attendance
   useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], 'attendance');
@@ -589,7 +598,7 @@ export default function Attendance() {
   const handleRefresh = () => {
     setRefreshing(true);
     if (activeTab === 'dashboard') {
-      fetchDashboardStats(selectedDate);
+      fetchDashboardStats(selectedDate, breakdownSession);
     } else if (activeTab === 'marking' && selectedClassId) {
       fetchDailySession(selectedClassId, selectedSectionId, selectedDate, selectedSession, false);
     } else if (activeTab === 'analytics') {
@@ -928,8 +937,26 @@ export default function Attendance() {
 
                 {/* Grade and Section Breakdown Table */}
                 <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                  <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
-                    <h3 className="font-bold text-slate-900 dark:text-white text-lg">Grade & Section Breakdown</h3>
+                  <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div>
+                      <h3 className="font-bold text-slate-900 dark:text-white text-lg">Grade & Section Breakdown</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Aggregated attendance distribution across grades and classes.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="breakdown-session-filter" className="text-xs font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                        Session:
+                      </label>
+                      <select
+                        id="breakdown-session-filter"
+                        value={breakdownSession}
+                        onChange={(e) => setBreakdownSession(e.target.value)}
+                        className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none text-slate-700 dark:text-slate-200 font-semibold bg-white dark:bg-slate-900 cursor-pointer shadow-sm text-xs"
+                      >
+                        <option value="all">All Sessions</option>
+                        <option value="FN">Forenoon (FN)</option>
+                        <option value="AN">Afternoon (AN)</option>
+                      </select>
+                    </div>
                   </div>
                   <div className="divide-y divide-slate-100 dark:divide-slate-800">
                     {Object.entries(scopedStats.byGrade || {})

@@ -459,6 +459,7 @@ export async function findChildrenByParentUserId(userId, schoolId, tx = prisma) 
           bloodGroup: true,
           photoUrl: true,
           status: true,
+          customData: true,
           classId: true,
           sectionId: true,
           class: {
@@ -510,6 +511,7 @@ export async function findStudentByAdmissionAndDob(schoolId, admissionNumber, do
       bloodGroup: true,
       photoUrl: true,
       status: true,
+      customData: true,
       classId: true,
       sectionId: true,
       class: {

@@ -132,7 +132,11 @@ export const updateAttendanceSessionSchema = {
  */
 export const dashboardStatsQuerySchema = {
   query: z.object({
-    date: z.string().regex(REGEX.DATE_ISO, 'Date must be formatted as YYYY-MM-DD').optional()
+    date: z.string().regex(REGEX.DATE_ISO, 'Date must be formatted as YYYY-MM-DD').optional(),
+    session: z.preprocess((val) => {
+      if (typeof val !== 'string' || !val.trim()) return 'ALL';
+      return val.trim().toUpperCase();
+    }, z.enum(['ALL', 'STANDARD', 'FN', 'AN']).default('ALL'))
   })
 };
 

@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { prisma } from '../../database/prisma.client.js';
 
 /**
@@ -214,6 +215,68 @@ export async function deleteSession(schoolId, id, tx = prisma) {
     where: {
       schoolId_id: { schoolId, id }
     }
+  });
+}
+
+/**
+ * Atomically upserts an AttendanceSession by its natural key.
+ */
+export async function upsertSession(data, tx = prisma) {
+  const { schoolId, classId, date, session, sectionId, markedByUserId, submittedAt } = data;
+  return tx.attendanceSession.upsert({
+    where: {
+      schoolId_classId_date_session: {
+        schoolId,
+        classId,
+        date,
+        session
+      }
+    },
+    create: {
+      schoolId,
+      classId,
+      sectionId: sectionId || null,
+      date,
+      session,
+      markedByUserId,
+      submittedAt: submittedAt || new Date()
+    },
+    update: {
+      ...(sectionId ? { sectionId } : {}),
+      ...(markedByUserId ? { markedByUserId } : {}),
+      submittedAt: submittedAt || new Date()
+    },
+    select: SESSION_SELECT_CONFIG
+  });
+}
+
+/**
+ * Efficiently upserts multiple attendance records in batch for a session.
+ */
+export async function batchUpsertRecords(schoolId, sessionId, records, tx = prisma) {
+  if (!records || records.length === 0) return;
+
+  const studentIds = records.map(r => r.studentId);
+  await tx.attendanceRecord.deleteMany({
+    where: {
+      schoolId,
+      sessionId,
+      studentId: { in: studentIds }
+    }
+  });
+
+  const now = new Date();
+  await tx.attendanceRecord.createMany({
+    data: records.map(r => ({
+      id: crypto.randomUUID(),
+      schoolId,
+      sessionId,
+      studentId: r.studentId,
+      status: r.status,
+      remark: r.remark || null,
+      createdAt: now,
+      updatedAt: now
+    }))
   });
 }
 
@@ -567,7 +630,7 @@ export async function batchRecalculateStudentStats(schoolId, classId, studentIds
     }
   });
 
-  // 3. Upsert stats and absentee flags in parallel
+  // 3. Upsert stats in parallel
   await Promise.all(
     uniqueStudentIds.map(async (studentId) => {
       const s = statsMap[studentId];
@@ -582,15 +645,39 @@ export async function batchRecalculateStudentStats(schoolId, classId, studentIds
       };
 
       await upsertAttendanceStat(schoolId, studentId, academicYear, statData, tx);
-
-      const monthlyAbsents = monthlyAbsentsMap[studentId] || 0;
-      if (monthlyAbsents >= absenteeThreshold) {
-        await upsertAbsenteeFlag(schoolId, studentId, classId, monthStr, monthlyAbsents, tx);
-      } else {
-        await deleteAbsenteeFlag(schoolId, studentId, monthStr, tx);
-      }
     })
   );
+
+  // 4. Batch delete and upsert absentee flags
+  const toDeleteStudentIds = [];
+  const toUpsertFlags = [];
+
+  uniqueStudentIds.forEach(studentId => {
+    const monthlyAbsents = monthlyAbsentsMap[studentId] || 0;
+    if (monthlyAbsents >= absenteeThreshold) {
+      toUpsertFlags.push({ studentId, monthlyAbsents });
+    } else {
+      toDeleteStudentIds.push(studentId);
+    }
+  });
+
+  if (toDeleteStudentIds.length > 0) {
+    await tx.absenteeFlag.deleteMany({
+      where: {
+        schoolId,
+        studentId: { in: toDeleteStudentIds },
+        monthStr
+      }
+    });
+  }
+
+  if (toUpsertFlags.length > 0) {
+    await Promise.all(
+      toUpsertFlags.map(f =>
+        upsertAbsenteeFlag(schoolId, f.studentId, classId, monthStr, f.monthlyAbsents, tx)
+      )
+    );
+  }
 }
 
 /**
@@ -708,6 +795,13 @@ export async function findClassesForDashboard(schoolId, tx = prisma) {
         select: {
           id: true,
           name: true
+        }
+      },
+      students: {
+        where: { schoolId, status: 'Active' },
+        select: {
+          id: true,
+          sectionId: true
         }
       }
     },

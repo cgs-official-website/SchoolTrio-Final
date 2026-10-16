@@ -14,6 +14,7 @@ export default function Performance() {
   const activeStudentIdFromContext = outletContext?.activeStudentId;
   const activeChildFromContext = outletContext?.activeChild;
   const enrolledChildrenFromContext = outletContext?.enrolledChildren;
+  const refreshChildrenFromContext = outletContext?.refreshChildren;
 
   const studentId = activeStudentIdFromContext || userProfile?.linkedStudentId;
 
@@ -196,14 +197,17 @@ export default function Performance() {
   const refreshPerformance = useCallback(() => {
     const currentId = currentStudentRef.current;
     if (!currentId) return;
+    if (typeof refreshChildrenFromContext === 'function') {
+      refreshChildrenFromContext();
+    }
     fetchAttendance(currentId);
     if (currentClassRef.current) {
       fetchAssessmentsAndGrades(currentClassRef.current, currentId);
     }
-  }, []);
+  }, [refreshChildrenFromContext]);
 
   useLiveDataRefresh(refreshPerformance, [refreshPerformance], [
-    'attendance', 'marks', 'exams', 'assessments', 'grades', 'report_cards', 'students'
+    'attendance', 'marks', 'exams', 'assessments', 'grades', 'report_cards', 'students', 'performance'
   ]);
 
   if (loading) {
@@ -239,7 +243,7 @@ export default function Performance() {
   }
 
   const getStatusColor = (status) => {
-    switch(status) {
+    switch(status?.toLowerCase()) {
       case 'excellent': return 'text-purple-700 bg-purple-100';
       case 'improving': return 'text-green-700 bg-green-100';
       case 'stable': return 'text-blue-700 bg-blue-100';
@@ -249,7 +253,8 @@ export default function Performance() {
     }
   };
 
-  const trendStatus = student?.performanceStatus || student?.customData?.performanceStatus || 'stable';
+  const rawStatus = student?.performanceStatus || student?.customData?.performanceStatus;
+  const trendStatus = typeof rawStatus === 'string' && rawStatus ? rawStatus.toLowerCase() : 'stable';
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24 min-w-0 w-full">

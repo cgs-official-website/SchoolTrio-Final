@@ -13,6 +13,7 @@ import {
   getAssessmentGrades 
 } from '../../api/assessments';
 import { LuTrendingUp, LuSearch, LuDownload, LuAward, LuX, LuFileDown } from 'react-icons/lu';
+import { notifyDataChanged } from '../../utils/liveData';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 
@@ -500,6 +501,8 @@ export default function PerformanceTracking() {
     try {
       await updateStudentPerformanceStatus(studentId, newStatus);
       setStudents(prev => applyStudentStatusUpdate(prev, studentId, newStatus));
+      notifyDataChanged('students');
+      notifyDataChanged('performance');
       toast.success("Status updated");
     } catch (error) {
       toast.error(error?.message || "Failed to update status");

@@ -275,79 +275,37 @@ export async function submitAttendanceSession(schoolId, data, actor = null) {
 
   // 6. Transactional Execution
   savedSession = await prisma.$transaction(async (tx) => {
-    // Step A: Check if session exists or acquire row lock
-    let sessionRow = await attendanceRepository.findSessionByNaturalKey(schoolId, classId, date, session, tx);
-
-    if (sessionRow) {
-      await attendanceRepository.lockSessionForUpdate(schoolId, sessionRow.id, tx);
-      await attendanceRepository.updateSession(schoolId, sessionRow.id, {
-        sectionId: sectionId || sessionRow.sectionId,
-        markedByUserId: markedByUserId || sessionRow.markedByUserId,
-        submittedAt: new Date()
-      }, tx);
-    } else {
-      try {
-        sessionRow = await attendanceRepository.createSession({
-          schoolId,
-          classId,
-          sectionId: sectionId || null,
-          date,
-          session,
-          markedByUserId,
-          submittedAt: new Date()
-        }, tx);
-        isNewSession = true;
-      } catch (err) {
-        if (err.code === 'P2002') {
-          // Race condition recovery: acquire row lock and continue as update
-          sessionRow = await attendanceRepository.lockSessionByNaturalKeyForUpdate(schoolId, classId, date, session, tx);
-          if (!sessionRow) {
-            throw err;
-          }
-        } else {
-          throw err;
-        }
-      }
-    }
+    // Step A: Atomic Session Upsert
+    const sessionRow = await attendanceRepository.upsertSession({
+      schoolId,
+      classId,
+      sectionId: sectionId || null,
+      date,
+      session,
+      markedByUserId,
+      submittedAt: new Date()
+    }, tx);
 
     const sessionId = sessionRow.id;
 
-    // Step B: Upsert individual student records in parallel
-    await Promise.all(
-      records.map((item) =>
-        attendanceRepository.upsertRecord(
-          schoolId,
-          sessionId,
-          item.studentId,
-          item.status,
-          item.remark || null,
-          tx
-        )
-      )
+    // Step B: Bulk upsert individual student records
+    await attendanceRepository.batchUpsertRecords(
+      schoolId,
+      sessionId,
+      records,
+      tx
     );
 
-    // Step C: Deterministic Student Lock Ordering & Aggregate Stat Recalculation
-    const sortedStudentIds = Array.from(new Set(studentIds)).sort();
-
-    for (const studentId of sortedStudentIds) {
-      // Row lock AttendanceStat
-      await attendanceRepository.lockAttendanceStatForUpdate(schoolId, studentId, academicYear, tx);
-
-      // Aggregate source records for statistical integrity
-      const aggregatedStats = await attendanceRepository.aggregateStudentRecords(schoolId, studentId, null, null, tx);
-
-      // Upsert AttendanceStat
-      await attendanceRepository.upsertAttendanceStat(schoolId, studentId, academicYear, aggregatedStats, tx);
-
-      // Recalculate Monthly Absentee Flag
-      const monthlyAbsents = await attendanceRepository.countStudentMonthlyAbsents(schoolId, studentId, monthStr, tx);
-
-      if (monthlyAbsents >= absenteeThreshold) {
-        await attendanceRepository.upsertAbsenteeFlag(schoolId, studentId, classId, monthStr, monthlyAbsents, tx);
-      } else {
-        await attendanceRepository.deleteAbsenteeFlag(schoolId, studentId, monthStr, tx);
-      }
-    }
+    // Step C: Efficient Batch Recalculate Student Stats & Absentee Flags
+    await attendanceRepository.batchRecalculateStudentStats(
+      schoolId,
+      classId,
+      studentIds,
+      academicYear,
+      monthStr,
+      absenteeThreshold,
+      tx
+    );
 
     // Step D: Auto-resolve pending attendance notifications for this class & date
     await attendanceRepository.resolvePendingAttendanceNotifications(schoolId, classId, date, tx);
@@ -425,35 +383,24 @@ export async function updateAttendanceSession(schoolId, id, data, actor = null) 
     // Step A: Row lock target session
     await attendanceRepository.lockSessionForUpdate(schoolId, id, tx);
 
-    // Step B: Upsert modified student records in parallel
-    await Promise.all(
-      records.map((item) =>
-        attendanceRepository.upsertRecord(
-          schoolId,
-          id,
-          item.studentId,
-          item.status,
-          item.remark || null,
-          tx
-        )
-      )
+    // Step B: Bulk upsert modified student records
+    await attendanceRepository.batchUpsertRecords(
+      schoolId,
+      id,
+      records,
+      tx
     );
 
-    // Step C: Deterministic Student Lock Ordering & Stat Recalculation
-    const sortedStudentIds = Array.from(new Set(studentIds)).sort();
-
-    for (const studentId of sortedStudentIds) {
-      await attendanceRepository.lockAttendanceStatForUpdate(schoolId, studentId, academicYear, tx);
-      const aggregatedStats = await attendanceRepository.aggregateStudentRecords(schoolId, studentId, null, null, tx);
-      await attendanceRepository.upsertAttendanceStat(schoolId, studentId, academicYear, aggregatedStats, tx);
-
-      const monthlyAbsents = await attendanceRepository.countStudentMonthlyAbsents(schoolId, studentId, monthStr, tx);
-      if (monthlyAbsents >= absenteeThreshold) {
-        await attendanceRepository.upsertAbsenteeFlag(schoolId, studentId, existingSession.classId, monthStr, monthlyAbsents, tx);
-      } else {
-        await attendanceRepository.deleteAbsenteeFlag(schoolId, studentId, monthStr, tx);
-      }
-    }
+    // Step C: Efficient Batch Recalculate Student Stats & Absentee Flags
+    await attendanceRepository.batchRecalculateStudentStats(
+      schoolId,
+      existingSession.classId,
+      studentIds,
+      academicYear,
+      monthStr,
+      absenteeThreshold,
+      tx
+    );
 
     // Step D: Auto-resolve pending attendance notifications for this class & date
     await attendanceRepository.resolvePendingAttendanceNotifications(schoolId, existingSession.classId, existingSession.date, tx);
@@ -522,19 +469,16 @@ export async function deleteAttendanceSession(schoolId, id, actor = null) {
     // Step C: Delete session (cascades to attendance_records)
     await attendanceRepository.deleteSession(schoolId, id, tx);
 
-    // Step D: Recalculate stats for all affected students
-    for (const studentId of affectedStudentIds) {
-      await attendanceRepository.lockAttendanceStatForUpdate(schoolId, studentId, academicYear, tx);
-      const aggregatedStats = await attendanceRepository.aggregateStudentRecords(schoolId, studentId, null, null, tx);
-      await attendanceRepository.upsertAttendanceStat(schoolId, studentId, academicYear, aggregatedStats, tx);
-
-      const monthlyAbsents = await attendanceRepository.countStudentMonthlyAbsents(schoolId, studentId, monthStr, tx);
-      if (monthlyAbsents >= absenteeThreshold) {
-        await attendanceRepository.upsertAbsenteeFlag(schoolId, studentId, existingSession.classId, monthStr, monthlyAbsents, tx);
-      } else {
-        await attendanceRepository.deleteAbsenteeFlag(schoolId, studentId, monthStr, tx);
-      }
-    }
+    // Step D: Efficient Batch Recalculate Student Stats & Absentee Flags
+    await attendanceRepository.batchRecalculateStudentStats(
+      schoolId,
+      existingSession.classId,
+      affectedStudentIds,
+      academicYear,
+      monthStr,
+      absenteeThreshold,
+      tx
+    );
   }, {
     maxWait: 10000,
     timeout: 60000
@@ -557,84 +501,197 @@ export async function deleteAttendanceSession(schoolId, id, actor = null) {
 }
 
 /**
- * Retrieves daily dashboard statistics for a given calendar date.
+ * Retrieves daily dashboard statistics for a given calendar date and optional session filter.
+ * - 'FN': Calculates statistics strictly from Forenoon records.
+ * - 'AN': Calculates statistics strictly from Afternoon records.
+ * - 'ALL': Combines attendance statistics across recorded sessions using the established
+ *          institutional attendance rate and session-average counts (averages only recorded sessions).
+ * - Total student strength is calculated from unique enrolled active students, never by summing session records.
+ * - Grade and school-wide totals use Set unions of unique enrolled student IDs to prevent duplicate inflation.
  */
-export async function getDashboardStats(schoolId, dateStr = null) {
+export async function getDashboardStats(schoolId, dateStr = null, sessionFilter = 'all') {
   if (!schoolId) {
     throw new TenantAccessError('Tenant context required');
   }
 
   const targetDate = dateStr || new Date().toISOString().split('T')[0];
+  const normalizedSession = (sessionFilter || 'ALL').trim().toUpperCase();
 
   const [allClasses, dailySessions] = await Promise.all([
     attendanceRepository.findClassesForDashboard(schoolId),
     attendanceRepository.findDailySessionsForDashboard(schoolId, targetDate)
   ]);
 
+  // Filter sessions by session parameter:
+  // - When 'ALL': includes all sessions (FN, AN, and legacy STANDARD)
+  // - When 'FN': strictly Forenoon sessions
+  // - When 'AN': strictly Afternoon sessions
+  const filteredSessions = normalizedSession === 'ALL'
+    ? dailySessions
+    : dailySessions.filter(s => (s.session || 'STANDARD').toUpperCase() === normalizedSession);
+
   const schoolWide = { total: 0, present: 0, absent: 0, late: 0, percentage: 100 };
   const byGrade = {};
   const byClass = {};
 
-  const markedClassIds = new Set(dailySessions.map(s => s.classId));
+  const classMap = new Map(allClasses.map(c => [c.id, c]));
+  const markedClassIds = new Set(filteredSessions.map(s => s.classId));
   const pendingClasses = allClasses.filter(c => !markedClassIds.has(c.id)).map(c => c.id);
 
-  for (const session of dailySessions) {
-    const classId = session.classId;
-    const gradeLevel = session.class?.gradeLevel ? String(session.class.gradeLevel) : 'General';
-
-    if (!byGrade[gradeLevel]) {
-      byGrade[gradeLevel] = { total: 0, present: 0, absent: 0, late: 0, percentage: 100 };
+  // Group filtered sessions by class
+  const sessionsByClass = new Map();
+  for (const session of filteredSessions) {
+    if (!sessionsByClass.has(session.classId)) {
+      sessionsByClass.set(session.classId, []);
     }
-
-    if (!byClass[classId]) {
-      byClass[classId] = {
-        classId,
-        className: session.class?.name || 'Class',
-        gradeLevel,
-        total: 0,
-        present: 0,
-        absent: 0,
-        late: 0,
-        percentage: 100
-      };
-    }
-
-    for (const record of session.records) {
-      schoolWide.total++;
-      byGrade[gradeLevel].total++;
-      byClass[classId].total++;
-
-      if (record.status === 'Present') {
-        schoolWide.present++;
-        byGrade[gradeLevel].present++;
-        byClass[classId].present++;
-      } else if (record.status === 'Absent') {
-        schoolWide.absent++;
-        byGrade[gradeLevel].absent++;
-        byClass[classId].absent++;
-      } else if (record.status === 'Late') {
-        schoolWide.late++;
-        byGrade[gradeLevel].late++;
-        byClass[classId].late++;
-      }
-    }
+    sessionsByClass.get(session.classId).push(session);
   }
 
-  const calcPercentage = (s) => {
-    if (s.total === 0) return 100;
-    return Number((((s.present + s.late) / s.total) * 100).toFixed(1));
-  };
+  // Track unique enrolled student IDs at grade and school levels to prevent duplicate counting
+  const gradeStudentIdsMap = new Map();
+  const schoolWideStudentIds = new Set();
+  const gradeRecordTotals = new Map();
 
-  schoolWide.percentage = calcPercentage(schoolWide);
-  Object.keys(byGrade).forEach(g => {
-    byGrade[g].percentage = calcPercentage(byGrade[g]);
-  });
-  Object.keys(byClass).forEach(c => {
-    byClass[c].percentage = calcPercentage(byClass[c]);
-  });
+  for (const [classId, classSessions] of sessionsByClass.entries()) {
+    const classObj = classMap.get(classId);
+    const gradeLevel = classObj?.gradeLevel
+      ? String(classObj.gradeLevel)
+      : (classSessions[0]?.class?.gradeLevel ? String(classSessions[0].class.gradeLevel) : 'General');
+    const className = classObj?.name || classSessions[0]?.class?.name || 'Class';
+
+    // Collect enrolled active students for this class
+    const enrolledStudents = Array.isArray(classObj?.students) ? classObj.students : [];
+    const classStudentIds = new Set(enrolledStudents.map(s => s.id));
+
+    // Fallback if students array was not populated in mock/legacy data: use unique student IDs in records
+    const recordStudentIds = new Set();
+    for (const sess of classSessions) {
+      for (const r of sess.records || []) {
+        if (r.studentId) recordStudentIds.add(r.studentId);
+      }
+    }
+
+    const classStrength = classStudentIds.size > 0 ? classStudentIds.size : recordStudentIds.size;
+
+    // Register unique students for grade and school-wide aggregation
+    if (!gradeStudentIdsMap.has(gradeLevel)) {
+      gradeStudentIdsMap.set(gradeLevel, new Set());
+    }
+    const targetStudentIds = classStudentIds.size > 0 ? classStudentIds : recordStudentIds;
+    targetStudentIds.forEach(id => {
+      gradeStudentIdsMap.get(gradeLevel).add(id);
+      schoolWideStudentIds.add(id);
+    });
+
+    let classPresent = 0;
+    let classAbsent = 0;
+    let classLate = 0;
+    let classPercentage = 100;
+
+    const sessionCount = classSessions.length;
+
+    if (normalizedSession === 'ALL') {
+      // All Sessions: calculate session-average counts across recorded sessions
+      // (average only sessions actually recorded; do NOT divide by 2 if only 1 session exists)
+      let rawPresent = 0;
+      let rawAbsent = 0;
+      let rawLate = 0;
+
+      for (const sess of classSessions) {
+        for (const record of sess.records || []) {
+          if (record.status === 'Present') rawPresent++;
+          else if (record.status === 'Absent') rawAbsent++;
+          else if (record.status === 'Late') rawLate++;
+        }
+      }
+
+      const divisor = Math.max(1, sessionCount);
+      classPresent = Math.round(rawPresent / divisor);
+      classAbsent = Math.round(rawAbsent / divisor);
+      classLate = Math.round(rawLate / divisor);
+
+      // Preserve existing combined attendance-rate definition
+      const totalRawSlots = rawPresent + rawAbsent + rawLate;
+      if (totalRawSlots > 0) {
+        classPercentage = Number((((rawPresent + rawLate) / totalRawSlots) * 100).toFixed(1));
+      } else if (classStrength > 0) {
+        classPercentage = Number((((classPresent + classLate) / classStrength) * 100).toFixed(1));
+      } else {
+        classPercentage = 100;
+      }
+    } else {
+      // FN or AN: calculate statistics strictly from the selected session's records
+      for (const sess of classSessions) {
+        for (const record of sess.records || []) {
+          if (record.status === 'Present') classPresent++;
+          else if (record.status === 'Absent') classAbsent++;
+          else if (record.status === 'Late') classLate++;
+        }
+      }
+
+      classPercentage = classStrength === 0
+        ? 100
+        : Number((((classPresent + classLate) / classStrength) * 100).toFixed(1));
+    }
+
+    byClass[classId] = {
+      classId,
+      className,
+      gradeLevel,
+      total: classStrength,
+      present: classPresent,
+      absent: classAbsent,
+      late: classLate,
+      percentage: classPercentage
+    };
+
+    // Aggregate counts for grade-level roll-up
+    if (!gradeRecordTotals.has(gradeLevel)) {
+      gradeRecordTotals.set(gradeLevel, { present: 0, absent: 0, late: 0, rawClassStrengths: 0 });
+    }
+    const grp = gradeRecordTotals.get(gradeLevel);
+    grp.present += classPresent;
+    grp.absent += classAbsent;
+    grp.late += classLate;
+    grp.rawClassStrengths += classStrength;
+
+    schoolWide.present += classPresent;
+    schoolWide.absent += classAbsent;
+    schoolWide.late += classLate;
+  }
+
+  // Populate grade-level statistics with unique enrolled student totals
+  for (const [gradeLevel, grp] of gradeRecordTotals.entries()) {
+    const uniqueStudents = gradeStudentIdsMap.get(gradeLevel);
+    const gradeTotal = (uniqueStudents && uniqueStudents.size > 0)
+      ? uniqueStudents.size
+      : grp.rawClassStrengths;
+
+    const gradePercentage = gradeTotal === 0
+      ? 100
+      : Number((((grp.present + grp.late) / gradeTotal) * 100).toFixed(1));
+
+    byGrade[gradeLevel] = {
+      total: gradeTotal,
+      present: grp.present,
+      absent: grp.absent,
+      late: grp.late,
+      percentage: gradePercentage
+    };
+  }
+
+  // School-wide totals with unique enrolled student total
+  schoolWide.total = schoolWideStudentIds.size > 0
+    ? schoolWideStudentIds.size
+    : Object.values(byClass).reduce((sum, c) => sum + c.total, 0);
+
+  schoolWide.percentage = schoolWide.total === 0
+    ? 100
+    : Number((((schoolWide.present + schoolWide.late) / schoolWide.total) * 100).toFixed(1));
 
   return {
     date: targetDate,
+    session: normalizedSession,
     classesTotal: allClasses.length,
     classesMarked: markedClassIds.size,
     classesPending: pendingClasses.length,

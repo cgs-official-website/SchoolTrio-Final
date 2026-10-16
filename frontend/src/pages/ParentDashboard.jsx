@@ -153,7 +153,8 @@ export default function ParentDashboard() {
           relationship: link.relationship,
           class: st.class,
           section: st.section,
-          classId: st.classId || st.class?.id
+          classId: st.classId || st.class?.id,
+          performanceStatus: st.performanceStatus || st.customData?.performanceStatus || null
         };
       });
 
@@ -251,6 +252,7 @@ export default function ParentDashboard() {
   }, [activeStudentId, fetchFeeBadge]);
 
   useLiveDataRefresh(handleLiveFeeRefresh, [handleLiveFeeRefresh], ['fees', 'invoices']);
+  useLiveDataRefresh(loadChildren, [loadChildren], ['students', 'parents', 'performance']);
 
   // Listen for payment events to refresh badge immediately
   useEffect(() => {
