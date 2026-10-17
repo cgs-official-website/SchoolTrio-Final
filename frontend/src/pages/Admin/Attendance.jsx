@@ -253,7 +253,7 @@ export default function Attendance() {
         classId: targetClassId,
         date: targetDate,
         session: targetSession,
-        limit: 1
+        limit: 10
       };
       if (targetSectionId) {
         sessionQuery.sectionId = targetSectionId;
@@ -271,7 +271,21 @@ export default function Attendance() {
       }
 
       const sessions = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
-      const matchedSession = sessions.find(s => s.date === targetDate && s.session === targetSession) || sessions[0];
+      let matchedSession = sessions.find(s => s.date === targetDate && (s.session === targetSession || s.session === 'STANDARD' || !s.session));
+
+      // Fallback query without sectionId constraint if section was specified but session was recorded without it
+      if (!matchedSession && targetSectionId) {
+        try {
+          const fallbackRes = await listAttendanceSessions({
+            classId: targetClassId,
+            date: targetDate,
+            session: targetSession,
+            limit: 10
+          });
+          const fallbackSessions = Array.isArray(fallbackRes?.data) ? fallbackRes.data : (Array.isArray(fallbackRes) ? fallbackRes : []);
+          matchedSession = fallbackSessions.find(s => s.date === targetDate && (s.session === targetSession || s.session === 'STANDARD' || !s.session));
+        } catch {}
+      }
 
       if (matchedSession) {
         let fullSession = matchedSession;
@@ -308,16 +322,21 @@ export default function Attendance() {
           }
         });
 
-        // Do not force missing students to 'Present'; keep unrecorded students empty
+        // Reflect marked students and synchronize checkboxes
         setAttendanceRecords(newRecords);
         setAttendanceRemarks(newRemarks);
+        const markedIds = Object.keys(newRecords).filter((id) => !!newRecords[id]);
+        setSelectedStudentIds(markedIds);
       } else {
         setExistingSessionId(null);
         setHasExistingRecord(false);
 
-        // Attendance default is empty until marked by admin/teacher
-        setAttendanceRecords({});
-        setAttendanceRemarks({});
+        // Do not wipe active in-memory entries on silent background refresh
+        if (!silent) {
+          setAttendanceRecords({});
+          setAttendanceRemarks({});
+          setSelectedStudentIds([]);
+        }
       }
     } catch (err) {
       if (
@@ -342,7 +361,7 @@ export default function Attendance() {
         setRefreshing(false);
       }
     }
-  }, [students, isPastCutoff]);
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'marking' && viewMode === 'daily' && selectedClassId && students.length > 0) {
@@ -573,14 +592,27 @@ export default function Attendance() {
       ...prev,
       [studentId]: status
     }));
+    setSelectedStudentIds((prev) => (prev.includes(studentId) ? prev : [...prev, studentId]));
   };
 
   const handleToggleSelectStudent = (studentId) => {
-    setSelectedStudentIds((prev) =>
-      prev.includes(studentId)
-        ? prev.filter((id) => id !== studentId)
-        : [...prev, studentId]
-    );
+    setSelectedStudentIds((prev) => {
+      const isSelected = prev.includes(studentId);
+      if (isSelected) {
+        setAttendanceRecords((rec) => {
+          const updated = { ...rec };
+          delete updated[studentId];
+          return updated;
+        });
+        return prev.filter((id) => id !== studentId);
+      } else {
+        setAttendanceRecords((rec) => ({
+          ...rec,
+          [studentId]: rec[studentId] || 'Present'
+        }));
+        return [...prev, studentId];
+      }
+    });
   };
 
   const handleToggleSelectAll = (filteredList) => {
@@ -589,9 +621,23 @@ export default function Attendance() {
     if (isAll) {
       const filteredIdSet = new Set(list.map((s) => s.id));
       setSelectedStudentIds((prev) => prev.filter((id) => !filteredIdSet.has(id)));
+      setAttendanceRecords((rec) => {
+        const updated = { ...rec };
+        list.forEach((s) => {
+          delete updated[s.id];
+        });
+        return updated;
+      });
     } else {
       const newIds = list.map((s) => s.id);
       setSelectedStudentIds((prev) => Array.from(new Set([...prev, ...newIds])));
+      setAttendanceRecords((rec) => {
+        const updated = { ...rec };
+        list.forEach((s) => {
+          if (!updated[s.id]) updated[s.id] = 'Present';
+        });
+        return updated;
+      });
     }
   };
 
@@ -605,6 +651,17 @@ export default function Attendance() {
       return updated;
     });
     toast.success(`Marked ${selectedStudentIds.length} student${selectedStudentIds.length > 1 ? 's' : ''} as ${status}`);
+  };
+
+  const handleClearSelection = () => {
+    setAttendanceRecords((rec) => {
+      const updated = { ...rec };
+      selectedStudentIds.forEach((id) => {
+        delete updated[id];
+      });
+      return updated;
+    });
+    setSelectedStudentIds([]);
   };
 
   const handleSave = async () => {
@@ -639,8 +696,9 @@ export default function Attendance() {
           records: formattedRecords
         };
         const res = await createAttendanceSession(payload);
-        if (res?.data?.id) {
-          setExistingSessionId(res.data.id);
+        const newId = res?.data?.id || res?.id;
+        if (newId) {
+          setExistingSessionId(newId);
           setHasExistingRecord(true);
         }
       }
@@ -1494,7 +1552,7 @@ export default function Attendance() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => setSelectedStudentIds([])}
+                        onClick={handleClearSelection}
                         className="text-xs text-primary-600 dark:text-primary-400 hover:underline font-semibold"
                       >
                         Clear selection

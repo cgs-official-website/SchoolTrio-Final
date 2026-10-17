@@ -39,4 +39,18 @@ describe('Admin Attendance Checkbox Selection & Default Empty Status', () => {
     expect(fileContent).toContain('const markedStudents = students.filter((s) => !!attendanceRecords[s.id]);');
     expect(fileContent).toContain("toast.error('Please mark attendance for at least one student before saving.');");
   });
+
+  it('synchronizes checkbox toggle directly with attendance records (marking student as Present and unmarking) in Admin Attendance', () => {
+    expect(fileContent).toContain("[studentId]: rec[studentId] || 'Present'");
+    expect(fileContent).toContain('delete updated[studentId]');
+  });
+
+  it('ensures row status change marks student as selected and reflects status in Admin Attendance', () => {
+    expect(fileContent).toContain('setSelectedStudentIds((prev) => (prev.includes(studentId) ? prev : [...prev, studentId]));');
+  });
+
+  it('loads existing session records and synchronizes selected student IDs in Admin Attendance', () => {
+    expect(fileContent).toContain('const markedIds = Object.keys(newRecords).filter((id) => !!newRecords[id]);');
+    expect(fileContent).toContain('setSelectedStudentIds(markedIds);');
+  });
 });

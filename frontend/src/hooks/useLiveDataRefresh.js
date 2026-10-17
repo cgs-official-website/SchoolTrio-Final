@@ -9,7 +9,17 @@ import { LIVE_DATA_EVENT, LIVE_DATA_CHANNEL, LIVE_DATA_STORAGE_KEY } from '../ut
  * @param {Array} [deps=[]] - Optional dependencies
  * @param {string|Array<string>} [entityFilter] - Optional entity filter ('students', 'calendar', ['classes', 'students'], etc.)
  */
-export function useLiveDataRefresh(fetcherFn, deps = [], entityFilter = null) {
+export function useLiveDataRefresh(arg1, arg2 = [], arg3 = null) {
+  let fetcherFn = arg1;
+  let deps = arg2;
+  let entityFilter = arg3;
+
+  if (typeof arg1 === 'string' || (Array.isArray(arg1) && typeof arg2 === 'function')) {
+    entityFilter = arg1;
+    fetcherFn = arg2;
+    deps = Array.isArray(arg3) ? arg3 : [];
+  }
+
   const fetcherRef = useRef(fetcherFn);
   fetcherRef.current = fetcherFn;
 
