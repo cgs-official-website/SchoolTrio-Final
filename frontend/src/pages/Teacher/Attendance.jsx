@@ -265,18 +265,12 @@ export default function Attendance() {
         // Prepopulate saved statuses
         recordsList.forEach(r => {
           if (r.studentId) {
-            newRecords[r.studentId] = r.status || 'Present';
+            newRecords[r.studentId] = r.status;
             if (r.remark) newRemarks[r.studentId] = r.remark;
           }
         });
 
-        // Initialize any roster student missing in records
-        students.forEach(st => {
-          if (!newRecords[st.id]) {
-            newRecords[st.id] = 'Present';
-          }
-        });
-
+        // Do not force missing students to 'Present'; keep unrecorded students empty
         setAttendanceRecords(newRecords);
         setAttendanceRemarks(newRemarks);
       } else {
@@ -284,12 +278,8 @@ export default function Attendance() {
         setExistingSessionId(null);
         setHasExistingRecord(false);
 
-        const defaultStatus = isPastCutoff ? 'Late' : 'Present';
-        const newRecords = {};
-        students.forEach(st => {
-          newRecords[st.id] = defaultStatus;
-        });
-        setAttendanceRecords(newRecords);
+        // Attendance defaults to empty until marked by teacher
+        setAttendanceRecords({});
         setAttendanceRemarks({});
       }
     } catch (err) {
@@ -492,12 +482,18 @@ export default function Attendance() {
   const handleSave = async () => {
     if (!classId || students.length === 0) return;
 
+    const markedStudents = students.filter((s) => !!attendanceRecords[s.id]);
+    if (markedStudents.length === 0) {
+      toast.error('Please mark attendance for at least one student before saving.');
+      return;
+    }
+
     setSaving(true);
     setSuccessMsg('');
 
-    const formattedRecords = students.map((student) => ({
+    const formattedRecords = markedStudents.map((student) => ({
       studentId: student.id,
-      status: attendanceRecords[student.id] || 'Present',
+      status: attendanceRecords[student.id],
       remark: attendanceRemarks[student.id] || undefined
     }));
 
@@ -668,7 +664,7 @@ export default function Attendance() {
       case 'Late':
         return 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800';
       default:
-        return 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700';
+        return 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-400 border-slate-200 dark:border-slate-700';
     }
   };
 
@@ -900,7 +896,7 @@ export default function Attendance() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filteredStudents.map((student) => {
-                    const currentStatus = attendanceRecords[student.id] || 'Present';
+                    const currentStatus = attendanceRecords[student.id];
                     const isSelected = selectedStudentIds.includes(student.id);
                     return (
                       <tr
@@ -942,7 +938,7 @@ export default function Attendance() {
                             {currentStatus === 'Present' && <CheckCircle2 size={12} />}
                             {currentStatus === 'Absent' && <XCircle size={12} />}
                             {currentStatus === 'Late' && <AlertCircle size={12} />}
-                            {currentStatus}
+                            {currentStatus || 'Unmarked'}
                           </span>
                         </td>
                         <td className="p-4 pr-6 text-right">
@@ -1018,7 +1014,7 @@ export default function Attendance() {
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-4 flex items-center gap-4 max-w-xl w-full">
           <div className="flex-1 min-w-0">
             <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-              {students.length} Students in Roster
+              {students.length} Students in Roster ({Object.keys(attendanceRecords).filter(k => !!attendanceRecords[k]).length} Marked)
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {hasExistingRecord ? 'Editing existing attendance session' : 'Creating new attendance session'}

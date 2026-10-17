@@ -1,0 +1,42 @@
+import { describe, it, expect } from 'vitest';
+import fs from 'fs';
+import path from 'path';
+
+describe('Admin Attendance Checkbox Selection & Default Empty Status', () => {
+  const filePath = path.resolve(__dirname, 'Attendance.jsx');
+  const fileContent = fs.readFileSync(filePath, 'utf-8');
+
+  it('declares selectedStudentIds state and resets selection on class/section/date/session change', () => {
+    expect(fileContent).toContain('const [selectedStudentIds, setSelectedStudentIds] = useState([]);');
+    expect(fileContent).toMatch(/useEffect\(\(\) => \{\s*setSelectedStudentIds\(\[\]\);\s*\}, \[selectedClassId, selectedSectionId, selectedDate, selectedSession\]\);/);
+  });
+
+  it('implements student selection toggle and select all handlers in Admin Attendance', () => {
+    expect(fileContent).toContain('handleToggleSelectStudent');
+    expect(fileContent).toContain('handleToggleSelectAll');
+    expect(fileContent).toContain('handleBulkStatusChange');
+  });
+
+  it('renders select-all checkbox in table header and student row checkboxes in Daily Marking tab', () => {
+    expect(fileContent).toContain('aria-label="Select all students"');
+    expect(fileContent).toContain('aria-label={`Select ${student.firstName} ${student.lastName || \'\'}`}');
+  });
+
+  it('renders bulk marking action bar when students are selected in Daily Marking tab', () => {
+    expect(fileContent).toContain('Clear selection');
+    expect(fileContent).toContain("handleBulkStatusChange('Present')");
+    expect(fileContent).toContain("handleBulkStatusChange('Absent')");
+    expect(fileContent).toContain("handleBulkStatusChange('Late')");
+  });
+
+  it('defaults attendance to empty/unmarked until marked explicitly by admin', () => {
+    expect(fileContent).not.toMatch(/newRecords\[st\.id\]\s*=\s*['"]Present['"]/);
+    expect(fileContent).not.toMatch(/newRecords\[st\.id\]\s*=\s*defaultStatus/);
+    expect(fileContent).toContain("currentStatus || 'Unmarked'");
+  });
+
+  it('handleSave only submits marked students and warns if none are marked in Admin Attendance', () => {
+    expect(fileContent).toContain('const markedStudents = students.filter((s) => !!attendanceRecords[s.id]);');
+    expect(fileContent).toContain("toast.error('Please mark attendance for at least one student before saving.');");
+  });
+});

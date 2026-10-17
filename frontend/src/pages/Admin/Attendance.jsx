@@ -15,6 +15,7 @@ import { listStudents } from '../../api/students';
 import {
   LuCalendar as CalendarIcon,
   LuCircleCheck as CheckCircle2,
+  LuCircleX as XCircle,
   LuSave as Save,
   LuUsers as Users,
   LuCircleAlert as AlertCircle,
@@ -48,6 +49,7 @@ export default function Attendance() {
   const [attendanceRemarks, setAttendanceRemarks] = useState({});
   const [existingSessionId, setExistingSessionId] = useState(null);
   const [hasExistingRecord, setHasExistingRecord] = useState(false);
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -104,6 +106,11 @@ export default function Attendance() {
       mountedRef.current = false;
     };
   }, []);
+
+  // Reset student selection when class, section, date, or session changes
+  useEffect(() => {
+    setSelectedStudentIds([]);
+  }, [selectedClassId, selectedSectionId, selectedDate, selectedSession]);
 
   // Fetch Attendance Settings (REST)
   const fetchAttendanceConfig = useCallback(async () => {
@@ -296,29 +303,20 @@ export default function Attendance() {
 
         recordsList.forEach(r => {
           if (r.studentId) {
-            newRecords[r.studentId] = r.status || 'Present';
+            newRecords[r.studentId] = r.status;
             if (r.remark) newRemarks[r.studentId] = r.remark;
           }
         });
 
-        students.forEach(st => {
-          if (!newRecords[st.id]) {
-            newRecords[st.id] = 'Present';
-          }
-        });
-
+        // Do not force missing students to 'Present'; keep unrecorded students empty
         setAttendanceRecords(newRecords);
         setAttendanceRemarks(newRemarks);
       } else {
         setExistingSessionId(null);
         setHasExistingRecord(false);
 
-        const defaultStatus = isPastCutoff ? 'Late' : 'Present';
-        const newRecords = {};
-        students.forEach(st => {
-          newRecords[st.id] = defaultStatus;
-        });
-        setAttendanceRecords(newRecords);
+        // Attendance default is empty until marked by admin/teacher
+        setAttendanceRecords({});
         setAttendanceRemarks({});
       }
     } catch (err) {
@@ -577,15 +575,53 @@ export default function Attendance() {
     }));
   };
 
+  const handleToggleSelectStudent = (studentId) => {
+    setSelectedStudentIds((prev) =>
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId]
+    );
+  };
+
+  const handleToggleSelectAll = (filteredList) => {
+    const list = filteredList || [];
+    const isAll = list.length > 0 && list.every((s) => selectedStudentIds.includes(s.id));
+    if (isAll) {
+      const filteredIdSet = new Set(list.map((s) => s.id));
+      setSelectedStudentIds((prev) => prev.filter((id) => !filteredIdSet.has(id)));
+    } else {
+      const newIds = list.map((s) => s.id);
+      setSelectedStudentIds((prev) => Array.from(new Set([...prev, ...newIds])));
+    }
+  };
+
+  const handleBulkStatusChange = (status) => {
+    if (selectedStudentIds.length === 0) return;
+    setAttendanceRecords((prev) => {
+      const updated = { ...prev };
+      selectedStudentIds.forEach((id) => {
+        updated[id] = status;
+      });
+      return updated;
+    });
+    toast.success(`Marked ${selectedStudentIds.length} student${selectedStudentIds.length > 1 ? 's' : ''} as ${status}`);
+  };
+
   const handleSave = async () => {
     if (!selectedClassId || students.length === 0) return;
+
+    const markedStudents = students.filter((s) => !!attendanceRecords[s.id]);
+    if (markedStudents.length === 0) {
+      toast.error('Please mark attendance for at least one student before saving.');
+      return;
+    }
 
     setSaving(true);
     const selectedClass = classes.find(c => c.id === selectedClassId);
 
-    const formattedRecords = students.map((student) => ({
+    const formattedRecords = markedStudents.map((student) => ({
       studentId: student.id,
-      status: attendanceRecords[student.id] || 'Present',
+      status: attendanceRecords[student.id],
       remark: attendanceRemarks[student.id] || undefined
     }));
 
@@ -782,10 +818,10 @@ export default function Attendance() {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'Present': return 'bg-green-100 text-green-700 border-green-200';
-      case 'Absent': return 'bg-red-100 text-red-700 border-red-200';
-      case 'Late': return 'bg-amber-100 text-amber-700 border-amber-200';
-      default: return 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700';
+      case 'Present': return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800';
+      case 'Absent': return 'bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800';
+      case 'Late': return 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800';
+      default: return 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-400 border-slate-200 dark:border-slate-700';
     }
   };
 
@@ -1418,7 +1454,7 @@ export default function Attendance() {
             <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300 pl-2">
                 <Users size={18} />
-                <span>{students.length} Students</span>
+                <span>{students.length} Students ({Object.keys(attendanceRecords).filter(k => !!attendanceRecords[k]).length} Marked)</span>
               </div>
               {viewMode === 'daily' && (
                 <button
@@ -1449,51 +1485,144 @@ export default function Attendance() {
             ) : students.length === 0 ? (
               <div className="p-12 text-center text-slate-500 dark:text-slate-400">No students found in this class.</div>
             ) : viewMode === 'daily' ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-100 dark:border-slate-800">
-                      <th className="p-4 text-sm font-semibold text-slate-400 dark:text-slate-300 pl-6">Roll No</th>
-                      <th className="p-4 text-sm font-semibold text-slate-400 dark:text-slate-300">Student Name</th>
-                      <th className="p-4 text-sm font-semibold text-slate-400 dark:text-slate-300">Status</th>
-                      <th className="p-4 text-sm font-semibold text-slate-400 dark:text-slate-300 text-right pr-6">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {students
-                      .filter(s => `${s.firstName} ${s.lastName || ''}`.toLowerCase().includes(searchQuery.toLowerCase()))
-                      .map((student) => (
-                        <tr key={student.id} className="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/50">
-                          <td className="p-4 text-slate-600 dark:text-slate-300 font-medium pl-6">{student.rollNumber || '-'}</td>
-                          <td className="p-4 font-bold text-slate-900 dark:text-white">
-                            {student.firstName} {student.lastName || ''}
-                          </td>
-                          <td className="p-4">
-                            <span className={`px-3 py-1 text-xs font-bold uppercase tracking-wider rounded-full border ${getStatusColor(attendanceRecords[student.id])}`}>
-                              {attendanceRecords[student.id] || 'Present'}
-                            </span>
-                          </td>
-                          <td className="p-4 text-right pr-6">
-                            <div className="flex justify-end gap-2">
-                              {['Present', 'Absent', 'Late'].map(status => (
-                                <button
-                                  key={status}
-                                  onClick={() => handleStatusChange(student.id, status)}
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
-                                    attendanceRecords[student.id] === status
-                                      ? getStatusColor(status)
-                                      : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
-                                  }`}
-                                >
-                                  {status}
-                                </button>
-                              ))}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+              <div>
+                {selectedStudentIds.length > 0 && (
+                  <div className="bg-primary-50 dark:bg-primary-950/40 border-b border-primary-100 dark:border-primary-900/50 px-6 py-3 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-bold text-primary-900 dark:text-primary-200">
+                        {selectedStudentIds.length} {selectedStudentIds.length === 1 ? 'student' : 'students'} selected
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedStudentIds([])}
+                        className="text-xs text-primary-600 dark:text-primary-400 hover:underline font-semibold"
+                      >
+                        Clear selection
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold mr-1">Mark selected:</span>
+                      <button
+                        type="button"
+                        onClick={() => handleBulkStatusChange('Present')}
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold bg-green-100 hover:bg-green-200 text-green-700 dark:bg-green-950/60 dark:hover:bg-green-900/80 dark:text-green-300 border border-green-200 dark:border-green-800 flex items-center gap-1.5 transition-all shadow-sm"
+                      >
+                        <CheckCircle2 size={13} />
+                        Present
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBulkStatusChange('Absent')}
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-950/60 dark:hover:bg-red-900/80 dark:text-red-300 border border-red-200 dark:border-red-800 flex items-center gap-1.5 transition-all shadow-sm"
+                      >
+                        <XCircle size={13} />
+                        Absent
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBulkStatusChange('Late')}
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-100 hover:bg-amber-200 text-amber-700 dark:bg-amber-950/60 dark:hover:bg-amber-900/80 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1.5 transition-all shadow-sm"
+                      >
+                        <AlertCircle size={13} />
+                        Late
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                        <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400 pl-6">Roll No</th>
+                        <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400">
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={
+                                students.filter(s => `${s.firstName} ${s.lastName || ''}`.toLowerCase().includes(searchQuery.toLowerCase())).length > 0 &&
+                                students.filter(s => `${s.firstName} ${s.lastName || ''}`.toLowerCase().includes(searchQuery.toLowerCase())).every(s => selectedStudentIds.includes(s.id))
+                              }
+                              ref={(el) => {
+                                if (el) {
+                                  const filteredList = students.filter(s => `${s.firstName} ${s.lastName || ''}`.toLowerCase().includes(searchQuery.toLowerCase()));
+                                  const isAll = filteredList.length > 0 && filteredList.every(s => selectedStudentIds.includes(s.id));
+                                  const isSome = filteredList.some(s => selectedStudentIds.includes(s.id));
+                                  el.indeterminate = isSome && !isAll;
+                                }
+                              }}
+                              onChange={() => {
+                                const filteredList = students.filter(s => `${s.firstName} ${s.lastName || ''}`.toLowerCase().includes(searchQuery.toLowerCase()));
+                                handleToggleSelectAll(filteredList);
+                              }}
+                              aria-label="Select all students"
+                              className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                            />
+                            <span>Student Name</span>
+                          </div>
+                        </th>
+                        <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400">Status</th>
+                        <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400 text-right pr-6">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {students
+                        .filter(s => `${s.firstName} ${s.lastName || ''}`.toLowerCase().includes(searchQuery.toLowerCase()))
+                        .map((student) => {
+                          const currentStatus = attendanceRecords[student.id];
+                          const isSelected = selectedStudentIds.includes(student.id);
+                          return (
+                            <tr
+                              key={student.id}
+                              className={`transition-colors ${
+                                isSelected
+                                  ? 'bg-primary-50/40 dark:bg-primary-950/20 hover:bg-primary-50/60 dark:hover:bg-primary-950/30'
+                                  : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/50'
+                              }`}
+                            >
+                              <td className="p-4 text-slate-600 dark:text-slate-300 font-medium pl-6">{student.rollNumber || '-'}</td>
+                              <td className="p-4">
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => handleToggleSelectStudent(student.id)}
+                                    aria-label={`Select ${student.firstName} ${student.lastName || ''}`}
+                                    className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                                  />
+                                  <p className="font-bold text-slate-900 dark:text-white">
+                                    {student.firstName} {student.lastName || ''}
+                                  </p>
+                                </div>
+                              </td>
+                              <td className="p-4">
+                                <span className={`px-3 py-1 text-xs font-bold uppercase tracking-wider rounded-full border ${getStatusColor(currentStatus)}`}>
+                                  {currentStatus || 'Unmarked'}
+                                </span>
+                              </td>
+                              <td className="p-4 text-right pr-6">
+                                <div className="flex justify-end gap-2">
+                                  {['Present', 'Absent', 'Late'].map(status => (
+                                    <button
+                                      key={status}
+                                      type="button"
+                                      onClick={() => handleStatusChange(student.id, status)}
+                                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                                        currentStatus === status
+                                          ? `${getStatusColor(status)} font-black shadow-sm`
+                                          : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                      }`}
+                                    >
+                                      {status}
+                                    </button>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ) : (
               <div className="overflow-x-auto">

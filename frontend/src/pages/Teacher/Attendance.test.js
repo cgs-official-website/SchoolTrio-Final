@@ -35,4 +35,16 @@ describe('Teacher Attendance Checkbox Selection & Bulk Marking', () => {
     expect(fileContent).toContain("['Present', 'Absent', 'Late'].map((status) => (");
     expect(fileContent).toContain('onClick={() => handleStatusChange(student.id, status)}');
   });
+
+  it('defaults attendance to empty/unmarked until marked explicitly by teacher', () => {
+    // Should not default missing students to 'Present' or 'Late'
+    expect(fileContent).not.toMatch(/newRecords\[st\.id\]\s*=\s*['"]Present['"]/);
+    expect(fileContent).not.toMatch(/newRecords\[st\.id\]\s*=\s*defaultStatus/);
+    expect(fileContent).toContain("currentStatus || 'Unmarked'");
+  });
+
+  it('handleSave only submits marked students and warns if none are marked', () => {
+    expect(fileContent).toContain('const markedStudents = students.filter((s) => !!attendanceRecords[s.id]);');
+    expect(fileContent).toContain("toast.error('Please mark attendance for at least one student before saving.');");
+  });
 });
