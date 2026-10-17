@@ -50,6 +50,7 @@ export default function Attendance() {
   const [existingSessionId, setExistingSessionId] = useState(null);
   const [hasExistingRecord, setHasExistingRecord] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [daySessionStatus, setDaySessionStatus] = useState({ fn: false, an: false });
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -252,8 +253,7 @@ export default function Attendance() {
       const sessionQuery = {
         classId: targetClassId,
         date: targetDate,
-        session: targetSession,
-        limit: 10
+        limit: 20
       };
       if (targetSectionId) {
         sessionQuery.sectionId = targetSectionId;
@@ -271,7 +271,16 @@ export default function Attendance() {
       }
 
       const sessions = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
-      let matchedSession = sessions.find(s => s.date === targetDate && (s.session === targetSession || s.session === 'STANDARD' || !s.session));
+      const fnSession = sessions.find(s => s.date === targetDate && (s.session === 'FN' || s.session === 'STANDARD'));
+      const anSession = sessions.find(s => s.date === targetDate && s.session === 'AN');
+
+      const fnMarked = !!fnSession && ((fnSession._count?.records || 0) > 0 || (Array.isArray(fnSession.records) && fnSession.records.length > 0));
+      const anMarked = !!anSession && ((anSession._count?.records || 0) > 0 || (Array.isArray(anSession.records) && anSession.records.length > 0));
+      setDaySessionStatus({ fn: fnMarked, an: anMarked });
+
+      let matchedSession = targetSession === 'AN'
+        ? anSession
+        : (fnSession || sessions.find(s => s.date === targetDate && (s.session === targetSession || s.session === 'STANDARD' || !s.session)));
 
       // Fallback query without sectionId constraint if section was specified but session was recorded without it
       if (!matchedSession && targetSectionId) {
@@ -279,11 +288,19 @@ export default function Attendance() {
           const fallbackRes = await listAttendanceSessions({
             classId: targetClassId,
             date: targetDate,
-            session: targetSession,
-            limit: 10
+            limit: 20
           });
           const fallbackSessions = Array.isArray(fallbackRes?.data) ? fallbackRes.data : (Array.isArray(fallbackRes) ? fallbackRes : []);
-          matchedSession = fallbackSessions.find(s => s.date === targetDate && (s.session === targetSession || s.session === 'STANDARD' || !s.session));
+          const fallbackFnSession = fallbackSessions.find(s => s.date === targetDate && (s.session === 'FN' || s.session === 'STANDARD'));
+          const fallbackAnSession = fallbackSessions.find(s => s.date === targetDate && s.session === 'AN');
+          const fallbackFnMarked = !!fallbackFnSession && ((fallbackFnSession._count?.records || 0) > 0 || (Array.isArray(fallbackFnSession.records) && fallbackFnSession.records.length > 0));
+          const fallbackAnMarked = !!fallbackAnSession && ((fallbackAnSession._count?.records || 0) > 0 || (Array.isArray(fallbackAnSession.records) && fallbackAnSession.records.length > 0));
+          if (fallbackFnMarked || fallbackAnMarked) {
+            setDaySessionStatus({ fn: fallbackFnMarked, an: fallbackAnMarked });
+          }
+          matchedSession = targetSession === 'AN'
+            ? fallbackAnSession
+            : (fallbackFnSession || fallbackSessions.find(s => s.date === targetDate && (s.session === targetSession || s.session === 'STANDARD' || !s.session)));
         } catch {}
       }
 
@@ -701,6 +718,12 @@ export default function Attendance() {
           setExistingSessionId(newId);
           setHasExistingRecord(true);
         }
+      }
+
+      if (selectedSession === 'AN') {
+        setDaySessionStatus((prev) => ({ ...prev, an: true }));
+      } else {
+        setDaySessionStatus((prev) => ({ ...prev, fn: true }));
       }
 
       notifyDataChanged('attendance');
@@ -1486,14 +1509,43 @@ export default function Attendance() {
                     className="border-none focus:ring-0 text-slate-700 dark:text-slate-200 font-semibold text-sm py-0 pr-1 bg-transparent cursor-pointer outline-none"
                   />
                 </div>
-                <select
-                  value={selectedSession}
-                  onChange={(e) => setSelectedSession(e.target.value)}
-                  className="border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-primary-500 text-slate-700 dark:text-slate-200 font-bold py-2.5 px-4 bg-white dark:bg-slate-900 shadow-sm outline-none text-sm"
-                >
-                  <option value="FN">FN (Forenoon)</option>
-                  <option value="AN">AN (Afternoon)</option>
-                </select>
+                {/* Session Switcher with Marked Badges */}
+                <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSession('FN')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      selectedSession === 'FN'
+                        ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
+                        : 'text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {daySessionStatus.fn && <CheckCircle2 size={13} className="text-emerald-500" />}
+                    <span>FN</span>
+                    {daySessionStatus.fn && (
+                      <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded-md">
+                        Marked
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSession('AN')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      selectedSession === 'AN'
+                        ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
+                        : 'text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {daySessionStatus.an && <CheckCircle2 size={13} className="text-emerald-500" />}
+                    <span>AN</span>
+                    {daySessionStatus.an && (
+                      <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded-md">
+                        Marked
+                      </span>
+                    )}
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -1509,10 +1561,36 @@ export default function Attendance() {
           )}
 
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300 pl-2">
-                <Users size={18} />
-                <span>{students.length} Students ({Object.keys(attendanceRecords).filter(k => !!attendanceRecords[k]).length} Marked)</span>
+            <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 flex flex-wrap justify-between items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3 text-sm font-semibold text-slate-600 dark:text-slate-300 pl-2">
+                <div className="flex items-center gap-2">
+                  <Users size={18} />
+                  <span>{students.length} Students ({Object.keys(attendanceRecords).filter(k => !!attendanceRecords[k]).length} Marked)</span>
+                </div>
+                {viewMode === 'daily' && (
+                  <>
+                    {daySessionStatus.fn && daySessionStatus.an ? (
+                      <span className="px-3 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                        <CheckCircle2 size={13} className="text-emerald-500" />
+                        FN & AN Marked
+                      </span>
+                    ) : daySessionStatus.fn ? (
+                      <span className="px-3 py-1 bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/30 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                        <CheckCircle2 size={13} className="text-sky-500" />
+                        FN Marked {selectedSession === 'AN' && '(AN Pending)'}
+                      </span>
+                    ) : daySessionStatus.an ? (
+                      <span className="px-3 py-1 bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/30 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                        <CheckCircle2 size={13} className="text-sky-500" />
+                        AN Marked {selectedSession === 'FN' && '(FN Pending)'}
+                      </span>
+                    ) : (
+                      <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-full text-xs font-bold flex items-center gap-1.5">
+                        Not Marked
+                      </span>
+                    )}
+                  </>
+                )}
               </div>
               {viewMode === 'daily' && (
                 <button

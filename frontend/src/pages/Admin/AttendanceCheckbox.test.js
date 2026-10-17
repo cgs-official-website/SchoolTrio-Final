@@ -53,4 +53,11 @@ describe('Admin Attendance Checkbox Selection & Default Empty Status', () => {
     expect(fileContent).toContain('const markedIds = Object.keys(newRecords).filter((id) => !!newRecords[id]);');
     expect(fileContent).toContain('setSelectedStudentIds(markedIds);');
   });
+
+  it('tracks FN and AN session status and renders FN & AN Marked / FN Marked workflow badges in Admin Attendance', () => {
+    expect(fileContent).toContain('const [daySessionStatus, setDaySessionStatus] = useState({ fn: false, an: false });');
+    expect(fileContent).toContain('FN & AN Marked');
+    expect(fileContent).toContain('FN Marked');
+    expect(fileContent).toContain('AN Marked');
+  });
 });

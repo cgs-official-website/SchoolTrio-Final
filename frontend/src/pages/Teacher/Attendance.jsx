@@ -59,6 +59,7 @@ export default function Attendance() {
   const [existingSessionId, setExistingSessionId] = useState(null);
   const [hasExistingRecord, setHasExistingRecord] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [daySessionStatus, setDaySessionStatus] = useState({ fn: false, an: false });
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -218,8 +219,7 @@ export default function Attendance() {
       const res = await listAttendanceSessions({
         classId: targetClassId,
         date: targetDate,
-        session: targetSession,
-        limit: 10
+        limit: 20
       });
 
       if (
@@ -232,7 +232,16 @@ export default function Attendance() {
       }
 
       const sessions = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
-      const matchedSession = sessions.find(s => s.date === targetDate && (s.session === targetSession || s.session === 'STANDARD' || !s.session));
+      const fnSession = sessions.find(s => s.date === targetDate && (s.session === 'FN' || s.session === 'STANDARD'));
+      const anSession = sessions.find(s => s.date === targetDate && s.session === 'AN');
+
+      const fnMarked = !!fnSession && ((fnSession._count?.records || 0) > 0 || (Array.isArray(fnSession.records) && fnSession.records.length > 0));
+      const anMarked = !!anSession && ((anSession._count?.records || 0) > 0 || (Array.isArray(anSession.records) && anSession.records.length > 0));
+      setDaySessionStatus({ fn: fnMarked, an: anMarked });
+
+      const matchedSession = targetSession === 'AN'
+        ? anSession
+        : (fnSession || sessions.find(s => s.date === targetDate && (s.session === targetSession || s.session === 'STANDARD' || !s.session)));
 
       if (matchedSession) {
         // Fetch detailed session with student records if not already populated
@@ -563,6 +572,12 @@ export default function Attendance() {
         }
       }
 
+      if (selectedSession === 'AN') {
+        setDaySessionStatus((prev) => ({ ...prev, an: true }));
+      } else {
+        setDaySessionStatus((prev) => ({ ...prev, fn: true }));
+      }
+
       notifyDataChanged('attendance');
       setSuccessMsg('Attendance saved successfully!');
       toast.success('Attendance saved successfully!');
@@ -736,10 +751,29 @@ export default function Attendance() {
               <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-wider">
                 {classDetails ? `${classDetails.name || ''} ${classDetails.section || ''}`.trim() : 'Class Attendance'}
               </span>
-              {hasExistingRecord && viewMode === 'daily' && (
-                <span className="px-3 py-1 bg-emerald-400/30 text-emerald-200 border border-emerald-400/40 rounded-full text-xs font-bold">
-                  Recorded
-                </span>
+              {viewMode === 'daily' && (
+                <>
+                  {daySessionStatus.fn && daySessionStatus.an ? (
+                    <span className="px-3 py-1 bg-emerald-500/20 text-emerald-200 border border-emerald-400/40 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                      <CheckCircle2 size={13} className="text-emerald-300" />
+                      FN & AN Marked
+                    </span>
+                  ) : daySessionStatus.fn ? (
+                    <span className="px-3 py-1 bg-sky-500/20 text-sky-200 border border-sky-400/40 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                      <CheckCircle2 size={13} className="text-sky-300" />
+                      FN Marked {selectedSession === 'AN' && '(AN Pending)'}
+                    </span>
+                  ) : daySessionStatus.an ? (
+                    <span className="px-3 py-1 bg-sky-500/20 text-sky-200 border border-sky-400/40 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                      <CheckCircle2 size={13} className="text-sky-300" />
+                      AN Marked {selectedSession === 'FN' && '(FN Pending)'}
+                    </span>
+                  ) : (
+                    <span className="px-3 py-1 bg-white/10 text-white/80 border border-white/20 rounded-full text-xs font-bold flex items-center gap-1.5">
+                      Not Marked
+                    </span>
+                  )}
+                </>
               )}
             </div>
             <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">Daily Attendance</h1>
@@ -806,24 +840,38 @@ export default function Attendance() {
               {/* Session Switcher */}
               <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
                 <button
+                  type="button"
                   onClick={() => setSelectedSession('FN')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                     selectedSession === 'FN'
                       ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
                       : 'text-slate-600 dark:text-slate-300'
                   }`}
                 >
-                  FN
+                  {daySessionStatus.fn && <CheckCircle2 size={13} className="text-emerald-500" />}
+                  <span>FN</span>
+                  {daySessionStatus.fn && (
+                    <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded-md">
+                      Marked
+                    </span>
+                  )}
                 </button>
                 <button
+                  type="button"
                   onClick={() => setSelectedSession('AN')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                     selectedSession === 'AN'
                       ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
                       : 'text-slate-600 dark:text-slate-300'
                   }`}
                 >
-                  AN
+                  {daySessionStatus.an && <CheckCircle2 size={13} className="text-emerald-500" />}
+                  <span>AN</span>
+                  {daySessionStatus.an && (
+                    <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded-md">
+                      Marked
+                    </span>
+                  )}
                 </button>
               </div>
             </>
