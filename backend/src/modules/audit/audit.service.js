@@ -6,15 +6,25 @@ const SENSITIVE_KEYS = new Set([
   'password',
   'passwordhash',
   'password_hash',
+  'adminpassword',
+  'adminpasswordhash',
   'token',
   'refreshtoken',
+  'refresh_token',
+  'accesstoken',
+  'access_token',
   'tokenhash',
   'token_hash',
   'secret',
   'apikey',
   'apikeys',
   'apikeysencrypted',
-  'api_keys_encrypted'
+  'api_keys_encrypted',
+  'authorization',
+  'bearer',
+  'cookie',
+  'creditcard',
+  'credit_card'
 ]);
 
 /**
@@ -35,7 +45,10 @@ function sanitizeModifiedFields(fields) {
   const sanitized = {};
   for (const [key, value] of Object.entries(fields)) {
     const normalizedKey = key.toLowerCase().replace(/[-_]/g, '');
-    if (SENSITIVE_KEYS.has(normalizedKey) || /password|secret|token|hash|apikey/i.test(key)) {
+    if (
+      SENSITIVE_KEYS.has(normalizedKey) || 
+      /password|secret|token|hash|apikey|authorization|bearer|credential/i.test(key)
+    ) {
       sanitized[key] = '[REDACTED]';
     } else if (value && typeof value === 'object') {
       sanitized[key] = sanitizeModifiedFields(value);
@@ -91,23 +104,26 @@ export async function getTenantAuditLogs(schoolId, query = {}) {
   });
 
   const filterOptions = {
+    search: query.search,
     entityType: query.entityType,
-    actionPerformed: query.actionPerformed,
-    userName: query.userName,
+    actionPerformed: query.actionPerformed || query.action,
+    userName: query.userName || query.actor,
     startDate: query.startDate,
     endDate: query.endDate
   };
 
-  const [logs, total] = await Promise.all([
+  const [logs, total, summary] = await Promise.all([
     auditRepository.findTenantAuditLogs(schoolId, filterOptions, { skip, take }),
-    auditRepository.countTenantAuditLogs(schoolId, filterOptions)
+    auditRepository.countTenantAuditLogs(schoolId, filterOptions),
+    auditRepository.getAuditSummary(schoolId, filterOptions)
   ]);
 
   const pagination = buildPaginationMetadata(total, page, limit);
 
   return {
     logs: logs.map(formatAuditLogDto),
-    pagination
+    pagination,
+    summary
   };
 }
 
@@ -115,7 +131,7 @@ export async function getTenantAuditLogs(schoolId, query = {}) {
  * Retrieve paginated, filtered global audit logs across all tenants for SuperAdmin.
  *
  * @param {Object} query - Validated query parameters (including optional schoolId filter)
- * @returns {Promise<{ logs: Array<Object>, pagination: Object }>}
+ * @returns {Promise<{ logs: Array<Object>, pagination: Object, summary: Object }>}
  */
 export async function getGlobalAuditLogs(query = {}) {
   const { page, limit, skip, take } = parsePagination(query, {
@@ -124,23 +140,26 @@ export async function getGlobalAuditLogs(query = {}) {
   });
 
   const filterOptions = {
+    search: query.search,
     schoolId: query.schoolId,
     entityType: query.entityType,
-    actionPerformed: query.actionPerformed,
-    userName: query.userName,
+    actionPerformed: query.actionPerformed || query.action,
+    userName: query.userName || query.actor,
     startDate: query.startDate,
     endDate: query.endDate
   };
 
-  const [logs, total] = await Promise.all([
+  const [logs, total, summary] = await Promise.all([
     auditRepository.findGlobalAuditLogs(filterOptions, { skip, take }),
-    auditRepository.countGlobalAuditLogs(filterOptions)
+    auditRepository.countGlobalAuditLogs(filterOptions),
+    auditRepository.getAuditSummary(filterOptions.schoolId || null, filterOptions)
   ]);
 
   const pagination = buildPaginationMetadata(total, page, limit);
 
   return {
     logs: logs.map(formatAuditLogDto),
-    pagination
+    pagination,
+    summary
   };
 }

@@ -12,7 +12,15 @@ export const getTenantAuditLogs = async (req, res, next) => {
   try {
     const schoolId = req.tenant?.schoolId;
     const result = await auditService.getTenantAuditLogs(schoolId, req.query);
-    return ApiResponse.paginated(res, result.logs, result.pagination);
+    return res.status(200).json({
+      success: true,
+      data: result.logs,
+      pagination: {
+        ...result.pagination,
+        summary: result.summary
+      },
+      summary: result.summary
+    });
   } catch (err) {
     next(err);
   }
@@ -28,7 +36,15 @@ export const getTenantAuditLogs = async (req, res, next) => {
 export const getSuperAdminAuditLogs = async (req, res, next) => {
   try {
     const result = await auditService.getGlobalAuditLogs(req.query);
-    return ApiResponse.paginated(res, result.logs, result.pagination);
+    return res.status(200).json({
+      success: true,
+      data: result.logs,
+      pagination: {
+        ...result.pagination,
+        summary: result.summary
+      },
+      summary: result.summary
+    });
   } catch (err) {
     next(err);
   }

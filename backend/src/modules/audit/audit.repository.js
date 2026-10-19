@@ -64,16 +64,18 @@ function buildAuditWhereClause(schoolId, filters = {}) {
     where.entityType = filters.entityType;
   }
 
-  if (filters.actionPerformed) {
+  const action = filters.actionPerformed || filters.action;
+  if (action) {
     where.actionPerformed = {
-      contains: filters.actionPerformed,
+      contains: action,
       mode: 'insensitive'
     };
   }
 
-  if (filters.userName) {
+  const actor = filters.userName || filters.actor;
+  if (actor) {
     where.userName = {
-      contains: filters.userName,
+      contains: actor,
       mode: 'insensitive'
     };
   }
@@ -91,6 +93,27 @@ function buildAuditWhereClause(schoolId, filters = {}) {
         end.setUTCHours(23, 59, 59, 999);
       }
       where.timestamp.lte = end;
+    }
+  }
+
+  if (filters.search && typeof filters.search === 'string' && filters.search.trim()) {
+    const searchTerm = filters.search.trim();
+    const searchConditions = [
+      { actionPerformed: { contains: searchTerm, mode: 'insensitive' } },
+      { userName: { contains: searchTerm, mode: 'insensitive' } },
+      { entityType: { contains: searchTerm, mode: 'insensitive' } },
+      { entityId: { contains: searchTerm, mode: 'insensitive' } },
+      { school: { name: { contains: searchTerm, mode: 'insensitive' } } },
+      { school: { code: { contains: searchTerm, mode: 'insensitive' } } }
+    ];
+
+    if (where.OR) {
+      where.AND = [
+        ...(where.AND || []),
+        { OR: searchConditions }
+      ];
+    } else {
+      where.OR = searchConditions;
     }
   }
 
@@ -168,4 +191,54 @@ export async function findGlobalAuditLogs(filters = {}, pagination = {}) {
 export async function countGlobalAuditLogs(filters = {}) {
   const where = buildAuditWhereClause(filters.schoolId || null, filters);
   return prisma.auditLog.count({ where });
+}
+
+/**
+ * Computes aggregated summary metrics over a scoped audit log filter set.
+ *
+ * @param {string|null} schoolId - Tenant UUID or null for global
+ * @param {Object} filters - Filter criteria
+ * @returns {Promise<{ totalEvents: number, distinctActors: number, todayEvents: number, topEntityTypes: Array<{ entityType: string, count: number }> }>}
+ */
+export async function getAuditSummary(schoolId, filters = {}) {
+  const where = buildAuditWhereClause(schoolId, filters);
+  const startOfToday = new Date();
+  startOfToday.setUTCHours(0, 0, 0, 0);
+
+  const [total, distinctUsers, entityTypeGroups, todayCount] = await Promise.all([
+    prisma.auditLog.count({ where }),
+    prisma.auditLog.findMany({
+      where,
+      distinct: ['userName'],
+      select: { userName: true }
+    }),
+    prisma.auditLog.groupBy({
+      by: ['entityType'],
+      where,
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+      take: 5
+    }),
+    prisma.auditLog.count({
+      where: {
+        ...where,
+        timestamp: {
+          ...(where.timestamp || {}),
+          gte: startOfToday
+        }
+      }
+    })
+  ]);
+
+  return {
+    totalEvents: total || 0,
+    distinctActors: Array.isArray(distinctUsers) ? distinctUsers.length : 0,
+    todayEvents: todayCount || 0,
+    topEntityTypes: Array.isArray(entityTypeGroups) 
+      ? entityTypeGroups.map((g) => ({
+          entityType: g.entityType,
+          count: g._count?.id || 0
+        }))
+      : []
+  };
 }
