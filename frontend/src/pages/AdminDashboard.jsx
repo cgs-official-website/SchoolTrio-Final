@@ -1,6 +1,6 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { LuBookOpen as BookOpen, LuUsers as Users, LuLogOut as LogOut, LuLayoutDashboard as LayoutDashboard, LuLink as LinkIcon, LuSettings as Settings, LuCreditCard as CreditCard, LuGraduationCap as GraduationCap, LuCalendar as Calendar, LuBus as Bus, LuLibrary as Library, LuFileText as FileText, LuBell as Bell, LuKey as Key, LuMenu as Menu, LuX as X, LuBuilding2 as Building2, LuCheck as CheckSquare, LuHouse as Home, LuPackage as PackageIcon, LuBriefcase as Briefcase, LuChartBar as BarChart2, LuHeartPulse as HeartPulse, LuCircleAlert as AlertCircle, LuFiles as Files, LuChevronDown as ChevronDown, LuChevronRight as ChevronRight, LuShield as Shield, LuLayoutGrid as LayoutGrid, LuMessageSquare as MessageSquare, LuCoffee as Coffee } from 'react-icons/lu';
+import { LuBookOpen as BookOpen, LuUsers as Users, LuLogOut as LogOut, LuLayoutDashboard as LayoutDashboard, LuLink as LinkIcon, LuSettings as Settings, LuCreditCard as CreditCard, LuGraduationCap as GraduationCap, LuCalendar as Calendar, LuBus as Bus, LuLibrary as Library, LuFileText as FileText, LuBell as Bell, LuKey as Key, LuMenu as Menu, LuX as X, LuBuilding2 as Building2, LuCheck as CheckSquare, LuHouse as Home, LuPackage as PackageIcon, LuBriefcase as Briefcase, LuChartBar as BarChart2, LuHeartPulse as HeartPulse, LuCircleAlert as AlertCircle, LuFiles as Files, LuChevronDown as ChevronDown, LuChevronRight as ChevronRight, LuShield as Shield, LuLayoutGrid as LayoutGrid, LuMessageSquare as MessageSquare, LuCoffee as Coffee, LuClipboardList as ClipboardList } from 'react-icons/lu';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../api/auth';
 import usePermissions from '../hooks/usePermissions';
@@ -47,6 +47,7 @@ export const allNavItems = [
   { name: 'Billing & Plan', path: '/admin/billing', icon: CreditCard, moduleKey: 'billing' },
   { name: 'Custom Modules', path: '/admin/form-builder', icon: Settings, moduleKey: 'form-builder' },
   { name: 'Roles & Permissions', path: '/admin/roles', icon: Shield, moduleKey: 'roles' },
+  { name: 'Audit Logs', path: '/admin/audit-logs', icon: ClipboardList, moduleKey: 'audit' },
 ];
 
 export default function AdminDashboard() {
@@ -220,7 +221,7 @@ export default function AdminDashboard() {
       'classes', 'subjects', 'students', 'staff', 'links', 'roles', 'settings',
       'form-builder', 'api', 'homework', 'leaves', 'leads', 'reports', 'canteen',
       'chats', 'noticeboard', 'attendance', 'calendar', 'timetables', 'exams',
-      'fees', 'transport', 'library', 'hr-payroll', 'inventory', 'billing'
+      'fees', 'transport', 'library', 'hr-payroll', 'inventory', 'billing', 'audit'
     ];
     if (!coreKeys.includes(item.moduleKey) && !permittedModules.includes(item.moduleKey)) {
        return false;
@@ -230,7 +231,7 @@ export default function AdminDashboard() {
     if (permissions === 'ALL') {
        return true;
     } else {
-       if (item.moduleKey === 'roles') return false; // Only super-admin or owner can edit roles
+       if (item.moduleKey === 'roles' || item.moduleKey === 'audit') return false; // Only school admin or principal can edit roles or view audit logs
        return canRead(item.moduleKey);
     }
   });

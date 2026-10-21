@@ -71,6 +71,7 @@ const CustomModuleView = lazy(() => import('./pages/Admin/CustomModuleView'));
 const ChatMonitor = lazy(() => import('./pages/Admin/ChatMonitor'));
 const LeadsManagement = lazy(() => import('./pages/Admin/LeadsManagement'));
 const CanteenManagement = lazy(() => import('./pages/Admin/CanteenManagement'));
+const SchoolAdminAuditLogs = lazy(() => import('./pages/Admin/AuditLogs'));
 
 // Teacher
 const TeacherRegistration = lazy(() => import('./pages/TeacherRegistration'));
@@ -237,6 +238,7 @@ function App() {
               <Route path="leaves" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="leaves"><AdminLeaves /></ProtectedRoute>} />
               <Route path="leads" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="leads"><LeadsManagement /></ProtectedRoute>} />
               <Route path="canteen" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="canteen"><CanteenManagement /></ProtectedRoute>} />
+              <Route path="audit-logs" element={<ProtectedRoute allowedRoles={['admin']}><SchoolAdminAuditLogs /></ProtectedRoute>} />
             </Route>
 
             {/* Teacher Routes */}

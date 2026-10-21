@@ -129,12 +129,24 @@ function buildAuditWhereClause(schoolId, filters = {}) {
  * @returns {Promise<Array<Object>>}
  */
 export async function findTenantAuditLogs(schoolId, filters = {}, pagination = {}) {
+  if (!schoolId) {
+    throw new Error('schoolId is required for tenant audit query');
+  }
   const where = buildAuditWhereClause(schoolId, filters);
   const skip = pagination.skip || 0;
   const take = pagination.take || 20;
 
   return prisma.auditLog.findMany({
     where,
+    include: {
+      school: {
+        select: {
+          id: true,
+          name: true,
+          code: true
+        }
+      }
+    },
     orderBy: { timestamp: 'desc' },
     skip,
     take
@@ -149,6 +161,9 @@ export async function findTenantAuditLogs(schoolId, filters = {}, pagination = {
  * @returns {Promise<number>}
  */
 export async function countTenantAuditLogs(schoolId, filters = {}) {
+  if (!schoolId) {
+    throw new Error('schoolId is required for tenant audit query');
+  }
   const where = buildAuditWhereClause(schoolId, filters);
   return prisma.auditLog.count({ where });
 }

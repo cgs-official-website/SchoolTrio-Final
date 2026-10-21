@@ -1,5 +1,6 @@
 import * as auditService from './audit.service.js';
 import { ApiResponse } from '../../utils/api-response.js';
+import { TenantAccessError } from '../../utils/app-error.js';
 
 /**
  * Controller: Get paginated audit logs for the authenticated tenant.
@@ -10,7 +11,10 @@ import { ApiResponse } from '../../utils/api-response.js';
  */
 export const getTenantAuditLogs = async (req, res, next) => {
   try {
-    const schoolId = req.tenant?.schoolId;
+    const schoolId = req.schoolId || req.tenant?.schoolId;
+    if (!schoolId) {
+      throw new TenantAccessError('Tenant context required: active school association is missing');
+    }
     const result = await auditService.getTenantAuditLogs(schoolId, req.query);
     return res.status(200).json({
       success: true,
