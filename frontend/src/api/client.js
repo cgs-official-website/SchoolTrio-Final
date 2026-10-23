@@ -136,6 +136,8 @@ export const apiClient = async (endpoint, options = {}) => {
 
   const defaultHeaders = {
     ...(!isFormData ? { 'Content-Type': 'application/json' } : {}),
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
     ...options.headers
   };
 
@@ -146,6 +148,7 @@ export const apiClient = async (endpoint, options = {}) => {
   }
 
   const fetchOptions = {
+    cache: options.cache || 'no-store',
     ...options,
     headers: defaultHeaders,
     credentials: options.credentials || 'include'

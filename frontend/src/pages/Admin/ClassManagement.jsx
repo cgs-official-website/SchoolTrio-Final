@@ -68,8 +68,11 @@ export default function ClassManagement() {
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (opts = {}) => {
     try {
+      if (!opts?.silent) {
+        setLoading(true);
+      }
       const [classesRes, categoriesRes, staffRes] = await Promise.all([
         listClasses({ limit: 100 }),
         listClassCategories(),
@@ -87,7 +90,9 @@ export default function ClassManagement() {
       console.error("Error fetching class management data:", error);
       toast.error(error.response?.data?.message || "Failed to load classes and categories");
     } finally {
-      setLoading(false);
+      if (!opts?.silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -95,7 +100,11 @@ export default function ClassManagement() {
     fetchData();
   }, [fetchData]);
 
-  useLiveDataRefresh(fetchData, [fetchData], ['classes', 'staff', 'students']);
+  const handleLiveRefresh = useCallback(() => {
+    fetchData({ silent: true });
+  }, [fetchData]);
+
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], ['classes', 'staff', 'students']);
 
   // Flatten hierarchical Class -> Section models for card and grid display
   const flattenedClasses = useMemo(() => {
@@ -223,8 +232,8 @@ export default function ClassManagement() {
       setFormData({ name: '', section: '', categoryId: '', classTeacherId: '' });
       setShowForm(false);
       setEditingItem(null);
-      await fetchData();
       notifyDataChanged('classes');
+      fetchData({ silent: true });
     } catch (error) {
       console.error("Error saving class:", error);
       const msg = error.response?.data?.message || error.message || "Failed to save class";
@@ -272,7 +281,7 @@ export default function ClassManagement() {
         toast.success("Class deleted successfully");
       }
       notifyDataChanged('classes');
-      await fetchData();
+      fetchData({ silent: true });
     } catch (error) {
       console.error("Error deleting class:", error);
       const status = error.status || error.response?.status;

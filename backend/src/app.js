@@ -43,8 +43,15 @@ export const createApp = () => {
   // 4. Mount Root Health Endpoints (for load balancers and orchestrators)
   app.use('/health', healthRoutes);
 
-  // 5. Mount Versioned API v1 Router
-  app.use('/api/v1', apiV1Router);
+  // 5. Mount Versioned API v1 Router with strict no-cache headers to ensure real-time UI updates
+  app.set('etag', false);
+  app.use('/api/v1', (req, res, next) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.set('Surrogate-Control', 'no-store');
+    next();
+  }, apiV1Router);
 
   // 6. Undefined Route 404 Handler
   app.use(notFoundHandler);

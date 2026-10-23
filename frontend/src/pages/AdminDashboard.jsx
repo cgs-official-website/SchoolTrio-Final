@@ -1,4 +1,4 @@
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState, useCallback, Suspense } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { LuBookOpen as BookOpen, LuUsers as Users, LuLogOut as LogOut, LuLayoutDashboard as LayoutDashboard, LuLink as LinkIcon, LuSettings as Settings, LuCreditCard as CreditCard, LuGraduationCap as GraduationCap, LuCalendar as Calendar, LuBus as Bus, LuLibrary as Library, LuFileText as FileText, LuBell as Bell, LuKey as Key, LuMenu as Menu, LuX as X, LuBuilding2 as Building2, LuCheck as CheckSquare, LuHouse as Home, LuPackage as PackageIcon, LuBriefcase as Briefcase, LuChartBar as BarChart2, LuHeartPulse as HeartPulse, LuCircleAlert as AlertCircle, LuFiles as Files, LuChevronDown as ChevronDown, LuChevronRight as ChevronRight, LuShield as Shield, LuLayoutGrid as LayoutGrid, LuMessageSquare as MessageSquare, LuCoffee as Coffee } from 'react-icons/lu';
 import { useAuth } from '../context/AuthContext';
@@ -8,6 +8,7 @@ import { getSchoolSettings, getSidebarSettings } from '../api/settings';
 import { listCustomModules } from '../api/customModules';
 import TopNavbar from '../components/TopNavbar';
 import useSchoolBranding from '../hooks/useSchoolBranding';
+import { useLiveDataRefresh } from '../hooks/useLiveDataRefresh';
 
 import { useNotifications } from '../context/NotificationContext';
 
@@ -65,92 +66,94 @@ export default function AdminDashboard() {
   // Apply dynamic title and favicon
   useSchoolBranding(schoolData);
 
-  useEffect(() => {
-    // Check if the school is approved and fetch permissions
-    const fetchSchoolData = async () => {
-      // If auth is still loading or userProfile not yet available, wait
-      if (!userProfile) return;
+  const fetchSchoolData = useCallback(async () => {
+    // If auth is still loading or userProfile not yet available, wait
+    if (!userProfile) return;
 
-      // Authoritative school status check:
-      let schoolStatus = String(userProfile.schoolStatus || '').toLowerCase();
-      if (schoolStatus === 'pending') {
-        try {
-          const meRes = await authApi.getMe();
-          const freshData = meRes?.data?.user || meRes?.data;
-          const freshSchoolStatus = String(freshData?.school?.status || freshData?.schoolStatus || '').toLowerCase();
-          if (freshSchoolStatus === 'approved' || freshSchoolStatus === 'active') {
-            schoolStatus = freshSchoolStatus;
-            if (updateProfileData) updateProfileData();
+    // Authoritative school status check:
+    let schoolStatus = String(userProfile.schoolStatus || '').toLowerCase();
+    if (schoolStatus === 'pending') {
+      try {
+        const meRes = await authApi.getMe();
+        const freshData = meRes?.data?.user || meRes?.data;
+        const freshSchoolStatus = String(freshData?.school?.status || freshData?.schoolStatus || '').toLowerCase();
+        if (freshSchoolStatus === 'approved' || freshSchoolStatus === 'active') {
+          schoolStatus = freshSchoolStatus;
+          if (updateProfileData) updateProfileData();
+        }
+      } catch {
+        // ignore error
+      }
+    }
+
+    if (schoolStatus === 'pending') {
+      navigate('/admin/pending');
+      return;
+    }
+
+    try {
+      if (userProfile.schoolId) {
+        // Parallelize dashboard startup requests (settings, sidebar order, custom modules)
+        const [settingsResult, sidebarResult, customModsResult] = await Promise.allSettled([
+          getSchoolSettings(),
+          getSidebarSettings(),
+          listCustomModules()
+        ]);
+
+        // Handle School Settings
+        if (settingsResult.status === 'fulfilled') {
+          const data = settingsResult.value?.data || settingsResult.value;
+          if (data && data.status && String(data.status).toLowerCase() === 'pending') {
+            navigate('/admin/pending');
+            return;
           }
-        } catch {
-          // ignore error
+          if (data) {
+            setSchoolData(data);
+          }
+        }
+
+        // Handle Sidebar Order
+        if (sidebarResult.status === 'fulfilled') {
+          const sidebarData = sidebarResult.value?.data || sidebarResult.value;
+          if (sidebarData?.order) {
+            setSidebarOrder(sidebarData.order);
+          }
+        }
+
+        // Handle Custom Modules
+        if (customModsResult.status === 'fulfilled') {
+          const customModsData = Array.isArray(customModsResult.value?.data) ? customModsResult.value.data : [];
+          const customMods = customModsData
+            .sort((a, b) => (a.order || 0) - (b.order || 0))
+            .map(m => ({
+              name: m.name,
+              path: `/admin/custom/${m.id}`,
+              icon: LayoutGrid,
+              moduleKey: m.id, // custom module key
+              isCustom: true
+            }));
+          setCustomNavItems(customMods);
         }
       }
-
-      if (schoolStatus === 'pending') {
-        navigate('/admin/pending');
+    } catch (error) {
+      console.error("Error fetching school data:", error);
+      // If the error is an unauthenticated 401 error, do NOT route to /admin/pending
+      if (error?.status === 401) {
+        navigate('/login');
         return;
       }
+      // Fallback for school data to allow UI rendering even if network fails
+      setSchoolData(prev => prev || { id: userProfile.schoolId, name: userProfile.schoolName || 'School Admin' });
+    } finally {
+      setLoading(false);
+    }
+  }, [userProfile, navigate, updateProfileData]);
 
-      try {
-        if (userProfile.schoolId) {
-          // Parallelize dashboard startup requests (settings, sidebar order, custom modules)
-          const [settingsResult, sidebarResult, customModsResult] = await Promise.allSettled([
-            getSchoolSettings(),
-            getSidebarSettings(),
-            listCustomModules()
-          ]);
-
-          // Handle School Settings
-          if (settingsResult.status === 'fulfilled') {
-            const data = settingsResult.value?.data || settingsResult.value;
-            if (data && data.status && String(data.status).toLowerCase() === 'pending') {
-              navigate('/admin/pending');
-              return;
-            }
-            if (data) {
-              setSchoolData(data);
-            }
-          }
-
-          // Handle Sidebar Order
-          if (sidebarResult.status === 'fulfilled') {
-            const sidebarData = sidebarResult.value?.data || sidebarResult.value;
-            if (sidebarData?.order) {
-              setSidebarOrder(sidebarData.order);
-            }
-          }
-
-          // Handle Custom Modules
-          if (customModsResult.status === 'fulfilled') {
-            const customModsData = Array.isArray(customModsResult.value?.data) ? customModsResult.value.data : [];
-            const customMods = customModsData
-              .sort((a, b) => (a.order || 0) - (b.order || 0))
-              .map(m => ({
-                name: m.name,
-                path: `/admin/custom/${m.id}`,
-                icon: LayoutGrid,
-                moduleKey: m.id, // custom module key
-                isCustom: true
-              }));
-            setCustomNavItems(customMods);
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching school data:", error);
-        // If the error is an unauthenticated 401 error, do NOT route to /admin/pending
-        if (error?.status === 401) {
-          navigate('/login');
-          return;
-        }
-        // Fallback for school data to allow UI rendering even if network fails
-        setSchoolData(prev => prev || { id: userProfile.schoolId, name: userProfile.schoolName || 'School Admin' });
-      } finally {
-        setLoading(false);
-      }
-    };
+  useEffect(() => {
     fetchSchoolData();
-  }, [userProfile, navigate]);
+  }, [fetchSchoolData]);
+
+  useLiveDataRefresh(fetchSchoolData, [fetchSchoolData], ['settings', 'school', 'branding', 'modules']);
 
   // Close sidebar on route change for mobile
   useEffect(() => {

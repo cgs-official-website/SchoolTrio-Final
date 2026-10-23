@@ -73,9 +73,11 @@ export default function SubjectManagement() {
            [];
   }, []);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (opts = {}) => {
     try {
-      setLoading(true);
+      if (!opts?.silent) {
+        setLoading(true);
+      }
       const [subjectsRes, staffRes] = await Promise.all([
         listSubjects({ limit: 100 }),
         listStaff({ staffType: 'teaching', limit: 100 })
@@ -87,7 +89,9 @@ export default function SubjectManagement() {
       console.error("Error fetching subjects and teaching staff:", error);
       toast.error(error.response?.data?.message || "Failed to load subjects");
     } finally {
-      setLoading(false);
+      if (!opts?.silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -96,7 +100,10 @@ export default function SubjectManagement() {
   }, [fetchData]);
 
   // Live data synchronization for subjects and staff assignments
-  useLiveDataRefresh(fetchData, [fetchData], ['subjects', 'staff']);
+  const handleLiveRefresh = useCallback(() => {
+    fetchData({ silent: true });
+  }, [fetchData]);
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], ['subjects', 'staff']);
 
   const handleOpenModal = (subject = null) => {
     if (subject) {
@@ -194,9 +201,15 @@ export default function SubjectManagement() {
         }
       }
 
+      if (editingId) {
+        setSubjects(prev => prev.map(s => s.id === targetSubjectId ? { ...s, name: normalizedName, code: normalizedCode } : s));
+      } else if (targetSubjectId) {
+        setSubjects(prev => [{ id: targetSubjectId, name: normalizedName, code: normalizedCode }, ...prev]);
+      }
+
       notifyDataChanged('subjects');
       setShowModal(false);
-      await fetchData();
+      fetchData({ silent: true });
     } catch (error) {
       console.error("Error saving subject:", error);
       if (error.response?.status === 409) {
@@ -222,11 +235,12 @@ export default function SubjectManagement() {
       message: "Are you sure you want to delete this subject? Make sure no active classes or academic records are assigned to it.",
       onConfirm: async () => {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        setSubjects(prev => prev.filter(s => s.id !== id));
         try {
           await deleteSubject(id);
           notifyDataChanged('subjects');
           toast.success("Subject deleted successfully!");
-          await fetchData();
+          fetchData({ silent: true });
         } catch (error) {
           console.error("Error deleting subject:", error);
           if (error.response?.status === 409) {

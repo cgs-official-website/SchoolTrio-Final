@@ -8,6 +8,7 @@ import { LuCircleUser as UserCircle, LuLogOut as LogOut, LuSquareCheck as CheckS
 import useSchoolBranding from '../hooks/useSchoolBranding';
 import { useNotifications } from '../context/NotificationContext';
 import { useLiveDataRefresh } from '../hooks/useLiveDataRefresh';
+import { notifyDataChanged } from '../utils/liveData';
 
 export const getStoredActiveStudentId = () => {
   try {
@@ -302,6 +303,8 @@ export default function ParentDashboard() {
       });
       
       await loadChildren();
+      notifyDataChanged('parents');
+      notifyDataChanged('students');
       setAdmissionNumber('');
       setDob('');
     } catch (error) {
@@ -339,6 +342,8 @@ export default function ParentDashboard() {
       });
       
       await loadChildren();
+      notifyDataChanged('parents');
+      notifyDataChanged('students');
       setIsLinkAnotherModalOpen(false);
       setIsChildDropdownOpen(false);
       setAnotherAdmission('');
@@ -373,6 +378,7 @@ export default function ParentDashboard() {
     setActiveStudentId(studentId);
     setStoredActiveStudentId(studentId);
     window.dispatchEvent(new CustomEvent('sms:active-child-changed', { detail: { studentId } }));
+    notifyDataChanged('students');
     setIsChildDropdownOpen(false);
   };
 

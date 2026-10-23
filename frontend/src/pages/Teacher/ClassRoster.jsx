@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getStaffMe } from '../../api/staff';
 import { getClass, listClasses, listMyClasses } from '../../api/classes';
@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { isMale, isFemale, normalizeGender } from '../../utils/genderUtils';
 import { formatClassSection, getSectionName, flattenClassesWithSections } from '../../utils/classSorting';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 export default function ClassRoster() {
   const { userProfile } = useAuth();
@@ -149,40 +150,49 @@ export default function ClassRoster() {
     toast.success("Student details exported successfully!");
   };
 
-  useEffect(() => {
-    if (!schoolId) return;
-    if (!classId) {
+  const fetchClassAndStudents = useCallback(async (opts = {}) => {
+    if (!schoolId || !classId) {
       setLoading(false);
       return;
     }
-
-    setLoading(true);
-    let isMounted = true;
-
-    const fetchClassAndStudents = async () => {
-      try {
-        const studentParams = { classId, limit: 100 };
-        if (sectionId) studentParams.sectionId = sectionId;
-        const [classRes, studentsRes] = await Promise.all([
-          getClass(classId),
-          listStudents(studentParams)
-        ]);
-        if (!isMounted) return;
-        const classData = classRes?.data || classRes;
-        if (classData) {
-          setClassDetails(classData);
-        }
-        const studentsList = Array.isArray(studentsRes?.data) ? studentsRes.data : (Array.isArray(studentsRes) ? studentsRes : []);
-        const sorted = [...studentsList].sort((a, b) => (a.firstName || '').localeCompare(b.firstName || ''));
-        setStudents(sorted);
-      } catch (err) {
-        console.error('Error fetching class and students in ClassRoster:', err);
-      } finally {
-        if (isMounted) setLoading(false);
+    if (!opts?.silent) {
+      setLoading(true);
+    }
+    try {
+      const studentParams = { classId, limit: 100 };
+      if (sectionId) studentParams.sectionId = sectionId;
+      const [classRes, studentsRes] = await Promise.all([
+        getClass(classId),
+        listStudents(studentParams)
+      ]);
+      const classData = classRes?.data || classRes;
+      if (classData) {
+        setClassDetails(classData);
       }
-    };
+      const studentsList = Array.isArray(studentsRes?.data) ? studentsRes.data : (Array.isArray(studentsRes) ? studentsRes : []);
+      const sorted = [...studentsList].sort((a, b) => (a.firstName || '').localeCompare(b.firstName || ''));
+      setStudents(sorted);
+    } catch (err) {
+      console.error('Error fetching class and students in ClassRoster:', err);
+    } finally {
+      if (!opts?.silent) {
+        setLoading(false);
+      }
+    }
+  }, [schoolId, classId, sectionId]);
 
+  useEffect(() => {
     fetchClassAndStudents();
+  }, [fetchClassAndStudents]);
+
+  const handleLiveRefresh = useCallback(() => {
+    fetchClassAndStudents({ silent: true });
+  }, [fetchClassAndStudents]);
+
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], ['classes', 'students', 'attendance']);
+
+  useEffect(() => {
+    if (!schoolId) return;
 
     // Fetch Transport Routes via REST
     listRoutes().then(res => {

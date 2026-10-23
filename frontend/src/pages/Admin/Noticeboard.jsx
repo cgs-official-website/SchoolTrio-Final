@@ -63,8 +63,10 @@ export default function Noticeboard() {
     });
   }, [currentUserId]);
 
-  const fetchNotices = useCallback(async () => {
-    setLoading(true);
+  const fetchNotices = useCallback(async (opts = {}) => {
+    if (!opts?.silent) {
+      setLoading(true);
+    }
     try {
       if (activeTab === 'global') {
         const res = await noticesApi.listNotices({ type: 'global', limit: 100 });
@@ -81,7 +83,9 @@ export default function Noticeboard() {
       console.error('Failed to load notices:', err);
       toast.error('Failed to load notices from server.');
     } finally {
-      setLoading(false);
+      if (!opts?.silent) {
+        setLoading(false);
+      }
     }
   }, [activeTab, markUnreadAsViewed]);
 
@@ -127,7 +131,10 @@ export default function Noticeboard() {
   }, [fetchNotices]);
 
   // Canonical live-data synchronization for notices
-  useLiveDataRefresh(fetchNotices, [fetchNotices], 'notices');
+  const handleLiveRefresh = useCallback(() => {
+    fetchNotices({ silent: true });
+  }, [fetchNotices]);
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], 'notices');
 
   const handleSaveNotice = async (e) => {
     e.preventDefault();
@@ -140,6 +147,16 @@ export default function Noticeboard() {
           audience: newNotice.audience,
           priority: newNotice.priority
         });
+        const updatedNotice = {
+          ...editingNotice,
+          title: newNotice.title,
+          content: newNotice.message,
+          message: newNotice.message,
+          audience: newNotice.audience,
+          priority: newNotice.priority
+        };
+        setGlobalNotices(prev => prev.map(n => n.id === editingNotice.id ? updatedNotice : n));
+        setClassNotices(prev => prev.map(n => n.id === editingNotice.id ? updatedNotice : n));
         notifyDataChanged('notices');
         toast.success('Notice updated successfully!');
       } else {
@@ -151,7 +168,12 @@ export default function Noticeboard() {
           priority: newNotice.priority
         };
         const res = await noticesApi.createNotice(noticePayload);
-        const createdNotice = res.data;
+        const createdNotice = res?.data || { ...noticePayload, id: 'temp_' + Date.now(), createdAt: new Date().toISOString() };
+        if (activeTab === 'global') {
+          setGlobalNotices(prev => [createdNotice, ...prev]);
+        } else {
+          setClassNotices(prev => [createdNotice, ...prev]);
+        }
 
         notifyDataChanged('notices');
         toast.success('Notice published successfully! WhatsApp messages queued.');
@@ -165,7 +187,7 @@ export default function Noticeboard() {
       setShowCreateModal(false);
       setEditingNotice(null);
       setNewNotice({ title: '', message: '', audience: 'all', priority: 'normal' });
-      await fetchNotices();
+      fetchNotices({ silent: true });
     } catch (error) {
       console.error('Save notice error:', error);
       toast.error(error.message || `Failed to ${editingNotice ? 'update' : 'create'} notice.`);
@@ -188,16 +210,18 @@ export default function Noticeboard() {
   const executeDeleteNotice = async () => {
     const noticeId = confirmModalState.noticeId;
     if (!noticeId) return;
+    setConfirmModalState({ isOpen: false, noticeId: null });
+    setGlobalNotices(prev => prev.filter(n => n.id !== noticeId));
+    setClassNotices(prev => prev.filter(n => n.id !== noticeId));
     try {
       await noticesApi.deleteNotice(noticeId);
       notifyDataChanged('notices');
       toast.success('Notice deleted.');
-      await fetchNotices();
+      fetchNotices({ silent: true });
     } catch (error) {
       console.error('Delete notice error:', error);
       toast.error(error.message || 'Failed to delete notice.');
-    } finally {
-      setConfirmModalState({ isOpen: false, noticeId: null });
+      fetchNotices({ silent: true });
     }
   };
 

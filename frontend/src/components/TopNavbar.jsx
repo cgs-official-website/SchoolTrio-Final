@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Menu, Search, Bell, RefreshCw, ChevronRight, X, AlertTriangle, ArrowLeft, LifeBuoy } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -8,6 +8,7 @@ import { noticesApi } from '../api/notices';
 import { notificationsApi } from '../api/notifications';
 import { FiSun, FiMoon } from 'react-icons/fi';
 import { notifyDataChanged } from '../utils/liveData';
+import { useLiveDataRefresh } from '../hooks/useLiveDataRefresh';
 import toast from 'react-hot-toast';
 
 /**
@@ -216,6 +217,26 @@ export default function TopNavbar({
       isMounted = false;
     };
   }, [userProfile?.schoolId, userProfile?.role, userProfile?.id, userProfile?.userId, userProfile?.uid, showNotifications]);
+
+  const refreshNoticesAndAlerts = useCallback(async () => {
+    if (!userProfile?.schoolId) return;
+    try {
+      const [nRes, alertRes] = await Promise.allSettled([
+        noticesApi.listNotices({ limit: 20 }),
+        notificationsApi.listNotifications({ limit: 20 })
+      ]);
+      if (nRes.status === 'fulfilled') {
+        const raw = Array.isArray(nRes.value?.data) ? nRes.value.data : (Array.isArray(nRes.value) ? nRes.value : []);
+        setNotices(raw);
+      }
+      if (alertRes.status === 'fulfilled') {
+        const raw = Array.isArray(alertRes.value?.data) ? alertRes.value.data : (Array.isArray(alertRes.value) ? alertRes.value : []);
+        setNotifications(raw);
+      }
+    } catch {}
+  }, [userProfile?.schoolId]);
+
+  useLiveDataRefresh(refreshNoticesAndAlerts, [refreshNoticesAndAlerts], ['notices', 'notifications', 'all']);
 
   const allNotifications = [
     ...notifications.map(n => ({
@@ -437,7 +458,7 @@ export default function TopNavbar({
           )}
           
           {showNotifications && (
-            <div className="absolute top-full right-[-2rem] sm:right-0 mt-2 w-[300px] sm:w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden z-50 flex flex-col animate-fade-in-up">
+            <div className="absolute top-full right-0 sm:right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden z-50 flex flex-col animate-fade-in-up">
               <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
                 <h3 className="font-semibold text-slate-900 dark:text-white">Notifications</h3>
                 <div className="flex items-center gap-3">

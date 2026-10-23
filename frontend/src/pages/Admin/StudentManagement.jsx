@@ -201,15 +201,17 @@ export default function StudentManagement() {
 
   const handleDeleteStudent = async (studentId) => {
     try {
+      setStudents(prev => prev.filter(s => s.id !== studentId));
+      setConfirmDeleteState({ isOpen: false, id: null, name: '' });
       await deleteStudent(studentId);
       toast.success("Student deleted successfully!");
-      setConfirmDeleteState({ isOpen: false, id: null, name: '' });
-      await fetchData();
       notifyDataChanged('students');
+      fetchData({ silent: true });
     } catch (error) {
       console.error("Error deleting student:", error);
       const errorMsg = error.response?.data?.message || error.message || "Failed to delete student.";
       toast.error(errorMsg);
+      fetchData({ silent: true });
     }
   };
 
@@ -273,9 +275,11 @@ export default function StudentManagement() {
     };
   }, [selectedStudentToView, viewStudentModalOpen]);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (opts = {}) => {
     try {
-      setLoading(true);
+      if (!opts?.silent) {
+        setLoading(true);
+      }
       const [studentsRes, classesRes, applicationsRes] = await Promise.all([
         listStudents({ limit: 1000 }),
         listClasses({ limit: 100 }),
@@ -402,7 +406,9 @@ export default function StudentManagement() {
       console.error("Error loading students or classes:", error);
       toast.error(error.response?.data?.message || "Failed to load students");
     } finally {
-      setLoading(false);
+      if (!opts?.silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -410,7 +416,11 @@ export default function StudentManagement() {
     fetchData();
   }, [fetchData]);
 
-  useLiveDataRefresh(fetchData, [fetchData], ['students', 'classes', 'admissions']);
+  const handleLiveRefresh = useCallback(() => {
+    fetchData({ silent: true });
+  }, [fetchData]);
+
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], ['students', 'classes', 'admissions']);
 
   // Handle Opening Application Review Modal
   const handleOpenReviewModal = (app) => {
@@ -452,12 +462,15 @@ export default function StudentManagement() {
         classId: targetClassId
       });
 
+      setAdmissionApplications(prev => prev.map(a => a.id === app.id ? { ...a, status: 'Approved' } : a));
       toast.success(`Student ${app.studentName || app.firstName} admitted successfully to the student directory!`, {
         icon: '🎓'
       });
       setReviewAppModalOpen(false);
       setSelectedAppForReview(null);
-      fetchData();
+      notifyDataChanged('students');
+      notifyDataChanged('admissions');
+      fetchData({ silent: true });
     } catch (err) {
       console.error("Error approving admission:", err);
       toast.error("Failed to admit student: " + (err.response?.data?.message || err.message || 'Unknown error'));
@@ -474,6 +487,7 @@ export default function StudentManagement() {
       toast.success("Application status marked as Rejected.");
       setReviewAppModalOpen(false);
       setSelectedAppForReview(null);
+      notifyDataChanged('admissions');
     } catch (err) {
       console.error("Error rejecting application:", err);
       toast.error(err.response?.data?.message || "Failed to reject application.");
@@ -651,7 +665,7 @@ export default function StudentManagement() {
       setPhotoFile(null);
       setShowForm(false);
       toast.success("Student admitted successfully!");
-      fetchData();
+      fetchData({ silent: true });
     } catch (error) {
       console.error("Error creating student:", error);
       toast.error(error.response?.data?.message || "Failed to admit student.");
@@ -1118,9 +1132,11 @@ export default function StudentManagement() {
         customData: updatedCustom
       });
 
+      setStudents(prev => prev.map(s => s.id === selectedStudentForUpload.id ? { ...s, ...updatedCustom, customData: updatedCustom } : s));
       toast.success("Document uploaded successfully!");
       setUploadModalOpen(false);
-      fetchData();
+      notifyDataChanged('students');
+      fetchData({ silent: true });
     } catch (error) {
       console.error("Error uploading file:", error);
       toast.error("Failed to upload document.");
@@ -1144,9 +1160,12 @@ export default function StudentManagement() {
         classId: targetClassId || null,
         sectionId: targetSectionId || null
       });
+      setStudents(prev => prev.map(s => s.id === selectedStudentForAssign.id ? { ...s, classId: targetClassId || null, sectionId: targetSectionId || null } : s));
       toast.success("Class assigned successfully");
       setAssignModalOpen(false);
-      fetchData();
+      notifyDataChanged('students');
+      notifyDataChanged('classes');
+      fetchData({ silent: true });
     } catch (error) {
       console.error(error);
       toast.error(error.response?.data?.message || "Failed to assign class");
@@ -1451,9 +1470,11 @@ export default function StudentManagement() {
         customData: customDataPayload
       };
       setSelectedStudentToView(updatedStudentObj);
+      setStudents(prev => prev.map(s => s.id === updatedStudentObj.id ? updatedStudentObj : s));
       setIsEditMode(false);
       setEditPhotoFile(null);
-      fetchData();
+      notifyDataChanged('students');
+      fetchData({ silent: true });
     } catch (e) {
       console.error(e);
       toast.error(e.response?.data?.message || "Failed to save changes.");

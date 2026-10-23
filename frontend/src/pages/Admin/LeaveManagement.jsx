@@ -28,10 +28,12 @@ export default function LeaveManagement() {
     message: ''
   });
 
-  const fetchLeaves = useCallback(async () => {
+  const fetchLeaves = useCallback(async (opts = {}) => {
     if (!schoolId) return;
     try {
-      setLoading(true);
+      if (!opts?.silent) {
+        setLoading(true);
+      }
       const res = await leavesApi.listLeaves({ limit: 200 });
       if (res && res.success && Array.isArray(res.data)) {
         setLeaves(res.data);
@@ -43,7 +45,9 @@ export default function LeaveManagement() {
       toast.error('Failed to load leave requests.');
       setLeaves([]);
     } finally {
-      setLoading(false);
+      if (!opts?.silent) {
+        setLoading(false);
+      }
     }
   }, [schoolId]);
 
@@ -52,7 +56,10 @@ export default function LeaveManagement() {
   }, [fetchLeaves]);
 
   // Live data synchronization for leave applications and approvals
-  useLiveDataRefresh(fetchLeaves, [fetchLeaves], ['leaves', 'leave']);
+  const handleLiveRefresh = useCallback(() => {
+    fetchLeaves({ silent: true });
+  }, [fetchLeaves]);
+  useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], ['leaves', 'leave']);
 
   const handleStatusUpdateClick = (leaveId, newStatus) => {
     if (!hasEditPermission) {
@@ -92,22 +99,25 @@ export default function LeaveManagement() {
 
     try {
       if (actionType === 'delete') {
+        setLeaves(prev => prev.filter(l => l.id !== leaveId));
         await leavesApi.deleteLeave(leaveId);
         notifyDataChanged('leaves');
         notifyDataChanged('leave');
         toast.success("Leave request deleted successfully!");
       } else {
+        setLeaves(prev => prev.map(l => l.id === leaveId ? { ...l, status: newStatus } : l));
         await leavesApi.updateLeaveStatus(leaveId, { status: newStatus });
         notifyDataChanged('leaves');
         notifyDataChanged('leave');
         toast.success(`Leave request ${newStatus.toLowerCase()} successfully!`);
       }
       setSelectedLeave(null);
-      await fetchLeaves();
+      fetchLeaves({ silent: true });
     } catch (error) {
       console.error(error);
       const message = error?.message || 'Failed to process request.';
       toast.error(message);
+      fetchLeaves({ silent: true });
     }
   };
 

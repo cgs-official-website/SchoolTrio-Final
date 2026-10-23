@@ -32,11 +32,19 @@ export function useLiveDataRefresh(arg1, arg2 = [], arg3 = null) {
       return filters.includes(updatedEntity);
     };
 
+    let debounceTimer = null;
+    const scheduleFetch = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        fetcherRef.current?.();
+      }, 50);
+    };
+
     // 1. Same-window local event listener
     const handleDataUpdate = (event) => {
       const updatedEntity = event.detail?.entity || 'all';
       if (shouldTrigger(updatedEntity)) {
-        fetcherRef.current?.();
+        scheduleFetch();
       }
     };
     window.addEventListener(LIVE_DATA_EVENT, handleDataUpdate);
@@ -49,7 +57,7 @@ export function useLiveDataRefresh(arg1, arg2 = [], arg3 = null) {
         bc.onmessage = (msgEvent) => {
           const updatedEntity = msgEvent.data?.entity || 'all';
           if (shouldTrigger(updatedEntity)) {
-            fetcherRef.current?.();
+            scheduleFetch();
           }
         };
       } catch {}
@@ -62,7 +70,7 @@ export function useLiveDataRefresh(arg1, arg2 = [], arg3 = null) {
           const data = JSON.parse(storageEvent.newValue);
           const updatedEntity = data?.entity || 'all';
           if (shouldTrigger(updatedEntity)) {
-            fetcherRef.current?.();
+            scheduleFetch();
           }
         } catch {}
       }
@@ -72,13 +80,14 @@ export function useLiveDataRefresh(arg1, arg2 = [], arg3 = null) {
     // 4. Tab visibility and focus listener: refresh automatically when user refocuses the portal
     const handleFocus = () => {
       if (document.visibilityState === 'visible') {
-        fetcherRef.current?.();
+        scheduleFetch();
       }
     };
     window.addEventListener('visibilitychange', handleFocus);
     window.addEventListener('focus', handleFocus);
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener(LIVE_DATA_EVENT, handleDataUpdate);
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('visibilitychange', handleFocus);
