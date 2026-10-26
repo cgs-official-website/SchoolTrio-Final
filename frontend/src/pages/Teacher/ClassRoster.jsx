@@ -233,7 +233,6 @@ export default function ClassRoster() {
     loadTodayAttendance();
 
     return () => {
-      isMounted = false;
       isAttendanceMounted = false;
     };
   }, [schoolId, classId, sectionId, todayDate]);
