@@ -341,20 +341,23 @@ model Class {
 }
 
 model Section {
-  id        String   @id @default(uuid()) @db.Uuid
-  schoolId  String   @map("school_id") @db.Uuid
-  classId   String   @map("class_id") @db.Uuid
-  name      String   @db.VarChar(50)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  schoolId       String   @map("school_id") @db.Uuid
+  classId        String   @map("class_id") @db.Uuid
+  name           String   @db.VarChar(50)
+  classTeacherId String?  @map("class_teacher_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   class              Class               @relation(fields: [schoolId, classId], references: [schoolId, id], onDelete: Cascade)
+  classTeacher       StaffProfile?       @relation("SectionClassTeacherRelation", fields: [classTeacherId], references: [id], onDelete: SetNull)
   students           Student[]
   timetablePeriods   TimetablePeriod[]
   attendanceSessions AttendanceSession[]
 
   @@unique([schoolId, id])
   @@unique([schoolId, classId, name])
+  @@index([classTeacherId])
   @@map("sections")
 }
 
@@ -558,6 +561,7 @@ model StaffProfile {
   user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignedClass Class?            @relation("AssignedClassRelation", fields: [assignedClassId], references: [id], onDelete: SetNull)
   headedClasses Class[]           @relation("ClassTeacherRelation")
+  headedSections Section[]        @relation("SectionClassTeacherRelation")
   payroll       HRPayrollRecord[]
   lessonPlans   LessonPlan[]
   timetables    TimetablePeriod[]

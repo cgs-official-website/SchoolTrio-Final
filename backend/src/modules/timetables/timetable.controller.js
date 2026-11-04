@@ -29,7 +29,9 @@ export async function getClassTimetable(req, res, next) {
     const { classId } = req.params;
     const actor = req.auth || req.user;
 
-    const classTimetable = await timetableService.getClassTimetable(schoolId, classId, actor);
+    const classTimetable = await timetableService.getClassTimetable(schoolId, classId, actor, {
+      sectionId: req.query?.sectionId || null
+    });
 
     res.status(200).json({
       status: 'success',

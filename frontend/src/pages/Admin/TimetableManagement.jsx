@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { listClasses } from '../../api/classes';
 import { listStaff } from '../../api/staff';
@@ -12,7 +12,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
 import { uploadCustomDataFiles } from '../../utils/cloudinary';
 import usePermissions from '../../hooks/usePermissions';
-import { sortClassesAscending, formatClassSection, getSectionName } from '../../utils/classSorting';
+import { sortClassesAscending, formatClassSection, getSectionName, flattenClassesWithSections } from '../../utils/classSorting';
 
 const formatTime12hr = (time24) => {
   if (!time24) return '';
@@ -44,16 +44,16 @@ const TimePicker12Hour = ({ value, onChange, required }) => {
     setHour(h);
     setMinute(m);
     setPeriod(p);
-    
+
     if (h && m) {
       let h24 = parseInt(h, 10);
       if (p === 'PM' && h24 !== 12) h24 += 12;
       if (p === 'AM' && h24 === 12) h24 = 0;
-      
+
       const time24 = `${h24.toString().padStart(2, '0')}:${m}`;
       onChange(time24);
     } else {
-      onChange(''); 
+      onChange('');
     }
   };
 
@@ -62,26 +62,26 @@ const TimePicker12Hour = ({ value, onChange, required }) => {
 
   return (
     <div className="flex w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 focus-within:ring-2 focus-within:ring-primary-500 overflow-hidden divide-x divide-slate-200 dark:divide-slate-700">
-      <select 
+      <select
         required={required}
-        value={hour} 
+        value={hour}
         onChange={(e) => handleChange(e.target.value, minute, period)}
         className="flex-1 px-3 py-2.5 bg-transparent border-none focus:ring-0 text-slate-700 dark:text-slate-200 appearance-none text-center cursor-pointer outline-none"
       >
         <option value="" disabled>HH</option>
         {hours.map(h => <option key={h} value={h}>{h}</option>)}
       </select>
-      <select 
+      <select
         required={required}
-        value={minute} 
+        value={minute}
         onChange={(e) => handleChange(hour, e.target.value, period)}
         className="flex-1 px-3 py-2.5 bg-transparent border-none focus:ring-0 text-slate-700 dark:text-slate-200 appearance-none text-center cursor-pointer outline-none"
       >
         <option value="" disabled>MM</option>
         {minutes.map(m => <option key={m} value={m}>{m}</option>)}
       </select>
-      <select 
-        value={period} 
+      <select
+        value={period}
         onChange={(e) => handleChange(hour, minute, e.target.value)}
         className="flex-1 px-3 py-2.5 bg-transparent border-none focus:ring-0 text-slate-700 dark:text-slate-200 appearance-none text-center cursor-pointer font-bold outline-none"
       >
@@ -140,9 +140,9 @@ export function getEligibleTeachersForSubject(subNameOrId, currentClassId, teach
       ...(Array.isArray(t?.customData?.assignedSubjectIds) ? t.customData.assignedSubjectIds : [])
     ];
 
-    return assignedSubIds.some(id => 
-      id === subId || 
-      id === subName || 
+    return assignedSubIds.some(id =>
+      id === subId ||
+      id === subName ||
       (typeof id === 'string' && typeof subName === 'string' && id.trim().toLowerCase() === subName.trim().toLowerCase())
     );
   });
@@ -151,8 +151,10 @@ export function getEligibleTeachersForSubject(subNameOrId, currentClassId, teach
     return [];
   }
 
-  // 2. If currentClassId is specified, check if any subject teachers are specifically assigned to this class/section
-  if (currentClassId) {
+  // 2. If a class/section is specified, check if any subject teachers are specifically assigned to it.
+  //    `currentClassId` may be one id or a list (e.g. [sectionId, classId]).
+  const currentIds = (Array.isArray(currentClassId) ? currentClassId : [currentClassId]).filter(Boolean);
+  if (currentIds.length > 0) {
     const classSpecificTeachers = subjectTeachers.filter(t => {
       const classIds = [
         t?.assignments?.assignedClassId,
@@ -164,7 +166,7 @@ export function getEligibleTeachersForSubject(subNameOrId, currentClassId, teach
         ...(Array.isArray(t?.customData?.subjectClassIds) ? t.customData.subjectClassIds : [])
       ].filter(Boolean);
 
-      return classIds.includes(currentClassId);
+      return currentIds.some(id => classIds.includes(id));
     });
 
     if (classSpecificTeachers.length > 0) {
@@ -186,13 +188,15 @@ export default function TimetableManagement() {
   const [classes, setClasses] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [subjects, setSubjects] = useState([]);
-  const [selectedClassId, setSelectedClassId] = useState('');
-  
+  // A selectable "unit" is one class + ONE section (e.g. V - Section B). Every section has its own timetable.
+  const [selectedUnitId, setSelectedUnitId] = useState('');
+  const [usingSharedFallback, setUsingSharedFallback] = useState(false);
+
   const [schedule, setSchedule] = useState({
     Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: []
   });
   const [customData, setCustomData] = useState({});
-  
+
   const [allTimetables, setAllTimetables] = useState({});
   const [masterDay, setMasterDay] = useState('Monday');
 
@@ -215,19 +219,30 @@ export default function TimetableManagement() {
 
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+  const units = useMemo(() => flattenClassesWithSections(classes), [classes]);
+  const selectedUnit = useMemo(() => units.find(u => u.id === selectedUnitId) || null, [units, selectedUnitId]);
+  const selectedClassId = selectedUnit?.classId || '';
+  const selectedSectionId = selectedUnit?.sectionId || null;
+
+  // Timetable cached for the master view, keyed by "classId:sectionId" (or "classId:shared" for legacy periods)
+  const timetableKey = (classId, sectionId) => `${classId}:${sectionId || 'shared'}`;
+  const getUnitTimetable = (unit) =>
+    allTimetables[timetableKey(unit.classId, unit.sectionId)] || allTimetables[timetableKey(unit.classId, null)] || null;
+
   const fetchAllTimetables = useCallback(async () => {
     try {
       const res = await listTimetables();
       const periods = res.data || [];
       const timetablesMap = {};
       periods.forEach(p => {
-        if (!timetablesMap[p.classId]) {
-          timetablesMap[p.classId] = {
+        const mapKey = `${p.classId}:${p.sectionId || 'shared'}`;
+        if (!timetablesMap[mapKey]) {
+          timetablesMap[mapKey] = {
             Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: []
           };
         }
         const day = p.day || 'Monday';
-        if (timetablesMap[p.classId][day]) {
+        if (timetablesMap[mapKey][day]) {
           const subjectName = typeof p.subject === 'object' && p.subject !== null
             ? (p.subject.name || p.subject.code || 'Subject')
             : (p.subjectName || (typeof p.subject === 'string' ? p.subject : '') || 'Subject');
@@ -235,7 +250,7 @@ export default function TimetableManagement() {
             ? (p.teacher.name || `${p.teacher.firstName || ''} ${p.teacher.lastName || ''}`.trim() || '')
             : (p.teacherName || (typeof p.teacher === 'string' ? p.teacher : '') || '');
 
-          timetablesMap[p.classId][day].push({
+          timetablesMap[mapKey][day].push({
             id: p.id,
             startTime: p.startTime,
             endTime: p.endTime,
@@ -291,15 +306,20 @@ export default function TimetableManagement() {
     };
   }, [schoolId, fetchAllTimetables]);
 
-  const fetchClassSchedule = useCallback((targetClassId, showSpinner = true) => {
+  const fetchClassSchedule = useCallback((targetClassId, targetSectionId = null, showSpinner = true) => {
     if (!targetClassId) {
       setSchedule({ Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [] });
       setCustomData({});
+      setUsingSharedFallback(false);
       return;
     }
     if (showSpinner) setLoading(true);
-    getClassTimetable(targetClassId)
+    getClassTimetable(targetClassId, { sectionId: targetSectionId })
       .then((res) => {
+        // Legacy timetables were saved for the whole class (no section). Until this section is saved
+        // once, it shows that shared timetable; saving gives the section its own.
+        const fetchedPeriods = Array.isArray(res.data?.periods) ? res.data.periods : [];
+        setUsingSharedFallback(Boolean(targetSectionId) && fetchedPeriods.length > 0 && fetchedPeriods.every(p => !p.sectionId));
         const scheduleData = res.data?.schedule || {};
         const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const normalizedSchedule = {};
@@ -333,6 +353,7 @@ export default function TimetableManagement() {
         console.error("Error fetching class timetable:", err);
         setSchedule({ Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [] });
         setCustomData({});
+        setUsingSharedFallback(false);
       })
       .finally(() => {
         if (showSpinner) setLoading(false);
@@ -340,16 +361,16 @@ export default function TimetableManagement() {
   }, []);
 
   useEffect(() => {
-    fetchClassSchedule(selectedClassId, true);
-  }, [selectedClassId, fetchClassSchedule]);
+    fetchClassSchedule(selectedClassId, selectedSectionId, true);
+  }, [selectedClassId, selectedSectionId, fetchClassSchedule]);
 
   // Live data synchronization for timetables
   const handleLiveRefresh = useCallback(() => {
     fetchAllTimetables();
     if (selectedClassId) {
-      fetchClassSchedule(selectedClassId, false);
+      fetchClassSchedule(selectedClassId, selectedSectionId, false);
     }
-  }, [fetchAllTimetables, fetchClassSchedule, selectedClassId]);
+  }, [fetchAllTimetables, fetchClassSchedule, selectedClassId, selectedSectionId]);
 
   useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], ['timetables', 'timetable', 'subjects']);
 
@@ -358,7 +379,7 @@ export default function TimetableManagement() {
     if (!newSlot.subject) return;
 
     const newSchedule = { ...schedule };
-    
+
     // Resolve subjectId and teacherId from current subjects/teachers lists if not already explicitly set
     const subObj = subjects.find(s => s.name === newSlot.subject || s.id === newSlot.subject);
     const subId = newSlot.subjectId || subObj?.id || null;
@@ -377,7 +398,7 @@ export default function TimetableManagement() {
     }
 
     if (editingSlotId) {
-      newSchedule[activeDay] = newSchedule[activeDay].map(s => 
+      newSchedule[activeDay] = newSchedule[activeDay].map(s =>
         s.id === editingSlotId ? { ...s, ...slotData } : s
       );
     } else {
@@ -387,14 +408,14 @@ export default function TimetableManagement() {
       };
       newSchedule[activeDay].push(slot);
     }
-    
+
     // Sort slots by start time
     newSchedule[activeDay].sort((a, b) => a.startTime.localeCompare(b.startTime));
-    
+
     setSchedule(newSchedule);
     setShowAddModal(false);
     setEditingSlotId(null);
-    
+
     // Reset form but keep times (often admins add back-to-back periods)
     setNewSlot({
       startTime: newSlot.endTime, // auto-suggest next period start
@@ -459,7 +480,7 @@ export default function TimetableManagement() {
     setSaving(true);
     try {
       const uploadedCustomData = await uploadCustomDataFiles(customData, schoolId, 'timetables');
-      
+
       const payloadSchedule = {};
       const dayKeys = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       for (const day of dayKeys) {
@@ -489,17 +510,20 @@ export default function TimetableManagement() {
             endTime: slot.endTime,
             subjectId: subjectId || null,
             teacherId: teacherId || null,
-            sectionId: slot.sectionId || null,
+            sectionId: selectedSectionId || slot.sectionId || null,
             roomNumber: slot.roomNumber || null
           };
         });
       }
 
+      // sectionId => only THIS section's timetable is replaced; other sections are left untouched
       await replaceClassTimetable(selectedClassId, {
+        sectionId: selectedSectionId,
         schedule: payloadSchedule,
         customData: uploadedCustomData
       });
-      toast.success("Timetable saved successfully!");
+      setUsingSharedFallback(false);
+      toast.success(selectedUnit?.label ? `Timetable saved for ${selectedUnit.label}` : "Timetable saved successfully!");
       notifyDataChanged('timetables');
       notifyDataChanged('timetable');
       fetchAllTimetables();
@@ -524,27 +548,27 @@ export default function TimetableManagement() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4 shrink-0 w-full">
         <div className="min-w-0">
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white truncate">Timetable Management</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">Structure the weekly schedule for each class.</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">Structure the weekly schedule for each class section.</p>
         </div>
-        
+
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm w-full md:w-auto">
-          <select 
-            value={selectedClassId}
-            onChange={(e) => setSelectedClassId(e.target.value)}
+          <select
+            value={selectedUnitId}
+            onChange={(e) => setSelectedUnitId(e.target.value)}
             className="px-4 py-2 bg-transparent border-none focus:ring-0 text-slate-700 dark:text-slate-200 font-medium w-full sm:w-64"
           >
             <option value="">Select a Class...</option>
-            {classes.map(c => (
-              <option key={c.id} value={c.id}>
-                {formatClassSection(c)}
+            {units.map(u => (
+              <option key={u.id} value={u.id}>
+                {u.label}
               </option>
             ))}
           </select>
-          
+
           {(hasCreatePermission || hasEditPermission) && (
-            <button 
+            <button
               onClick={handleSaveTimetable}
-              disabled={!selectedClassId || saving}
+              disabled={!selectedUnitId || saving}
               className="px-6 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 disabled:opacity-50 transition-colors whitespace-nowrap"
             >
               {saving ? 'Saving...' : 'Save Changes'}
@@ -553,7 +577,7 @@ export default function TimetableManagement() {
         </div>
       </div>
 
-      {!selectedClassId ? (
+      {!selectedUnitId ? (
         <div className="flex-1 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col min-h-0 overflow-hidden animate-fade-in-up">
           <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 bg-slate-50/50 dark:bg-slate-800/50">
             <div>
@@ -565,36 +589,35 @@ export default function TimetableManagement() {
                 <button
                   key={day}
                   onClick={() => setMasterDay(day)}
-                  className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
-                    masterDay === day 
-                      ? 'bg-primary-600 text-white shadow-md shadow-primary-600/20' 
+                  className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${masterDay === day
+                      ? 'bg-primary-600 text-white shadow-md shadow-primary-600/20'
                       : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300'
-                  }`}
+                    }`}
                 >
                   {day}
                 </button>
               ))}
             </div>
           </div>
-          
+
           <div className="flex-1 overflow-auto p-4 sm:p-6 custom-scrollbar space-y-6">
-            {classes.length === 0 ? (
+            {units.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-slate-400 dark:text-slate-300">
                 <Calendar size={48} className="mb-4 text-slate-200" />
                 <p className="font-bold">No classes available.</p>
               </div>
             ) : (
-              classes.map(cls => {
-                const classSchedule = allTimetables[cls.id]?.[masterDay] || [];
+              units.map(cls => {
+                const classSchedule = getUnitTimetable(cls)?.[masterDay] || [];
                 return (
                   <div key={cls.id} className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm bg-white dark:bg-slate-900 hover:border-primary-200 dark:hover:border-slate-700 transition-colors">
                     <div className="bg-slate-50/80 px-5 py-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
                       <h3 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-primary-500"></span>
-                        {formatClassSection(cls)}
+                        {cls.label}
                       </h3>
-                      <button 
-                        onClick={() => setSelectedClassId(cls.id)}
+                      <button
+                        onClick={() => setSelectedUnitId(cls.id)}
                         className="text-xs font-bold text-primary-600 hover:text-white bg-primary-50 hover:bg-primary-600 px-3 py-1.5 rounded-lg transition-colors border border-primary-100 hover:border-primary-600 dark:hover:border-slate-700 shadow-sm"
                       >
                         Edit Timetable
@@ -613,15 +636,15 @@ export default function TimetableManagement() {
                               {formatTime12hr(slot.startTime)} - {formatTime12hr(slot.endTime)}
                             </div>
                             <div className="mt-2 space-y-1.5 min-w-0">
-                            <div className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 leading-tight truncate" title={formatDisplayValue(slot.subject, 'Subject')}>
-                              <BookOpen size={14} className="text-primary-500 shrink-0" />
-                              <span className="truncate">{formatDisplayValue(slot.subject, 'Subject')}</span>
+                              <div className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 leading-tight truncate" title={formatDisplayValue(slot.subject, 'Subject')}>
+                                <BookOpen size={14} className="text-primary-500 shrink-0" />
+                                <span className="truncate">{formatDisplayValue(slot.subject, 'Subject')}</span>
+                              </div>
+                              <div className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5 truncate bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md" title={formatTeacherDisplay(slot.teacher, 'Not Assigned')}>
+                                <User size={12} className="text-slate-400 shrink-0" />
+                                {formatTeacherDisplay(slot.teacher, 'Not Assigned')}
+                              </div>
                             </div>
-                            <div className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5 truncate bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md" title={formatTeacherDisplay(slot.teacher, 'Not Assigned')}>
-                              <User size={12} className="text-slate-400 shrink-0" />
-                              {formatTeacherDisplay(slot.teacher, 'Not Assigned')}
-                            </div>
-                          </div>
                           </div>
                         ))
                       )}
@@ -634,15 +657,20 @@ export default function TimetableManagement() {
         </div>
       ) : (
         <div className="flex-1 bg-slate-100 dark:bg-slate-700 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-inner overflow-hidden flex flex-col min-h-0">
+          {usingSharedFallback && (
+            <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-800 text-xs font-semibold shrink-0">
+              {selectedUnit?.label} is showing the old shared class timetable. Adjust it for this section and click Save Changes to give {selectedUnit?.label} its own timetable.
+            </div>
+          )}
           {/* Grid Header (Days) */}
           <div className="grid grid-cols-1 md:grid-cols-6 divide-y md:divide-y-0 md:divide-x divide-slate-200 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 shrink-0">
             {daysOfWeek.map(day => (
               <div key={day} className="p-4 text-center font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider text-sm flex justify-between items-center md:block">
                 <span>{day}</span>
                 {hasCreatePermission && (
-                  <button 
-                    onClick={() => { 
-                      setActiveDay(day); 
+                  <button
+                    onClick={() => {
+                      setActiveDay(day);
                       setEditingSlotId(null);
                       setNewSlot({
                         startTime: '09:00',
@@ -652,7 +680,7 @@ export default function TimetableManagement() {
                         teacher: '',
                         teacherId: ''
                       });
-                      setShowAddModal(true); 
+                      setShowAddModal(true);
                     }}
                     className="md:mt-2 text-primary-600 hover:text-primary-700 bg-primary-50 hover:bg-primary-100 dark:hover:bg-slate-700 p-1.5 md:mx-auto rounded-lg transition-colors flex items-center justify-center"
                     title={`Add slot to ${day}`}
@@ -671,7 +699,7 @@ export default function TimetableManagement() {
                 <div key={day} className="bg-slate-50/50 dark:bg-slate-800/50 p-2 space-y-3 md:min-h-[500px]">
                   {/* Mobile Day Header (only visible on small screens) */}
                   <h3 className="font-bold text-slate-700 dark:text-slate-200 md:hidden mb-2 px-2">{day}</h3>
-                  
+
                   {(!schedule[day] || schedule[day].length === 0) ? (
                     <div className="text-center p-4 text-sm text-slate-400 dark:text-slate-300 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl mx-2">
                       Free Day
@@ -679,17 +707,17 @@ export default function TimetableManagement() {
                   ) : (
                     (schedule[day] || []).map(slot => (
                       <div key={slot.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 shadow-sm hover:shadow-md transition-shadow group relative">
-                        
+
                         <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
                           <Clock size={12} className="text-primary-500" />
                           {formatTime12hr(slot.startTime)} - {formatTime12hr(slot.endTime)}
                         </div>
-                        
+
                         <div className="font-bold text-slate-900 dark:text-white mb-2 flex items-start gap-1.5 leading-tight">
                           <BookOpen size={14} className="text-primary-500 shrink-0 mt-0.5" />
                           {formatDisplayValue(slot.subject, 'Subject')}
                         </div>
-                        
+
                         <div className="text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded-lg inline-flex items-center gap-1.5 border border-slate-100 dark:border-slate-800">
                           <User size={12} className="text-slate-400 dark:text-slate-300" />
                           {formatTeacherDisplay(slot.teacher, 'Not Assigned')}
@@ -698,7 +726,7 @@ export default function TimetableManagement() {
                         {/* Edit and Delete Buttons (visible on hover) */}
                         <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                           {hasEditPermission && (
-                            <button 
+                            <button
                               onClick={() => handleEditSlot(day, slot)}
                               className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-800 rounded-lg"
                               title="Edit Period"
@@ -707,7 +735,7 @@ export default function TimetableManagement() {
                             </button>
                           )}
                           {hasDeletePermission && (
-                            <button 
+                            <button
                               onClick={() => handleDeleteClick(day, slot.id)}
                               className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg"
                               title="Delete Period"
@@ -723,13 +751,13 @@ export default function TimetableManagement() {
               ))}
             </div>
           </div>
-          
+
           <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 p-6 shrink-0 z-10 relative shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
             <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">Additional Information</h3>
             <CustomFieldsRenderer
               moduleKey="timetables"
               customData={customData}
-              onChange={(k, v) => setCustomData(prev => ({...prev, [k]: v}))}
+              onChange={(k, v) => setCustomData(prev => ({ ...prev, [k]: v }))}
             />
           </div>
         </div>
@@ -741,7 +769,7 @@ export default function TimetableManagement() {
           <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-fade-in-up flex flex-col max-h-[90vh]">
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800 shrink-0">
               <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                {editingSlotId ? <Edit2 className="text-primary-600" /> : <Plus className="text-primary-600" />} 
+                {editingSlotId ? <Edit2 className="text-primary-600" /> : <Plus className="text-primary-600" />}
                 {editingSlotId ? `Edit Period in ${activeDay}` : `Add Period to ${activeDay}`}
               </h2>
               <button onClick={() => setShowAddModal(false)} className="p-2 text-slate-400 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full transition-colors">
@@ -754,18 +782,18 @@ export default function TimetableManagement() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Start Time</label>
-                    <TimePicker12Hour 
+                    <TimePicker12Hour
                       required
                       value={newSlot.startTime}
-                      onChange={(val) => setNewSlot({...newSlot, startTime: val})}
+                      onChange={(val) => setNewSlot({ ...newSlot, startTime: val })}
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">End Time</label>
-                    <TimePicker12Hour 
+                    <TimePicker12Hour
                       required
                       value={newSlot.endTime}
-                      onChange={(val) => setNewSlot({...newSlot, endTime: val})}
+                      onChange={(val) => setNewSlot({ ...newSlot, endTime: val })}
                     />
                   </div>
                 </div>
@@ -792,8 +820,8 @@ export default function TimetableManagement() {
                           return;
                         }
 
-                        const eligible = getEligibleTeachersForSubject(subName, selectedClassId, teachers, subjects);
-                        
+                        const eligible = getEligibleTeachersForSubject(subName, [selectedSectionId, selectedClassId], teachers, subjects);
+
                         // Auto-select assigned teacher: if current selected teacher is already eligible, keep it; otherwise select the first eligible teacher
                         let chosenTeacherId = '';
                         let chosenTeacherName = '';
@@ -821,7 +849,7 @@ export default function TimetableManagement() {
                       ))}
                     </select>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Teacher (Optional)</label>
                     <select
@@ -843,7 +871,7 @@ export default function TimetableManagement() {
                         <>
                           <option value="">-- No Teacher Assigned --</option>
                           {(() => {
-                            const eligible = getEligibleTeachersForSubject(newSlot.subject, selectedClassId, teachers, subjects);
+                            const eligible = getEligibleTeachersForSubject(newSlot.subject, [selectedSectionId, selectedClassId], teachers, subjects);
                             const eligibleIds = new Set(eligible.map(t => t.id));
                             const otherTeachers = teachers.filter(t => !eligibleIds.has(t.id));
 
@@ -887,14 +915,14 @@ export default function TimetableManagement() {
               </div>
 
               <div className="p-6 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 shrink-0">
-                <button 
+                <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
                   className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   type="submit"
                   className="px-6 py-2.5 bg-primary-600 text-white font-bold hover:bg-primary-700 rounded-xl shadow-sm transition-colors"
                 >
@@ -906,7 +934,7 @@ export default function TimetableManagement() {
         </div>
       )}
 
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={confirmModalState.isOpen}
         onClose={() => setConfirmModalState({ isOpen: false, day: null, slotId: null })}
         onConfirm={executeDelete}

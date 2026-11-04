@@ -32,6 +32,17 @@ const CLASS_INCLUDE_CONFIG = {
     select: {
       id: true,
       name: true,
+      classTeacherId: true,
+      classTeacher: {
+        select: {
+          id: true,
+          name: true,
+          employeeId: true,
+          designation: true,
+          email: true,
+          phone: true
+        }
+      },
       createdAt: true,
       updatedAt: true,
       _count: {
@@ -251,6 +262,17 @@ export async function findSectionsByClassId(schoolId, classId, tx = prisma) {
       id: true,
       classId: true,
       name: true,
+      classTeacherId: true,
+      classTeacher: {
+        select: {
+          id: true,
+          name: true,
+          employeeId: true,
+          designation: true,
+          email: true,
+          phone: true
+        }
+      },
       createdAt: true,
       updatedAt: true,
       _count: {
@@ -285,6 +307,17 @@ export async function findSectionById(schoolId, classId, sectionId, tx = prisma)
       id: true,
       classId: true,
       name: true,
+      classTeacherId: true,
+      classTeacher: {
+        select: {
+          id: true,
+          name: true,
+          employeeId: true,
+          designation: true,
+          email: true,
+          phone: true
+        }
+      },
       createdAt: true,
       updatedAt: true,
       _count: {
@@ -336,6 +369,17 @@ export async function createSection(data, tx = prisma) {
       id: true,
       classId: true,
       name: true,
+      classTeacherId: true,
+      classTeacher: {
+        select: {
+          id: true,
+          name: true,
+          employeeId: true,
+          designation: true,
+          email: true,
+          phone: true
+        }
+      },
       createdAt: true,
       updatedAt: true,
       _count: {
@@ -369,6 +413,17 @@ export async function updateSection(schoolId, sectionId, data, tx = prisma) {
       id: true,
       classId: true,
       name: true,
+      classTeacherId: true,
+      classTeacher: {
+        select: {
+          id: true,
+          name: true,
+          employeeId: true,
+          designation: true,
+          email: true,
+          phone: true
+        }
+      },
       createdAt: true,
       updatedAt: true,
       _count: {

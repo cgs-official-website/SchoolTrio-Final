@@ -39,6 +39,25 @@ const subjectConfigItemSchema = z.object({
   path: ['passMarks']
 });
 
+/**
+ * Every subject's examDate must fall inside the exam window (startDate..endDate) when one is given.
+ * ISO dates (YYYY-MM-DD) compare correctly as strings.
+ */
+const examDatesWithinWindow = (data) => {
+  if (!Array.isArray(data.subjectsConfig)) return true;
+  return data.subjectsConfig.every((sub) => {
+    if (!sub.examDate) return true;
+    if (data.startDate && sub.examDate < data.startDate) return false;
+    if (data.endDate && sub.examDate > data.endDate) return false;
+    return true;
+  });
+};
+
+const EXAM_DATE_WINDOW_ERROR = {
+  message: 'Each subject exam date must fall between the exam start date and end date',
+  path: ['subjectsConfig']
+};
+
 export const createExamSchema = {
   body: z
     .object({
@@ -98,6 +117,7 @@ export const createExamSchema = {
         path: ['startDate']
       }
     )
+    .refine(examDatesWithinWindow, EXAM_DATE_WINDOW_ERROR)
 };
 
 export const updateExamSchema = {
@@ -167,4 +187,5 @@ export const updateExamSchema = {
         path: ['startDate']
       }
     )
+    .refine(examDatesWithinWindow, EXAM_DATE_WINDOW_ERROR)
 };

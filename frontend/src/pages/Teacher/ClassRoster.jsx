@@ -66,7 +66,7 @@ export default function ClassRoster() {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // New States for Dashboard
   const [transportRoutes, setTransportRoutes] = useState([]);
   const [attendanceRecords, setAttendanceRecords] = useState({});
@@ -141,10 +141,10 @@ export default function ClassRoster() {
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Class Roster");
-    
+
     const rawName = exportFileName.trim() || (classDetails ? `${classDetails.name}_Section_${getSectionName(classDetails)}_Students` : "Class_Roster_Students");
     const finalFileName = rawName.toLowerCase().endsWith('.xlsx') ? rawName : `${rawName}.xlsx`;
-    
+
     XLSX.writeFile(workbook, finalFileName);
     setShowExportModal(false);
     toast.success("Student details exported successfully!");
@@ -239,8 +239,8 @@ export default function ClassRoster() {
 
   const filteredStudents = students.filter(student => {
     const fullName = `${student.firstName || ''} ${student.lastName || ''} ${student.name || ''}`.trim().toLowerCase();
-    return fullName.includes(searchQuery.toLowerCase()) || 
-           (student.admissionNumber && student.admissionNumber.toLowerCase().includes(searchQuery.toLowerCase()));
+    return fullName.includes(searchQuery.toLowerCase()) ||
+      (student.admissionNumber && student.admissionNumber.toLowerCase().includes(searchQuery.toLowerCase()));
   });
 
   // Calculate Stats
@@ -250,13 +250,13 @@ export default function ClassRoster() {
   let presentCount = 0;
   let absentCount = 0;
   students.forEach(student => {
-     if (attendanceRecords[student.id] === 'Present') presentCount++;
-     if (attendanceRecords[student.id] === 'Absent') absentCount++;
+    if (attendanceRecords[student.id] === 'Present') presentCount++;
+    if (attendanceRecords[student.id] === 'Absent') absentCount++;
   });
 
   const flattenedClassOptions = flattenClassesWithSections(classList);
   const currentSelectedKey = sectionId ? `${classId}:${sectionId}` : `${classId}:all`;
-  const currentOption = flattenedClassOptions.find(o => o.key === currentSelectedKey) 
+  const currentOption = flattenedClassOptions.find(o => o.key === currentSelectedKey)
     || flattenedClassOptions.find(o => o.classId === classId);
 
   if (loading) {
@@ -285,7 +285,7 @@ export default function ClassRoster() {
         {/* Decorative elements */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
         <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-primary-500/20 rounded-full blur-2xl translate-y-1/2"></div>
-        
+
         <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
           <div>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white/10 text-white border border-white/20 mb-4 backdrop-blur-sm">
@@ -298,11 +298,18 @@ export default function ClassRoster() {
               <p className="text-slate-300 text-lg">
                 {currentOption ? currentOption.label : (classDetails ? formatClassSection(classDetails) : 'Loading Class...')}
               </p>
-              {classDetails?.classTeacher?.name && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-primary-500/30 text-white border border-primary-400/40 backdrop-blur-sm">
-                  <GraduationCap size={14} /> Class Teacher: {classDetails.classTeacher.name}
-                </span>
-              )}
+              {(() => {
+                // Class teacher of the SELECTED section (falls back to the class-level teacher)
+                const sectionTeacher = sectionId
+                  ? classDetails?.sections?.find(sec => sec.id === sectionId)?.classTeacher
+                  : null;
+                const shownTeacher = sectionTeacher || (sectionId && classDetails?.sections?.length > 1 ? null : classDetails?.classTeacher);
+                return shownTeacher?.name ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-primary-500/30 text-white border border-primary-400/40 backdrop-blur-sm">
+                    <GraduationCap size={14} /> Class Teacher: {shownTeacher.name}
+                  </span>
+                ) : null;
+              })()}
             </div>
           </div>
 
@@ -363,7 +370,7 @@ export default function ClassRoster() {
           <div className="text-3xl font-black text-slate-900 dark:text-white">{girlsCount}</div>
         </div>
 
-        <div 
+        <div
           onClick={() => navigate('/teacher/attendance')}
           className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between cursor-pointer hover:shadow-md hover:border-primary-200 dark:hover:border-slate-700 transition-all hover:bg-slate-50/50"
         >
@@ -391,15 +398,15 @@ export default function ClassRoster() {
         <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-wrap gap-4 items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-300" size={18} />
-            <input 
-              type="text" 
-              placeholder="Search students by name or admission number..." 
+            <input
+              type="text"
+              placeholder="Search students by name or admission number..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm transition-all"
             />
           </div>
-          
+
           <button
             onClick={() => {
               if (students.length === 0) {
@@ -454,7 +461,7 @@ export default function ClassRoster() {
                             {student.firstName || student.lastName ? `${student.firstName || ''} ${student.lastName || ''}`.trim() : (student.name || 'Student')}
                           </div>
                           <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5">
-                            <CheckCircle2 size={10} className="text-green-500"/> Active
+                            <CheckCircle2 size={10} className="text-green-500" /> Active
                           </div>
                         </div>
                       </div>
@@ -473,27 +480,27 @@ export default function ClassRoster() {
                     </td>
                     <td className="p-4 text-slate-600 dark:text-slate-300">
                       {(() => {
-                         const routeName = student.busRoute || student.transportDetails || student.transportRouteId;
-                         if (!routeName) return <span className="text-slate-400 dark:text-slate-300 italic">—</span>;
-                         const matchedRoute = transportRoutes.find(r => r.name === routeName || r.id === routeName);
-                         const vehNo = matchedRoute?.vehicle?.registrationNumber || matchedRoute?.routeNumber || matchedRoute?.vehicleNumber;
-                         return vehNo ? (
-                           <span className="font-mono bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-xs border border-slate-200 dark:border-slate-700">
-                             {vehNo}
-                           </span>
-                         ) : <span className="text-slate-400 dark:text-slate-300 italic">Unknown</span>;
+                        const routeName = student.busRoute || student.transportDetails || student.transportRouteId;
+                        if (!routeName) return <span className="text-slate-400 dark:text-slate-300 italic">—</span>;
+                        const matchedRoute = transportRoutes.find(r => r.name === routeName || r.id === routeName);
+                        const vehNo = matchedRoute?.vehicle?.registrationNumber || matchedRoute?.routeNumber || matchedRoute?.vehicleNumber;
+                        return vehNo ? (
+                          <span className="font-mono bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-xs border border-slate-200 dark:border-slate-700">
+                            {vehNo}
+                          </span>
+                        ) : <span className="text-slate-400 dark:text-slate-300 italic">Unknown</span>;
                       })()}
                     </td>
                     <td className="p-4 pr-6 text-right">
                       {/* These actions will be wired up in subsequent modules */}
                       <div className="flex justify-end gap-2">
-                        <button 
+                        <button
                           onClick={() => navigate('/teacher/grades')}
                           className="px-3 py-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-primary-700 hover:bg-primary-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-primary-200 dark:hover:border-slate-700 rounded-lg transition-colors"
                         >
                           Add Grade
                         </button>
-                        <button 
+                        <button
                           onClick={() => navigate('/teacher/attendance')}
                           className="px-3 py-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-green-700 hover:bg-green-50 border border-slate-200 dark:border-slate-700 hover:border-green-200 rounded-lg transition-colors"
                         >
@@ -518,7 +525,7 @@ export default function ClassRoster() {
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">Export Student Roster</h3>
                 <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5 font-medium">Select columns to include in the exported Excel spreadsheet</p>
               </div>
-              <button 
+              <button
                 onClick={() => setShowExportModal(false)}
                 className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300 rounded-xl transition-colors"
               >
@@ -564,11 +571,11 @@ export default function ClassRoster() {
               {/* Checkbox Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 {availableFieldsList.map((field) => (
-                  <label 
+                  <label
                     key={field.key}
                     className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50/50 cursor-pointer select-none transition-colors"
                   >
-                    <input 
+                    <input
                       type="checkbox"
                       checked={selectedFields[field.key]}
                       onChange={() => handleFieldToggle(field.key)}

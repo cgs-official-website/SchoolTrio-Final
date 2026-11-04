@@ -85,7 +85,14 @@ export const timetableIdParamSchema = z.object({
 export const classIdParamSchema = z.object({
   params: z.object({
     classId: z.string().uuid({ message: 'Class ID must be a valid UUID' })
-  })
+  }),
+  // Optional: return the timetable of ONE section of the class (e.g. V-A vs V-B)
+  query: z
+    .object({
+      sectionId: z.string().uuid({ message: 'sectionId must be a valid UUID' }).optional()
+    })
+    .passthrough()
+    .optional()
 });
 
 /**
@@ -187,6 +194,8 @@ export const putClassTimetableSchema = z.object({
   }),
   body: z
     .object({
+      // When provided, ONLY this section's timetable is replaced (other sections are untouched)
+      sectionId: z.preprocess((val) => (val === '' ? null : val), z.string().uuid().nullable().optional()),
       schedule: z
         .record(
           z.string(),
