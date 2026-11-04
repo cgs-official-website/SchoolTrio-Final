@@ -120,8 +120,9 @@ export default function ClassManagement() {
             section: sec.name,
             categoryId: c.categoryId || '',
             categoryName: c.category?.name || '',
-            classTeacherId: c.classTeacherId || '',
-            classTeacher: c.classTeacher,
+            // Each section has its OWN class teacher (V-A and V-B can differ)
+            classTeacherId: sec.classTeacherId || '',
+            classTeacher: sec.classTeacher || null,
             studentCount: sec._count?.students ?? 0,
             rawClass: c
           });
@@ -187,7 +188,9 @@ export default function ClassManagement() {
         await updateClass(editingItem.classId, {
           name: normalizedName,
           categoryId: formData.categoryId || null,
-          classTeacherId: formData.classTeacherId || null
+          classTeacherId: formData.classTeacherId || null,
+          // Section-level teacher: only this section's class teacher changes
+          ...(editingItem.sectionId ? { sectionId: editingItem.sectionId } : {})
         });
 
         // Update section name if section exists and name changed
@@ -209,11 +212,16 @@ export default function ClassManagement() {
             return;
           }
           // Add section to existing class
-          await createSection(existingClass.id, { name: normalizedSection });
-          if ((formData.categoryId && existingClass.categoryId !== formData.categoryId) || formData.classTeacherId) {
-            await updateClass(existingClass.id, { 
-              categoryId: formData.categoryId || existingClass.categoryId,
-              classTeacherId: formData.classTeacherId || undefined
+          const sectionRes = await createSection(existingClass.id, { name: normalizedSection });
+          const newSectionId = sectionRes?.data?.id || sectionRes?.id || null;
+          if (formData.categoryId && existingClass.categoryId !== formData.categoryId) {
+            await updateClass(existingClass.id, { categoryId: formData.categoryId });
+          }
+          if (formData.classTeacherId && newSectionId) {
+            // The teacher heads the NEW section only; sibling sections keep their own teachers
+            await updateClass(existingClass.id, {
+              classTeacherId: formData.classTeacherId,
+              sectionId: newSectionId
             });
           }
           toast.success("Section added to existing class successfully");
@@ -246,11 +254,11 @@ export default function ClassManagement() {
   const handleEditClick = (cls) => {
     if (!hasEditPermission) return;
     setEditingItem(cls);
-    setFormData({ 
-      name: cls.name, 
-      section: cls.section, 
-      categoryId: cls.categoryId || '', 
-      classTeacherId: cls.classTeacherId || '' 
+    setFormData({
+      name: cls.name,
+      section: cls.section,
+      categoryId: cls.categoryId || '',
+      classTeacherId: cls.classTeacherId || ''
     });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -379,7 +387,7 @@ export default function ClassManagement() {
             'Category': categoryName,
             'Class Name': cls.name,
             'Section': sec.name,
-            'Class Teacher': teacherName,
+            'Class Teacher': sec.classTeacher?.name || 'Unassigned',
             'Student Count': sec._count?.students || 0
           });
         });
@@ -496,7 +504,7 @@ export default function ClassManagement() {
         </div>
         <div className="flex gap-3 flex-wrap w-full md:w-auto">
           {hasCreatePermission && (
-            <button 
+            <button
               onClick={() => setShowCategoryModal(true)}
               className="px-4 py-2 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl font-medium hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm flex items-center gap-2 transition-colors"
             >
@@ -504,27 +512,27 @@ export default function ClassManagement() {
             </button>
           )}
           {hasCreatePermission && (
-            <button 
+            <button
               onClick={() => setShowImportModal(true)}
               className="px-4 py-2 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl font-medium hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm flex items-center gap-2 transition-colors"
             >
               <LuUpload size={18} /> Bulk Import
             </button>
           )}
-          <button 
+          <button
             onClick={handleExportClasses}
             className="px-4 py-2 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl font-medium hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm flex items-center gap-2 transition-colors"
           >
             <LuDownload size={18} /> Export Data
           </button>
           {hasCreatePermission && (
-            <button 
-              onClick={() => { 
-                setShowForm(!showForm); 
-                if (showForm) { 
-                  setEditingItem(null); 
-                  setFormData({ name: '', section: '', categoryId: '' }); 
-                } 
+            <button
+              onClick={() => {
+                setShowForm(!showForm);
+                if (showForm) {
+                  setEditingItem(null);
+                  setFormData({ name: '', section: '', categoryId: '' });
+                }
               }}
               className="px-4 py-2 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 shadow-sm flex items-center gap-2 transition-colors"
             >
@@ -553,8 +561,8 @@ export default function ClassManagement() {
             </div>
             <div className="flex-1">
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Class/Grade Name <span className="text-red-500">*</span></label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g., Grade 10, Freshman"
@@ -564,8 +572,8 @@ export default function ClassManagement() {
             </div>
             <div className="w-full md:w-48">
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Section/Group <span className="text-red-500">*</span></label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={formData.section}
                 onChange={(e) => setFormData({ ...formData, section: e.target.value })}
                 placeholder="e.g., A, B, Science"
@@ -586,8 +594,8 @@ export default function ClassManagement() {
                 ))}
               </select>
             </div>
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               disabled={saving}
               className="px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 transition-colors h-11 shrink-0"
             >
@@ -603,7 +611,7 @@ export default function ClassManagement() {
             <LuFilter size={18} />
             <span>Filters:</span>
           </div>
-          <select 
+          <select
             value={filters.categoryId}
             onChange={(e) => setFilters({ ...filters, categoryId: e.target.value })}
             className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
@@ -614,7 +622,7 @@ export default function ClassManagement() {
             ))}
           </select>
 
-          <select 
+          <select
             value={filters.className}
             onChange={(e) => setFilters({ ...filters, className: e.target.value })}
             className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
@@ -625,7 +633,7 @@ export default function ClassManagement() {
             ))}
           </select>
 
-          <select 
+          <select
             value={filters.section}
             onChange={(e) => setFilters({ ...filters, section: e.target.value })}
             className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
@@ -637,7 +645,7 @@ export default function ClassManagement() {
           </select>
 
           {(filters.categoryId !== 'All' || filters.className !== 'All' || filters.section !== 'All') && (
-            <button 
+            <button
               onClick={() => setFilters({ categoryId: 'All', className: 'All', section: 'All' })}
               className="text-sm text-primary-600 hover:text-primary-700 font-bold ml-auto"
             >
@@ -657,7 +665,7 @@ export default function ClassManagement() {
             {flattenedClasses.length === 0 ? 'Start by creating classes and sections before admitting students.' : 'Try adjusting or clearing your filters.'}
           </p>
           {flattenedClasses.length === 0 && (
-            <button 
+            <button
               onClick={() => setShowForm(true)}
               className="px-6 py-2.5 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 transition-colors"
             >
@@ -668,14 +676,14 @@ export default function ClassManagement() {
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredClasses.map((cls) => (
-            <div 
-              key={cls.id} 
+            <div
+              key={cls.id}
               onClick={() => hasEditPermission && handleEditClick(cls)}
               className={`bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 hover:shadow-md transition-shadow relative group ${hasEditPermission ? 'cursor-pointer' : 'cursor-default'}`}
             >
               <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 z-10 transition-opacity">
                 {hasEditPermission && (
-                  <button 
+                  <button
                     onClick={(e) => { e.stopPropagation(); handleEditClick(cls); }}
                     className="p-2 text-slate-400 dark:text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
                     title="Edit Class"
@@ -684,7 +692,7 @@ export default function ClassManagement() {
                   </button>
                 )}
                 {hasDeletePermission && (
-                  <button 
+                  <button
                     onClick={(e) => { e.stopPropagation(); handleDeleteClick(cls); }}
                     className="p-2 text-slate-400 dark:text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
                     title="Delete Class"
@@ -744,16 +752,16 @@ export default function ClassManagement() {
             </div>
             <div className="p-6 bg-slate-50 dark:bg-slate-800">
               <form onSubmit={handleAddCategory} className="flex gap-2">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
                   placeholder="New category name..."
                   className="flex-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                   required
                 />
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 transition-colors flex items-center gap-2"
                 >
                   <Plus size={16} /> Add
@@ -764,7 +772,7 @@ export default function ClassManagement() {
               {categories.map(cat => (
                 <div key={cat.id} className="flex items-center justify-between p-3 mx-2 my-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-slate-200 transition-colors">
                   <span className="font-semibold text-slate-700 dark:text-slate-200">{cat.name}</span>
-                  <button 
+                  <button
                     onClick={() => handleDeleteCategory(cat.id)}
                     className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
                     title="Delete category"
@@ -775,7 +783,7 @@ export default function ClassManagement() {
               ))}
             </div>
             <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-right">
-              <button 
+              <button
                 onClick={() => setShowCategoryModal(false)}
                 className="px-6 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
@@ -799,7 +807,7 @@ export default function ClassManagement() {
                 <LuX size={20} />
               </button>
             </div>
-            
+
             <div className="p-6 space-y-4">
               <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                 <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-2">Instructions:</h4>
@@ -809,7 +817,7 @@ export default function ClassManagement() {
                   <li>Fill in <b>Category</b> (Optional). New categories will be auto-created.</li>
                   <li>Upload the filled file below.</li>
                 </ul>
-                <button 
+                <button
                   onClick={handleDownloadTemplate}
                   className="mt-3 text-primary-600 hover:text-primary-700 text-sm font-semibold flex items-center gap-1 transition-colors"
                 >
@@ -819,8 +827,8 @@ export default function ClassManagement() {
 
               <div>
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Select Excel File</label>
-                <input 
-                  type="file" 
+                <input
+                  type="file"
                   accept=".xlsx, .xls, .csv"
                   onChange={(e) => setImportFile(e.target.files[0])}
                   className="w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 transition-all border border-slate-200 dark:border-slate-700 rounded-xl"
@@ -829,13 +837,13 @@ export default function ClassManagement() {
             </div>
 
             <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 flex justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setShowImportModal(false)}
                 className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleFileUpload}
                 disabled={importing || !importFile}
                 className="px-6 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 disabled:opacity-50 transition-colors flex items-center gap-2"
@@ -847,7 +855,7 @@ export default function ClassManagement() {
         </div>
       )}
 
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={confirmModalState.isOpen}
         onClose={() => setConfirmModalState({ isOpen: false, item: null })}
         onConfirm={executeDelete}

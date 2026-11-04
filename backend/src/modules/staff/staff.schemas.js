@@ -320,9 +320,96 @@ export const assignStaffSchema = {
   })
 };
 
+/**
+ * Server-side format checks for the teacher self-service profile (mirrors the frontend rules in
+ * frontend/src/utils/profileValidation.js so invalid data can never be saved through the API).
+ * Empty / null values are allowed here (they are optional); only non-empty values are checked.
+ */
+const SELF_PROFILE_RULES = {
+  phone: [/^[6-9]\d{9}$/, 'Mobile number must be 10 digits and start with 6, 7, 8 or 9'],
+  emergencyContact: [/^[6-9]\d{9}$/, 'Emergency contact must be 10 digits and start with 6, 7, 8 or 9'],
+  bloodGroup: [/^(A|B|AB|O)[+-]$/, 'Blood group must be one of A+, A-, B+, B-, AB+, AB-, O+, O-'],
+  aadharNumber: [/^[2-9]\d{11}$/, 'Aadhaar must be 12 digits and cannot start with 0 or 1'],
+  panNumber: [/^[A-Z]{5}[0-9]{4}[A-Z]$/, 'PAN must be in the format ABCDE1234F'],
+  esicNumber: [/^\d{17}$/, 'ESIC number must be 17 digits'],
+  uanNumber: [/^\d{12}$/, 'UAN must be 12 digits'],
+  pfNumber: [/^[A-Z0-9/-]{5,26}$/, 'PF number must be 5-26 letters/digits'],
+  bankAccountNumber: [/^\d{9,18}$/, 'Account number must be 9 to 18 digits'],
+  ifscCode: [/^[A-Z]{4}0[A-Z0-9]{6}$/, 'IFSC must be in the format HDFC0001234'],
+  yearOfPassing: [/^\d{4}$/, 'Year of passing must be a 4-digit year']
+};
+
+function validateSelfProfileFormats(data, ctx) {
+  const check = (key, value, path) => {
+    const rule = SELF_PROFILE_RULES[key];
+    if (!rule || value === undefined || value === null || String(value).trim() === '') return;
+    if (!rule[0].test(String(value).trim())) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path, message: rule[1] });
+    }
+  };
+
+  check('phone', data.phone, ['phone']);
+  check('emergencyContact', data.emergencyContact, ['emergencyContact']);
+  check('bloodGroup', data.bloodGroup, ['bloodGroup']);
+
+  if (data.dob) {
+    const d = new Date(data.dob);
+    if (Number.isNaN(d.getTime()) || d > new Date()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['dob'], message: 'Enter a valid date of birth (not in the future)' });
+    }
+  }
+
+  const docs = data.documents || {};
+  ['aadharNumber', 'panNumber', 'esicNumber', 'uanNumber', 'pfNumber'].forEach((k) =>
+    check(k, docs[k], ['documents', k])
+  );
+
+  const quals = data.qualifications || {};
+  check('yearOfPassing', quals.yearOfPassing, ['qualifications', 'yearOfPassing']);
+  if (quals.yearOfPassing && /^\d{4}$/.test(String(quals.yearOfPassing))) {
+    const y = Number(quals.yearOfPassing);
+    if (y < 1960 || y > new Date().getFullYear()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['qualifications', 'yearOfPassing'], message: 'Year of passing is out of range' });
+    }
+  }
+
+  const exp = data.experience || {};
+  if (exp.previousExperience !== undefined && exp.previousExperience !== '') {
+    const n = Number(exp.previousExperience);
+    if (Number.isNaN(n) || n < 0 || n > 50) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['experience', 'previousExperience'], message: 'Experience must be between 0 and 50 years' });
+    }
+  }
+
+  const fin = (data.customData && typeof data.customData === 'object' && data.customData.financial) || {};
+  ['bankAccountNumber', 'ifscCode', 'aadharNumber', 'panNumber', 'esicNumber', 'uanNumber', 'pfNumber'].forEach((k) =>
+    check(k, fin[k], ['customData', 'financial', k])
+  );
+  const bankKeys = ['bankName', 'bankAccountNumber', 'branchName', 'ifscCode'];
+  if (bankKeys.some((k) => fin[k] && String(fin[k]).trim() !== '')) {
+    bankKeys.forEach((k) => {
+      if (!fin[k] || String(fin[k]).trim() === '') {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['customData', 'financial', k], message: 'All bank details are required when any bank detail is entered' });
+      }
+    });
+  }
+}
+
 export const updateStaffSelfSchema = {
   body: z
     .object({
+      firstName: z
+        .string()
+        .trim()
+        .min(1, 'First name cannot be empty')
+        .max(100, 'First name must not exceed 100 characters')
+        .optional(),
+      lastName: z
+        .string()
+        .trim()
+        .max(100, 'Last name must not exceed 100 characters')
+        .nullable()
+        .optional(),
       phone: z
         .string()
         .trim()
@@ -385,6 +472,7 @@ export const updateStaffSelfSchema = {
       data => Object.keys(data).length > 0,
       'At least one field must be provided for update'
     )
+    .superRefine(validateSelfProfileFormats)
 };
 
 export const bulkImportStaffSchema = {
@@ -424,4 +512,3 @@ export const bulkImportStaffSchema = {
       .max(100, 'Cannot import more than 100 staff members in a single request')
   })
 };
-

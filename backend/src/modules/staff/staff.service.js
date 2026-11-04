@@ -10,6 +10,10 @@ import {
 } from '../../utils/app-error.js';
 import { SYSTEM_ROLES } from '../../config/constants.js';
 import { RedisCacheService } from '../../services/redis-cache.service.js';
+import {
+  setSectionClassTeacher,
+  clearStaffSectionAssignments
+} from '../classes/section-teacher.js';
 
 /**
  * Staff and Staff Profiles Business Logic Service Layer
@@ -247,7 +251,7 @@ export async function getStaffMe(schoolId, userId) {
  */
 export async function resolveAssignedClassOrSection(schoolId, assignedId) {
   if (!assignedId) {
-    return { resolvedClassId: null, teachingUnitId: null };
+    return { resolvedClassId: null, teachingUnitId: null, isSection: false, sectionClassTeacherId: null };
   }
 
   // 1. Check if assignedId corresponds to a Section in current school
@@ -255,14 +259,16 @@ export async function resolveAssignedClassOrSection(schoolId, assignedId) {
   if (prisma.section?.findFirst) {
     sectionRecord = await prisma.section.findFirst({
       where: { id: assignedId, schoolId },
-      select: { id: true, classId: true }
+      select: { id: true, classId: true, classTeacherId: true }
     });
   }
 
   if (sectionRecord) {
     return {
       resolvedClassId: sectionRecord.classId,
-      teachingUnitId: sectionRecord.id
+      teachingUnitId: sectionRecord.id,
+      isSection: true,
+      sectionClassTeacherId: sectionRecord.classTeacherId || null
     };
   }
 
@@ -275,7 +281,9 @@ export async function resolveAssignedClassOrSection(schoolId, assignedId) {
   if (classRecord) {
     return {
       resolvedClassId: classRecord.id,
-      teachingUnitId: classRecord.id
+      teachingUnitId: classRecord.id,
+      isSection: false,
+      sectionClassTeacherId: null
     };
   }
 
@@ -353,10 +361,12 @@ export async function createStaff(schoolId, data, actor = null) {
   // 5. Resolve & Validate Assigned Class/Section ID if provided
   let resolvedClassId = null;
   let assignedTeachingUnitId = null;
+  let assignedIsSection = false;
   if (data.assignedClassId) {
     const resolved = await resolveAssignedClassOrSection(schoolId, data.assignedClassId);
     resolvedClassId = resolved.resolvedClassId;
     assignedTeachingUnitId = resolved.teachingUnitId;
+    assignedIsSection = resolved.isSection;
   }
 
   // 6. Build structured customData
@@ -430,8 +440,13 @@ export async function createStaff(schoolId, data, actor = null) {
         await staffRepository.assignUserRole(user.id, assignedRoleId, schoolId, tx);
       }
 
-      // Step E: Update Class.classTeacherId if assigned
-      if (resolvedClassId) {
+      // Step E: Update class teacher linkage if assigned
+      if (resolvedClassId && assignedIsSection) {
+        // Section-level assignment: only THIS section's previous teacher is replaced,
+        // sibling sections (e.g. V-A when assigning V-B) keep their class teachers.
+        await setSectionClassTeacher(tx, schoolId, assignedTeachingUnitId, profile.id);
+      } else if (resolvedClassId) {
+        // Whole-class assignment (class without sections)
         // Clear previous teacher on that class if any
         const existingClass = await tx.class.findUnique({
           where: { id: resolvedClassId },
@@ -679,7 +694,8 @@ export async function updateStaff(schoolId, id, data, actor = null) {
   // Class Teacher Assignment
   if (data.assignedClassId !== undefined && !classAssignmentUpdate) {
     if (data.assignedClassId) {
-      const { resolvedClassId, teachingUnitId } = await resolveAssignedClassOrSection(schoolId, data.assignedClassId);
+      const { resolvedClassId, teachingUnitId, isSection, sectionClassTeacherId } =
+        await resolveAssignedClassOrSection(schoolId, data.assignedClassId);
       const newClassId = resolvedClassId;
       const cls = await prisma.class.findFirst({
         where: { id: newClassId, schoolId }
@@ -687,7 +703,16 @@ export async function updateStaff(schoolId, id, data, actor = null) {
       if (!cls) {
         throw new NotFoundError('Class');
       }
-      if (newClassId !== existingStaff.assignedClassId || cls.classTeacherId !== id) {
+      if (isSection) {
+        if (sectionClassTeacherId !== id || newClassId !== existingStaff.assignedClassId) {
+          classAssignmentUpdate = { assignClassId: newClassId, assignSectionId: teachingUnitId };
+          modifiedFields.assignedClassId = { old: existingStaff.assignedClassId, new: newClassId };
+          modifiedFields.assignedSectionId = {
+            old: existingStaff.customData?.assignments?.assignedClassId || null,
+            new: teachingUnitId
+          };
+        }
+      } else if (newClassId !== existingStaff.assignedClassId || cls.classTeacherId !== id) {
         classAssignmentUpdate = { assignClassId: newClassId };
         modifiedFields.assignedClassId = { old: existingStaff.assignedClassId, new: newClassId };
       }
@@ -811,12 +836,24 @@ export async function updateStaff(schoolId, id, data, actor = null) {
       // Step E: Update Class Teacher Assignment
       if (classAssignmentUpdate) {
         if (classAssignmentUpdate.unassign) {
-          // Clear current class if any
-          if (existingStaff.assignedClassId) {
+          // Release every section this teacher heads (does not touch sibling sections' teachers)
+          const clearedSectionIds = await clearStaffSectionAssignments(tx, schoolId, id);
+
+          // Legacy whole-class assignment (class without sections)
+          if (existingStaff.assignedClassId && clearedSectionIds.length === 0) {
             await staffRepository.lockClassForUpdate(schoolId, existingStaff.assignedClassId, tx);
-            await staffRepository.updateClassTeacher(schoolId, existingStaff.assignedClassId, null, tx);
+            const headedClass = await tx.class.findUnique({
+              where: { id: existingStaff.assignedClassId },
+              select: { classTeacherId: true }
+            });
+            if (!headedClass?.classTeacherId || headedClass.classTeacherId === id) {
+              await staffRepository.updateClassTeacher(schoolId, existingStaff.assignedClassId, null, tx);
+            }
           }
           await staffRepository.updateStaffProfile(schoolId, id, { assignedClassId: null }, tx);
+        } else if (classAssignmentUpdate.assignSectionId) {
+          await staffRepository.lockClassForUpdate(schoolId, classAssignmentUpdate.assignClassId, tx);
+          await setSectionClassTeacher(tx, schoolId, classAssignmentUpdate.assignSectionId, id);
         } else if (classAssignmentUpdate.assignClassId) {
           const targetClassId = classAssignmentUpdate.assignClassId;
           // Lock target class
@@ -921,9 +958,9 @@ export async function assignStaff(schoolId, id, data, actor = null) {
       }),
       prisma.section?.findMany
         ? prisma.section.findMany({
-            where: { id: { in: uniqueSubjectClassIds }, schoolId },
-            select: { id: true }
-          })
+          where: { id: { in: uniqueSubjectClassIds }, schoolId },
+          select: { id: true }
+        })
         : []
     ]);
 
@@ -951,8 +988,10 @@ export async function assignStaff(schoolId, id, data, actor = null) {
   let assignedClassTeachingUnit = undefined;
   if (data.assignedClassId !== undefined) {
     if (data.assignedClassId) {
-      const { resolvedClassId, teachingUnitId } = await resolveAssignedClassOrSection(schoolId, data.assignedClassId);
-      updatePayload.assignedClassId = resolvedClassId;
+      const { teachingUnitId } = await resolveAssignedClassOrSection(schoolId, data.assignedClassId);
+      // Pass the raw teaching unit (Section.id or Class.id): updateStaff resolves it and
+      // decides between a section-level and a whole-class assignment.
+      updatePayload.assignedClassId = data.assignedClassId;
       assignedClassTeachingUnit = teachingUnitId;
     } else {
       updatePayload.assignedClassId = null;
@@ -990,6 +1029,8 @@ export async function updateStaffSelf(schoolId, userId, data) {
 
   // Safe subset allowed for self-service
   const allowedData = {
+    firstName: data.firstName,
+    lastName: data.lastName,
     phone: data.phone,
     address: data.address,
     emergencyContact: data.emergencyContact,
@@ -1157,8 +1198,8 @@ export async function bulkImportStaff(schoolId, staffPayload = [], actor = null)
     }),
     assignedClassIds.length > 0
       ? prisma.class.findMany({
-          where: { schoolId, id: { in: assignedClassIds } }
-        })
+        where: { schoolId, id: { in: assignedClassIds } }
+      })
       : Promise.resolve([])
   ]);
 
@@ -1393,7 +1434,7 @@ export async function bulkImportStaff(schoolId, staffPayload = [], actor = null)
       updatedCount,
       failedCount: errors.length
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
   const hasHRAccess = hasHRPayrollAccess(actor);
   const serialized = resultStaff.map(s => serializeStaff(s, hasHRAccess));
@@ -1408,5 +1449,3 @@ export async function bulkImportStaff(schoolId, staffPayload = [], actor = null)
     errors
   };
 }
-
-

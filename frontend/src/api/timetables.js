@@ -85,27 +85,35 @@ export async function listTimetables(query = {}) {
 }
 
 /**
- * Retrieves the structured weekly timetable for a specific class.
- * Calls GET /api/v1/timetables/classes/:classId.
+ * Retrieves the structured weekly timetable for a specific class (optionally one section).
+ * Calls GET /api/v1/timetables/classes/:classId[?sectionId=...].
+ *
+ * Each section of a class has its own timetable, so pass `sectionId` to load e.g. V-B
+ * instead of a merged view of V-A and V-B.
  *
  * @param {string} classId - Class UUID
+ * @param {Object} [options]
+ * @param {string|null} [options.sectionId] - Section UUID
  * @returns {Promise<{ status: string, data: Object }>}
  */
-export async function getClassTimetable(classId) {
+export async function getClassTimetable(classId, options = {}) {
   if (!classId) {
     throw new Error('Class ID is required to fetch class timetable');
   }
-  return apiClient(`/api/v1/timetables/classes/${encodeURIComponent(classId)}`, {
+  const qs = options?.sectionId ? `?sectionId=${encodeURIComponent(options.sectionId)}` : '';
+  return apiClient(`/api/v1/timetables/classes/${encodeURIComponent(classId)}${qs}`, {
     method: 'GET'
   });
 }
 
 /**
- * Atomically replaces the entire weekly timetable for a class.
+ * Atomically replaces the weekly timetable of a class.
  * Calls PUT /api/v1/timetables/classes/:classId.
  *
+ * When `payload.sectionId` is set, ONLY that section's timetable is replaced.
+ *
  * @param {string} classId - Class UUID
- * @param {Object} payload - { schedule: { Monday: [...] }, customData?: {} }
+ * @param {Object} payload - { sectionId?: string, schedule: { Monday: [...] }, customData?: {} }
  * @returns {Promise<{ status: string, message: string, data: Object }>}
  */
 export async function replaceClassTimetable(classId, payload = {}) {

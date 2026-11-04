@@ -105,6 +105,32 @@ staffLeaveRouter.post(
   leaveController.createStaffLeave
 );
 
+/**
+ * Class Teacher: Student Leave Requests of own class (read-only)
+ * GET /api/v1/staff/me/class-leaves
+ */
+staffLeaveRouter.get(
+  '/me/class-leaves',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requireRole(SYSTEM_ROLES.TEACHER),
+  validate(leaveSchemas.listStaffLeavesSchema),
+  leaveController.listClassStudentLeaves
+);
+
+/**
+ * Class Teacher: Approve / Reject a student leave of own section/class
+ * PATCH /api/v1/staff/me/class-leaves/:id/status
+ */
+staffLeaveRouter.patch(
+  '/me/class-leaves/:id/status',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requireRole(SYSTEM_ROLES.TEACHER),
+  validate(leaveSchemas.updateLeaveStatusSchema),
+  leaveController.updateClassStudentLeaveStatus
+);
+
 // ============================================================
 // INSTITUTIONAL LEAVE ROUTES (Mounted under /api/v1/leaves)
 // ============================================================

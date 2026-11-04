@@ -91,6 +91,11 @@ export const updateClassSchema = {
         .string()
         .regex(REGEX.UUID, 'Invalid class teacher ID format')
         .nullable()
+        .optional(),
+      // When provided together with classTeacherId, the teacher is assigned to this section only
+      sectionId: z
+        .string()
+        .regex(REGEX.UUID, 'Invalid section ID format')
         .optional()
     })
     .refine(

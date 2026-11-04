@@ -127,6 +127,8 @@ export async function findStudents(schoolId, options = {}, tx = prisma) {
 
   if (options.sectionId) {
     where.sectionId = options.sectionId;
+  } else if (Array.isArray(options.sectionIds) && options.sectionIds.length > 0) {
+    where.sectionId = { in: options.sectionIds };
   }
 
   if (options.status) {
@@ -198,6 +200,8 @@ export async function countStudents(schoolId, options = {}, tx = prisma) {
 
   if (options.sectionId) {
     where.sectionId = options.sectionId;
+  } else if (Array.isArray(options.sectionIds) && options.sectionIds.length > 0) {
+    where.sectionId = { in: options.sectionIds };
   }
 
   if (options.status) {

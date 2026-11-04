@@ -2,6 +2,7 @@ import * as classRepository from './class.repository.js';
 import { findCategories as findCategoriesRepo, createCategory as createCategoryRepo } from '../class-categories/category.repository.js';
 import { createAuditLog } from '../audit/audit.repository.js';
 import { prisma } from '../../database/prisma.client.js';
+import { setSectionClassTeacher, clearStaffSectionAssignments } from './section-teacher.js';
 import {
   NotFoundError,
   ConflictError,
@@ -37,7 +38,8 @@ export async function getTeacherAssignments(schoolId, userId) {
     return {
       staffProfile: null,
       wholeClassIds: new Set(),
-      sectionIds: new Set()
+      sectionIds: new Set(),
+      classTeacherSectionIds: new Set()
     };
   }
 
@@ -54,7 +56,8 @@ export async function getTeacherAssignments(schoolId, userId) {
     return {
       staffProfile: null,
       wholeClassIds: new Set(),
-      sectionIds: new Set()
+      sectionIds: new Set(),
+      classTeacherSectionIds: new Set()
     };
   }
 
@@ -62,10 +65,30 @@ export async function getTeacherAssignments(schoolId, userId) {
   const sectionIds = new Set();
   const rawUnitIds = new Set();
 
-  // 1. Headed classes are whole-class assignments
-  if (Array.isArray(staffProfile.headedClasses)) {
-    for (const hc of staffProfile.headedClasses) {
-      if (hc.id) wholeClassIds.add(hc.id);
+  // Source of truth for "class teacher of section X": Section.classTeacherId
+  const headedSections = await prisma.section.findMany({
+    where: { schoolId, classTeacherId: staffProfile.id },
+    select: { id: true, classId: true }
+  });
+  const classTeacherSectionIds = new Set(headedSections.map(s => s.id));
+  const classTeacherClassIds = new Set(headedSections.map(s => s.classId));
+  for (const id of classTeacherSectionIds) sectionIds.add(id);
+
+  // 1. Headed classes (Class.classTeacherId) are whole-class assignments ONLY when the class
+  //    has no sections. For a class with sections (V-A, V-B) Class.classTeacherId is just a
+  //    "head" pointer to the first section's teacher and must NOT give access to sibling sections.
+  const headedClassIds = Array.isArray(staffProfile.headedClasses)
+    ? staffProfile.headedClasses.map(hc => hc.id).filter(Boolean)
+    : [];
+  if (headedClassIds.length > 0) {
+    const sectionCounts = await prisma.section.groupBy({
+      by: ['classId'],
+      where: { schoolId, classId: { in: headedClassIds } },
+      _count: { _all: true }
+    });
+    const classesWithSections = new Set(sectionCounts.map(r => r.classId));
+    for (const id of headedClassIds) {
+      if (!classesWithSections.has(id)) wholeClassIds.add(id);
     }
   }
 
@@ -77,10 +100,12 @@ export async function getTeacherAssignments(schoolId, userId) {
 
   // 3. subjectClassIds in customData
   const subjectClassIds = staffProfile.customData?.assignments?.subjectClassIds;
+  const subjectClassIdSet = new Set();
   if (Array.isArray(subjectClassIds)) {
     for (const id of subjectClassIds) {
       if (id && typeof id === 'string') {
         rawUnitIds.add(id);
+        subjectClassIdSet.add(id);
       }
     }
   }
@@ -116,15 +141,38 @@ export async function getTeacherAssignments(schoolId, userId) {
     for (const s of matchingSections) {
       sectionIds.add(s.id);
     }
+
+    // A raw id that is a CLASS id: whole-class access only when the class has no sections,
+    // or when it was explicitly given as a subject class and this teacher is not the class
+    // teacher of one of its sections. A class teacher of V-B whose legacy assignedClassId
+    // points at class V must not see V-A.
+    const classIdsWithSections = matchingClasses.length > 0
+      ? new Set((await prisma.section.findMany({
+        where: { schoolId, classId: { in: matchingClasses.map(c => c.id) } },
+        select: { classId: true }
+      })).map(r => r.classId))
+      : new Set();
     for (const c of matchingClasses) {
-      wholeClassIds.add(c.id);
+      if (classIdsWithSections.has(c.id)) {
+        if (!classTeacherClassIds.has(c.id) && subjectClassIdSet.has(c.id)) {
+          wholeClassIds.add(c.id);
+        }
+      } else {
+        wholeClassIds.add(c.id);
+      }
     }
+  }
+
+  // Never let whole-class access override a section-level class-teacher scope
+  for (const classId of classTeacherClassIds) {
+    if (!subjectClassIdSet.has(classId)) wholeClassIds.delete(classId);
   }
 
   return {
     staffProfile,
     wholeClassIds,
-    sectionIds
+    sectionIds,
+    classTeacherSectionIds
   };
 }
 
@@ -184,7 +232,18 @@ export async function getMyTeacherClasses(schoolId, actor, query = {}) {
     return classes;
   }
 
-  const { staffProfile, wholeClassIds, sectionIds } = await getTeacherAssignments(schoolId, actor.id);
+  const assignments = await getTeacherAssignments(schoolId, actor.id);
+  const { staffProfile, classTeacherSectionIds } = assignments;
+  let { wholeClassIds, sectionIds } = assignments;
+
+  // classTeacherOnly=true -> only the section(s) this teacher is CLASS TEACHER of
+  // (Class Dashboard / Attendance / Grades). Falls back to the normal scope when the
+  // teacher is not the class teacher of any section.
+  if (String(query.classTeacherOnly) === 'true' && classTeacherSectionIds.size > 0) {
+    wholeClassIds = new Set();
+    sectionIds = new Set(classTeacherSectionIds);
+  }
+
   if (!staffProfile || (wholeClassIds.size === 0 && sectionIds.size === 0)) {
     return [];
   }
@@ -230,6 +289,10 @@ export async function getMyTeacherClasses(schoolId, actor, query = {}) {
         select: {
           id: true,
           name: true,
+          classTeacherId: true,
+          classTeacher: {
+            select: { id: true, name: true, employeeId: true, designation: true, email: true, phone: true }
+          },
           createdAt: true,
           updatedAt: true,
           _count: {
@@ -256,6 +319,9 @@ export async function getMyTeacherClasses(schoolId, actor, query = {}) {
       if (classRecord._count) {
         classRecord._count.sections = classRecord.sections.length;
       }
+    }
+    for (const sec of classRecord.sections || []) {
+      sec.isClassTeacher = classTeacherSectionIds.has(sec.id);
     }
   }
 
@@ -374,9 +440,12 @@ export async function createClass(schoolId, data, actor = null) {
   }
 
   // 4. Atomic creation with optional default section and class teacher sync
+  const hasDefaultSection = Boolean(data.defaultSection && data.defaultSection.trim());
   const created = await prisma.$transaction(async (tx) => {
-    // If a class teacher is assigned, clear any prior class assignment
-    if (data.classTeacherId) {
+    // If a class teacher is assigned to a plain class (no section), clear any prior class assignment.
+    // When a default section is created the teacher becomes THAT section's class teacher instead.
+    if (data.classTeacherId && !hasDefaultSection) {
+      await clearStaffSectionAssignments(tx, schoolId, data.classTeacherId);
       const staff = await classRepository.findStaffProfileById(schoolId, data.classTeacherId, tx);
       if (staff?.assignedClassId) {
         await classRepository.clearClassTeacherOnClass(schoolId, staff.assignedClassId, tx);
@@ -394,14 +463,14 @@ export async function createClass(schoolId, data, actor = null) {
         name: className,
         categoryId: data.categoryId || null,
         gradeLevel: data.gradeLevel !== undefined ? data.gradeLevel : null,
-        classTeacherId: data.classTeacherId || null
+        classTeacherId: hasDefaultSection ? null : (data.classTeacherId || null)
       },
       tx
     );
 
-    if (data.defaultSection && data.defaultSection.trim()) {
+    if (hasDefaultSection) {
       const normalizedSection = data.defaultSection.trim().toUpperCase();
-      await classRepository.createSection(
+      const createdSection = await classRepository.createSection(
         {
           schoolId,
           classId: createdClass.id,
@@ -409,9 +478,11 @@ export async function createClass(schoolId, data, actor = null) {
         },
         tx
       );
-    }
 
-    if (data.classTeacherId) {
+      if (data.classTeacherId) {
+        await setSectionClassTeacher(tx, schoolId, createdSection.id, data.classTeacherId);
+      }
+    } else if (data.classTeacherId) {
       await classRepository.updateStaffAssignedClass(schoolId, data.classTeacherId, createdClass.id, tx);
     }
 
@@ -501,6 +572,17 @@ export async function updateClass(schoolId, classId, data, actor = null) {
   }
 
   // 4. Class Teacher validation
+  //    When `sectionId` is supplied the teacher is the class teacher of THAT SECTION only
+  //    (V-A and V-B each have their own). Without it, the legacy whole-class assignment applies.
+  let targetSection = null;
+  if (data.sectionId) {
+    targetSection = await classRepository.findSectionById(schoolId, classId, data.sectionId);
+    if (!targetSection) {
+      throw new NotFoundError('Section');
+    }
+  }
+  const isSectionTeacherUpdate = Boolean(targetSection) && data.classTeacherId !== undefined;
+
   if (data.classTeacherId !== undefined) {
     if (data.classTeacherId !== null) {
       const staff = await classRepository.findStaffProfileById(schoolId, data.classTeacherId);
@@ -510,13 +592,13 @@ export async function updateClass(schoolId, classId, data, actor = null) {
       if (staff.status && staff.status.toLowerCase() !== 'active') {
         throw new ConflictError('Cannot assign an inactive staff member as class teacher');
       }
-      updatePayload.classTeacherId = data.classTeacherId;
-    } else {
+      if (!isSectionTeacherUpdate) updatePayload.classTeacherId = data.classTeacherId;
+    } else if (!isSectionTeacherUpdate) {
       updatePayload.classTeacherId = null;
     }
 
     // Determine teacher audit diff
-    const oldTeacherId = existingClass.classTeacherId;
+    const oldTeacherId = isSectionTeacherUpdate ? (targetSection.classTeacherId || null) : existingClass.classTeacherId;
     const newTeacherId = data.classTeacherId;
     if (newTeacherId && !oldTeacherId) {
       modifiedFields.classTeacherId = { old: null, new: newTeacherId };
@@ -532,7 +614,9 @@ export async function updateClass(schoolId, classId, data, actor = null) {
 
   // 5. Execute transactional update with teacher synchronization
   const updated = await prisma.$transaction(async (tx) => {
-    if (data.classTeacherId !== undefined) {
+    if (isSectionTeacherUpdate) {
+      await setSectionClassTeacher(tx, schoolId, targetSection.id, data.classTeacherId || null);
+    } else if (data.classTeacherId !== undefined) {
       const oldTeacherId = existingClass.classTeacherId;
       const newTeacherId = data.classTeacherId;
 
@@ -944,7 +1028,12 @@ export async function deleteSection(schoolId, classId, sectionId, actor = null) 
         });
       }
 
-      // 5. Delete the section
+      // 5. Release the section's class teacher (clears their assignment + re-syncs class head teacher)
+      if (section.classTeacherId && tx.section?.findFirst) {
+        await setSectionClassTeacher(tx, schoolId, sectionId, null);
+      }
+
+      // 6. Delete the section
       await classRepository.deleteSection(schoolId, sectionId, tx);
     });
   } catch (error) {

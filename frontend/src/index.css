@@ -8,7 +8,8 @@
   --color-primary-100: #faedf7;
   --color-primary-200: #f4dbe9;
   --color-primary-300: #eec9db;
-  --color-primary-400: #e5bddf; /* The requested Primary */
+  --color-primary-400: #e5bddf;
+  /* The requested Primary */
   --color-primary-500: #ce9dc6;
   --color-primary-600: #b07fa8;
   --color-primary-700: #8a5e82;
@@ -25,14 +26,20 @@
   body {
     @apply bg-slate-50 text-slate-900 antialiased dark:bg-[#12101a] dark:text-[#f5f5f7] transition-colors duration-200;
   }
-  
+
   /* Default text color for inputs unless overridden by a utility */
-  input, textarea, select {
+  input,
+  textarea,
+  select {
     color: #0f172a;
   }
-  
-  .dark input, .dark textarea, .dark select,
-  .bg-slate-900 input, .bg-slate-900 textarea, .bg-slate-900 select {
+
+  .dark input,
+  .dark textarea,
+  .dark select,
+  .bg-slate-900 input,
+  .bg-slate-900 textarea,
+  .bg-slate-900 select {
     color: inherit;
   }
 }
@@ -42,23 +49,33 @@
   .glass {
     @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-lg;
   }
+
   .glass-dark {
-    @apply bg-[#12101a]/60 backdrop-blur-xl border border-primary-900/30 shadow-[0_8px_32px_rgba(0,0,0,0.4)];
+    @apply bg-[#12101a]/60 backdrop-blur-xl border border-primary-900/30;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   }
+
   .glass-card-dark {
-    @apply bg-[#1a1625]/60 backdrop-blur-xl border border-primary-900/40 shadow-xl transition-all duration-300 hover:border-primary-400/50 hover:shadow-[0_20px_40px_rgba(229,189,223,0.1)];
+    @apply bg-[#1a1625]/60 backdrop-blur-xl border border-primary-900/40 shadow-xl transition-all duration-300 hover:border-primary-400/50;
+
+    &:hover {
+      box-shadow: 0 20px 40px rgba(229, 189, 223, 0.1);
+    }
   }
 
   /* Custom Sleek Scrollbar for Sidebar */
   .custom-scrollbar::-webkit-scrollbar {
     width: 4px;
   }
+
   .custom-scrollbar::-webkit-scrollbar-track {
     background: transparent;
   }
+
   .custom-scrollbar::-webkit-scrollbar-thumb {
     @apply bg-slate-700 rounded-full;
   }
+
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     @apply bg-slate-600;
   }
@@ -69,12 +86,15 @@
   width: 6px;
   height: 6px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
   @apply bg-slate-300 rounded-full;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-slate-400;
 }
@@ -88,6 +108,7 @@
       opacity: 0;
       transform: translateY(20px);
     }
+
     100% {
       opacity: 1;
       transform: translateY(0);
@@ -95,10 +116,13 @@
   }
 
   @keyframes gradient-x {
-    0%, 100% {
+
+    0%,
+    100% {
       background-size: 200% 200%;
       background-position: left center;
     }
+
     50% {
       background-size: 200% 200%;
       background-position: right center;
@@ -107,16 +131,29 @@
 
   --animate-marquee: marquee 15s linear infinite;
   --animate-float: float 6s ease-in-out infinite;
-  
+
   @keyframes marquee {
-    0% { transform: translateX(100%); }
-    100% { transform: translateX(-100%); }
+    0% {
+      transform: translateX(100%);
+    }
+
+    100% {
+      transform: translateX(-100%);
+    }
   }
 
   @keyframes float {
-    0% { transform: translateY(0px); }
-    50% { transform: translateY(-20px); }
-    100% { transform: translateY(0px); }
+    0% {
+      transform: translateY(0px);
+    }
+
+    50% {
+      transform: translateY(-20px);
+    }
+
+    100% {
+      transform: translateY(0px);
+    }
   }
 }
 
@@ -127,9 +164,29 @@
 }
 
 /* React Big Calendar Premium Overrides */
-.rbc-calendar { border: none; font-family: 'Inter', system-ui, sans-serif; }
-.rbc-month-view { border: 1px solid #f1f5f9; border-radius: 16px; overflow: hidden; background: #fff; }
-.rbc-header { padding: 12px 8px; font-weight: 700; color: #64748b; border-bottom: 1px solid #f1f5f9; border-left: none; text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em; }
+.rbc-calendar {
+  border: none;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.rbc-month-view {
+  border: 1px solid #f1f5f9;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.rbc-header {
+  padding: 12px 8px;
+  font-weight: 700;
+  color: #64748b;
+  border-bottom: 1px solid #f1f5f9;
+  border-left: none;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+
 @import "tailwindcss";
 
 @theme {
@@ -137,7 +194,8 @@
   --color-primary-100: #faedf7;
   --color-primary-200: #f4dbe9;
   --color-primary-300: #eec9db;
-  --color-primary-400: #e5bddf; /* The requested Primary */
+  --color-primary-400: #e5bddf;
+  /* The requested Primary */
   --color-primary-500: #ce9dc6;
   --color-primary-600: #b07fa8;
   --color-primary-700: #8a5e82;
@@ -154,14 +212,20 @@
   body {
     @apply bg-slate-50 text-slate-900 antialiased dark:bg-[#12101a] dark:text-[#f5f5f7] transition-colors duration-200;
   }
-  
+
   /* Default text color for inputs unless overridden by a utility */
-  input, textarea, select {
+  input,
+  textarea,
+  select {
     color: #0f172a;
   }
-  
-  .dark input, .dark textarea, .dark select,
-  .bg-slate-900 input, .bg-slate-900 textarea, .bg-slate-900 select {
+
+  .dark input,
+  .dark textarea,
+  .dark select,
+  .bg-slate-900 input,
+  .bg-slate-900 textarea,
+  .bg-slate-900 select {
     color: inherit;
   }
 }
@@ -171,23 +235,33 @@
   .glass {
     @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-lg;
   }
+
   .glass-dark {
-    @apply bg-[#12101a]/60 backdrop-blur-xl border border-primary-900/30 shadow-[0_8px_32px_rgba(0,0,0,0.4)];
+    @apply bg-[#12101a]/60 backdrop-blur-xl border border-primary-900/30;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   }
+
   .glass-card-dark {
-    @apply bg-[#1a1625]/60 backdrop-blur-xl border border-primary-900/40 shadow-xl transition-all duration-300 hover:border-primary-400/50 hover:shadow-[0_20px_40px_rgba(229,189,223,0.1)];
+    @apply bg-[#1a1625]/60 backdrop-blur-xl border border-primary-900/40 shadow-xl transition-all duration-300 hover:border-primary-400/50;
+
+    &:hover {
+      box-shadow: 0 20px 40px rgba(229, 189, 223, 0.1);
+    }
   }
 
   /* Custom Sleek Scrollbar for Sidebar */
   .custom-scrollbar::-webkit-scrollbar {
     width: 4px;
   }
+
   .custom-scrollbar::-webkit-scrollbar-track {
     background: transparent;
   }
+
   .custom-scrollbar::-webkit-scrollbar-thumb {
     @apply bg-slate-700 rounded-full;
   }
+
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     @apply bg-slate-600;
   }
@@ -198,12 +272,15 @@
   width: 6px;
   height: 6px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
   @apply bg-slate-300 rounded-full;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-slate-400;
 }
@@ -217,6 +294,7 @@
       opacity: 0;
       transform: translateY(20px);
     }
+
     100% {
       opacity: 1;
       transform: translateY(0);
@@ -224,10 +302,13 @@
   }
 
   @keyframes gradient-x {
-    0%, 100% {
+
+    0%,
+    100% {
       background-size: 200% 200%;
       background-position: left center;
     }
+
     50% {
       background-size: 200% 200%;
       background-position: right center;
@@ -236,16 +317,29 @@
 
   --animate-marquee: marquee 15s linear infinite;
   --animate-float: float 6s ease-in-out infinite;
-  
+
   @keyframes marquee {
-    0% { transform: translateX(100%); }
-    100% { transform: translateX(-100%); }
+    0% {
+      transform: translateX(100%);
+    }
+
+    100% {
+      transform: translateX(-100%);
+    }
   }
 
   @keyframes float {
-    0% { transform: translateY(0px); }
-    50% { transform: translateY(-20px); }
-    100% { transform: translateY(0px); }
+    0% {
+      transform: translateY(0px);
+    }
+
+    50% {
+      transform: translateY(-20px);
+    }
+
+    100% {
+      transform: translateY(0px);
+    }
   }
 }
 
@@ -256,27 +350,120 @@
 }
 
 /* React Big Calendar Premium Overrides */
-.rbc-calendar { border: none; font-family: 'Inter', system-ui, sans-serif; }
-.rbc-month-view { border: 1px solid #f1f5f9; border-radius: 16px; overflow: hidden; background: #fff; }
-.rbc-header { padding: 12px 8px; font-weight: 700; color: #64748b; border-bottom: 1px solid #f1f5f9; border-left: none; text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em; }
+.rbc-calendar {
+  border: none;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.rbc-month-view {
+  border: 1px solid #f1f5f9;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.rbc-header {
+  padding: 12px 8px;
+  font-weight: 700;
+  color: #64748b;
+  border-bottom: 1px solid #f1f5f9;
+  border-left: none;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
 
 /* React Big Calendar Dark Mode Overrides */
-.dark .rbc-month-view { border-color: #1e293b; background: #0f172a; }
-.dark .rbc-header { color: #94a3b8; border-color: #1e293b; }
-.dark .rbc-day-bg + .rbc-day-bg { border-color: #1e293b; }
-.dark .rbc-month-row + .rbc-month-row { border-color: #1e293b; }
-.dark .rbc-off-range-bg { background: #020617; }
-.dark .rbc-today { background: #1e293b; }
-.dark .rbc-date-cell { color: #f8fafc; }
-.dark .rbc-off-range .rbc-date-cell { color: #475569; }
-.dark .rbc-btn-group button { color: #e2e8f0; border-color: #334155; }
-.dark .rbc-btn-group button:hover { background: #1e293b; }
-.rbc-day-bg + .rbc-day-bg { border-left: 1px solid #f1f5f9; }
-.rbc-month-row + .rbc-month-row { border-top: 1px solid #f1f5f9; }
-.rbc-today { background-color: #f8fafc; }
-.rbc-off-range-bg { background-color: #fcfcfc; }
-.rbc-event { padding: 4px 8px; font-size: 12px; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: all 0.2s; }
-.rbc-event:hover { transform: translateY(-1px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-.rbc-date-cell { padding: 8px; font-weight: 600; color: #334155; }
-.rbc-off-range .rbc-date-cell { color: #cbd5e1; }
-.rbc-event-content { font-weight: 700; }
+.dark .rbc-month-view {
+  border-color: #1e293b;
+  background: #0f172a;
+}
+
+.dark .rbc-header {
+  color: #94a3b8;
+  border-color: #1e293b;
+}
+
+.dark .rbc-day-bg+.rbc-day-bg {
+  border-color: #1e293b;
+}
+
+.dark .rbc-month-row+.rbc-month-row {
+  border-color: #1e293b;
+}
+
+.dark .rbc-off-range-bg {
+  background: #020617;
+}
+
+.dark .rbc-today {
+  background: #1e293b;
+}
+
+.dark .rbc-date-cell {
+  color: #f8fafc;
+}
+
+.dark .rbc-off-range .rbc-date-cell {
+  color: #475569;
+}
+
+.dark .rbc-btn-group button {
+  color: #e2e8f0;
+  border-color: #334155;
+}
+
+.dark .rbc-btn-group button:hover {
+  background: #1e293b;
+}
+
+.rbc-day-bg+.rbc-day-bg {
+  border-left: 1px solid #f1f5f9;
+}
+
+.rbc-month-row+.rbc-month-row {
+  border-top: 1px solid #f1f5f9;
+}
+
+.rbc-today {
+  background-color: #f8fafc;
+}
+
+.rbc-off-range-bg {
+  background-color: #fcfcfc;
+}
+
+.rbc-event {
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s;
+}
+
+.rbc-event:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.rbc-date-cell {
+  padding: 8px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.rbc-off-range .rbc-date-cell {
+  color: #cbd5e1;
+}
+
+.rbc-event-content {
+  font-weight: 700;
+}
+
+/* Invalid form fields (profile validation) */
+input[aria-invalid="true"],
+select[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.35);
+}

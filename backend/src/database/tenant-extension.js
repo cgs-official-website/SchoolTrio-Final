@@ -27,7 +27,9 @@ export const GLOBAL_MODELS = new Set([
   'MigrationIdMap',
   'AuditLog',
   'RolePermission',
-  'PlatformSetting'
+  'PlatformSetting',
+  'ContactMessage',
+  'ContactMessageReply'
 ]);
 
 

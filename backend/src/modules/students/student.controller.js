@@ -13,7 +13,7 @@ import { HTTP_STATUS } from '../../config/constants.js';
 export async function listStudents(req, res, next) {
   try {
     const schoolId = req.tenant.schoolId;
-    const { students, pagination } = await studentService.listStudents(schoolId, req.query);
+    const { students, pagination } = await studentService.listStudents(schoolId, req.query, req.user || req.auth);
     return ApiResponse.paginated(res, students, pagination, 'Students retrieved successfully');
   } catch (error) {
     return next(error);

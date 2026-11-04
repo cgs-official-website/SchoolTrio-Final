@@ -147,6 +147,22 @@ export async function findSectionInTenant(schoolId, sectionId, classId = null, t
 }
 
 /**
+ * Finds the class teacher of a section.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} sectionId - Section UUID
+ * @param {Object} [tx=prisma]
+ * @returns {Promise<{id: string, name: string}|null>}
+ */
+export async function findSectionClassTeacher(schoolId, sectionId, tx = prisma) {
+  const section = await tx.section.findFirst({
+    where: { id: sectionId, schoolId },
+    select: { classTeacher: { select: { id: true, name: true } } }
+  });
+  return section?.classTeacher || null;
+}
+
+/**
  * Finds a subject by ID within a tenant.
  *
  * @param {string} schoolId - Tenant UUID
@@ -367,20 +383,71 @@ export async function deleteTimetablePeriod(schoolId, id, tx = prisma) {
 }
 
 /**
- * Atomically replaces the entire timetable for a class.
+ * Finds the ids of the sections the parent's children attend (optionally within one class).
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} userId - Parent User UUID
+ * @param {string|null} [classId=null]
+ * @param {Object} [tx=prisma]
+ * @returns {Promise<Array<string>>}
+ */
+export async function findAuthorizedSectionIdsForParent(schoolId, userId, classId = null, tx = prisma) {
+  const parentProfile = await tx.parentProfile.findFirst({
+    where: { userId, schoolId },
+    select: { id: true }
+  });
+  if (!parentProfile) return [];
+
+  const links = await tx.parentStudentLink.findMany({
+    where: { parentId: parentProfile.id, schoolId },
+    select: { student: { select: { classId: true, sectionId: true } } }
+  });
+
+  const ids = new Set();
+  for (const link of links) {
+    const st = link.student;
+    if (!st?.sectionId) continue;
+    if (classId && st.classId !== classId) continue;
+    ids.add(st.sectionId);
+  }
+  return Array.from(ids);
+}
+
+/**
+ * Lists the section ids of a class (used to detect when every section has its own timetable).
+ */
+export async function findSectionIdsByClass(schoolId, classId, tx = prisma) {
+  const rows = await tx.section.findMany({
+    where: { schoolId, classId },
+    select: { id: true }
+  });
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Atomically replaces the timetable of a class.
+ *
+ * - With `sectionId`: ONLY that section's periods are replaced. Sibling sections are untouched,
+ *   so V-A and V-B each keep their own timetable.
+ * - Without `sectionId`: legacy behaviour, every period of the class is replaced.
  *
  * @param {string} schoolId - Tenant UUID
  * @param {string} classId - Class UUID
  * @param {Array<Object>} periodsData - Array of validated period objects
  * @param {Object} tx - Transaction client (required)
- * @returns {Promise<Array<Object>>} All saved periods
+ * @param {Object} [options]
+ * @param {string|null} [options.sectionId]
+ * @returns {Promise<Array<Object>>} All saved periods (of the section, or of the class)
  */
-export async function replaceClassTimetable(schoolId, classId, periodsData, tx) {
-  // 1. Delete existing timetable periods for this class in tenant
+export async function replaceClassTimetable(schoolId, classId, periodsData, tx, options = {}) {
+  const sectionId = options.sectionId || null;
+
+  // 1. Delete existing timetable periods in scope
   await tx.timetablePeriod.deleteMany({
     where: {
       schoolId,
-      classId
+      classId,
+      ...(sectionId ? { sectionId } : {})
     }
   });
 
@@ -390,7 +457,7 @@ export async function replaceClassTimetable(schoolId, classId, periodsData, tx) 
       data: periodsData.map((p) => ({
         schoolId,
         classId,
-        sectionId: p.sectionId || null,
+        sectionId: sectionId || p.sectionId || null,
         subjectId: p.subjectId || null,
         teacherId: p.teacherId || null,
         dayOfWeek: p.dayOfWeek,
@@ -402,11 +469,27 @@ export async function replaceClassTimetable(schoolId, classId, periodsData, tx) 
     });
   }
 
+  // 2b. Once EVERY section of the class has its own timetable, the old shared
+  //     (section-less) periods are obsolete: remove them so they stop leaking into any view.
+  if (sectionId) {
+    const allSectionIds = await findSectionIdsByClass(schoolId, classId, tx);
+    if (allSectionIds.length > 0) {
+      const withOwn = await tx.timetablePeriod.groupBy({
+        by: ['sectionId'],
+        where: { schoolId, classId, sectionId: { in: allSectionIds } }
+      });
+      if (withOwn.length === allSectionIds.length) {
+        await tx.timetablePeriod.deleteMany({ where: { schoolId, classId, sectionId: null } });
+      }
+    }
+  }
+
   // 3. Return fresh structured periods
   return tx.timetablePeriod.findMany({
     where: {
       schoolId,
-      classId
+      classId,
+      ...(sectionId ? { OR: [{ sectionId }, { sectionId: null }] } : {})
     },
     include: PERIOD_INCLUDES,
     orderBy: [

@@ -35,6 +35,7 @@ const TenantManagement = lazy(() => import('./pages/SuperAdmin/TenantManagement'
 const PlanManagement = lazy(() => import('./pages/SuperAdmin/PlanManagement'));
 const LicenseUsage = lazy(() => import('./pages/SuperAdmin/LicenseUsage'));
 const SupportTickets = lazy(() => import('./pages/SuperAdmin/SupportTickets'));
+const ContactMessages = lazy(() => import('./pages/SuperAdmin/ContactMessages'));
 const AuditLogs = lazy(() => import('./pages/SuperAdmin/AuditLogs'));
 const EmailTemplates = lazy(() => import('./pages/SuperAdmin/EmailTemplates'));
 const BrandingSettings = lazy(() => import('./pages/SuperAdmin/BrandingSettings'));
@@ -192,6 +193,7 @@ function App() {
               <Route path="billing" element={<PlanManagement />} />
               <Route path="license-usage" element={<LicenseUsage />} />
               <Route path="support-tickets" element={<SupportTickets />} />
+              <Route path="contact-messages" element={<ContactMessages />} />
               <Route path="audit-logs" element={<AuditLogs />} />
               <Route path="email-templates" element={<EmailTemplates />} />
               <Route path="branding" element={<BrandingSettings />} />

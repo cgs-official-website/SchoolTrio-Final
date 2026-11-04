@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useAuth } from '../../context/AuthContext';
 import {
   listAttendanceSessions,
   getAttendanceSession,
@@ -23,6 +22,7 @@ import {
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { notifyDataChanged } from '../../utils/liveData';
+import { useTeacherScope } from '../../hooks/useTeacherScope';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 const DAILY_FIELDS_LIST = [
@@ -43,9 +43,15 @@ const REPORT_FIELDS_LIST = [
   { key: 'percentage', label: 'Attendance %' }
 ];
 
+// Attendance % for a student. Returns null when no sessions have been recorded (shown as N/A).
+const calcPercentage = (stat) =>
+  !stat || stat.total === 0 ? null : Math.round(((stat.present + stat.late) / stat.total) * 100);
+
 export default function Attendance() {
-  const { userProfile } = useAuth();
-  const classId = userProfile?.assignedClassId;
+  // Class + SECTION the teacher is class teacher of (e.g. V - B). Students, sessions and saves
+  // are all scoped to this section so V-A students never appear for the V-B teacher.
+  const { classId: scopedClassId, sectionId, label: scopeLabel, loading: scopeLoading } = useTeacherScope();
+  const classId = scopeLoading ? null : scopedClassId;
 
   const today = new Date().toISOString().split('T')[0];
   const [selectedDate, setSelectedDate] = useState(today);
@@ -162,45 +168,45 @@ export default function Attendance() {
     }
 
     try {
-      // Fetch Class details
-      let cls = null;
-      try {
-        const clsRes = await getClass(targetClassId);
-        cls = clsRes?.data || clsRes;
-      } catch {
-        // Fallback: listClasses
-        const listRes = await listClasses({ limit: 100 });
-        const list = Array.isArray(listRes?.data) ? listRes.data : (Array.isArray(listRes) ? listRes : []);
-        cls = list.find(c => c.id === targetClassId) || null;
-      }
+      // Class details and roster are independent -> fetch in parallel
+      const classPromise = getClass(targetClassId)
+        .then((r) => r?.data || r)
+        .catch(async () => {
+          const listRes = await listClasses({ limit: 100 });
+          const list = Array.isArray(listRes?.data) ? listRes.data : (Array.isArray(listRes) ? listRes : []);
+          return list.find((c) => c.id === targetClassId) || null;
+        })
+        .catch(() => null);
 
-      if (!mountedRef.current || currentClassRef.current !== targetClassId) return;
-      if (cls) {
-        setClassDetails(cls);
-      }
-
-      // Fetch Active Students Roster
-      const stuRes = await listStudents({
+      const studentsPromise = listStudents({
         classId: targetClassId,
+        ...(sectionId ? { sectionId } : {}),
         status: 'Active',
         limit: 100,
         sort: 'firstName',
         order: 'asc'
       });
 
+      const [cls, stuRes] = await Promise.all([classPromise, studentsPromise]);
+
       if (!mountedRef.current || currentClassRef.current !== targetClassId) return;
+      if (cls) setClassDetails(cls);
+
       const rawStudents = Array.isArray(stuRes?.data) ? stuRes.data : (Array.isArray(stuRes) ? stuRes : []);
       const sortedStudents = [...rawStudents].sort((a, b) =>
         (a.firstName || '').localeCompare(b.firstName || '')
       );
       setStudents(sortedStudents);
+      // Nothing to wait for if the roster is empty (the session effect only runs when students exist)
+      if (sortedStudents.length === 0) setLoading(false);
     } catch (err) {
       if (mountedRef.current && currentClassRef.current === targetClassId) {
         console.error('[Attendance] Error fetching class & roster:', err);
         toast.error('Failed to load class roster.');
+        setLoading(false);
       }
     }
-  }, []);
+  }, [sectionId]);
 
   // ============================================================
   // 2. FETCH ATTENDANCE SESSION FOR DATE & SESSION (REST)
@@ -218,7 +224,9 @@ export default function Attendance() {
     try {
       const res = await listAttendanceSessions({
         classId: targetClassId,
+        ...(sectionId ? { sectionId } : {}),
         date: targetDate,
+        includeRecords: true,
         limit: 20
       });
 
@@ -317,7 +325,7 @@ export default function Attendance() {
         setRefreshing(false);
       }
     }
-  }, []);
+  }, [sectionId]);
 
   // Initial Class & Roster load
   useEffect(() => {
@@ -334,9 +342,10 @@ export default function Attendance() {
 
   // Fetch session attendance when date, session, or students list updates
   useEffect(() => {
-    if (!classId || students.length === 0 || viewMode !== 'daily') return;
+    // Runs in parallel with the roster fetch (no longer waits for students to load)
+    if (!classId || viewMode !== 'daily') return;
     fetchSessionAttendance(classId, selectedDate, selectedSession, false);
-  }, [classId, selectedDate, selectedSession, students, viewMode, fetchSessionAttendance]);
+  }, [classId, selectedDate, selectedSession, viewMode, fetchSessionAttendance]);
 
   // ============================================================
   // 3. FETCH HISTORICAL SESSIONS FOR REPORTS (REST)
@@ -375,9 +384,11 @@ export default function Attendance() {
         do {
           const res = await listAttendanceSessions({
             classId,
+            ...(sectionId ? { sectionId } : {}),
             startDate: startDate || undefined,
             endDate: endDate || undefined,
             page: currentPage,
+            includeRecords: true,
             limit: 100
           });
 
@@ -393,18 +404,21 @@ export default function Attendance() {
 
         if (!isMounted) return;
 
-        // Fetch detailed sessions if records are not expanded
-        const fullSessions = await Promise.all(
-          allSessions.map(async (s) => {
-            if (s.records && s.records.length > 0) return s;
-            try {
-              const detail = await getAttendanceSession(s.id);
-              return detail?.data || detail?.session || detail || s;
-            } catch {
-              return s;
-            }
-          })
-        );
+        // Records come with the list (includeRecords); only fall back to per-session
+        // fetches for any session the server returned without them (older backend).
+        const missing = allSessions.filter((s) => !Array.isArray(s.records) && (s._count?.records || 0) > 0);
+        let fullSessions = allSessions;
+        if (missing.length > 0) {
+          const details = await Promise.all(
+            missing.map((s) =>
+              getAttendanceSession(s.id)
+                .then((d) => d?.data || d?.session || d || s)
+                .catch(() => s)
+            )
+          );
+          const byId = new Map(details.map((d) => [d.id, d]));
+          fullSessions = allSessions.map((s) => byId.get(s.id) || s);
+        }
 
         if (!isMounted) return;
         setHistoricalSessions(fullSessions);
@@ -424,7 +438,7 @@ export default function Attendance() {
     return () => {
       isMounted = false;
     };
-  }, [viewMode, classId]);
+  }, [viewMode, classId, sectionId]);
 
   // Aggregate historical stats
   useEffect(() => {
@@ -559,7 +573,7 @@ export default function Attendance() {
         // Create new session (POST /api/v1/attendance/sessions)
         const payload = {
           classId,
-          sectionId: classDetails?.sectionId || undefined,
+          sectionId: sectionId || undefined,
           date: selectedDate,
           session: selectedSession,
           records: formattedRecords
@@ -672,7 +686,7 @@ export default function Attendance() {
         fileName = `Attendance_${className}_${periodLabel}_Report.xlsx`;
         wsData = students.map((student) => {
           const stat = reportStats[student.id] || { present: 0, absent: 0, late: 0, total: 0 };
-          const percentage = stat.total === 0 ? 100 : Math.round(((stat.present + stat.late) / stat.total) * 100);
+          const percentage = calcPercentage(stat);
           const row = {};
           availableFieldsList.forEach((field) => {
             if (!selectedFields[field.key]) return;
@@ -682,7 +696,7 @@ export default function Attendance() {
             if (field.key === 'present') row[field.label] = stat.present;
             if (field.key === 'absent') row[field.label] = stat.absent;
             if (field.key === 'late') row[field.label] = stat.late;
-            if (field.key === 'percentage') row[field.label] = `${percentage}%`;
+            if (field.key === 'percentage') row[field.label] = percentage === null ? 'N/A' : `${percentage}%`;
           });
           return row;
         });
@@ -727,6 +741,14 @@ export default function Attendance() {
     }
   };
 
+  if (scopeLoading) {
+    return (
+      <div className="flex justify-center items-center h-[60vh]">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent"></div>
+      </div>
+    );
+  }
+
   if (!classId) {
     return (
       <div className="p-8 text-center text-slate-500 dark:text-slate-400">
@@ -749,7 +771,7 @@ export default function Attendance() {
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-wider">
-                {classDetails ? `${classDetails.name || ''} ${classDetails.section || ''}`.trim() : 'Class Attendance'}
+                {scopeLabel || (classDetails ? `${classDetails.name || ''} ${classDetails.section || ''}`.trim() : 'Class Attendance')}
               </span>
               {viewMode === 'daily' && (
                 <>
@@ -778,7 +800,16 @@ export default function Attendance() {
             </div>
             <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">Daily Attendance</h1>
             <p className="text-primary-100 mt-1">
-              Mark student attendance for {selectedDate} ({selectedSession === 'FN' ? 'Forenoon' : 'Afternoon'})
+              {(() => {
+                const sessionLabel = selectedSession === 'FN' ? 'Forenoon' : 'Afternoon';
+                if (daySessionStatus.fn && daySessionStatus.an) {
+                  return `Attendance marked for ${selectedDate} (Forenoon & Afternoon)`;
+                }
+                const selectedMarked = selectedSession === 'FN' ? daySessionStatus.fn : daySessionStatus.an;
+                return selectedMarked
+                  ? `Attendance marked for ${selectedDate} (${sessionLabel})`
+                  : `Mark student attendance for ${selectedDate} (${sessionLabel})`;
+              })()}
             </p>
           </div>
 
@@ -812,11 +843,10 @@ export default function Attendance() {
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${
-                  viewMode === mode
-                    ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${viewMode === mode
+                  ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                  }`}
               >
                 {mode}
               </button>
@@ -842,11 +872,10 @@ export default function Attendance() {
                 <button
                   type="button"
                   onClick={() => setSelectedSession('FN')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    selectedSession === 'FN'
-                      ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
-                      : 'text-slate-600 dark:text-slate-300'
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${selectedSession === 'FN'
+                    ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-300'
+                    }`}
                 >
                   {daySessionStatus.fn && <CheckCircle2 size={13} className="text-emerald-500" />}
                   <span>FN</span>
@@ -859,11 +888,10 @@ export default function Attendance() {
                 <button
                   type="button"
                   onClick={() => setSelectedSession('AN')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    selectedSession === 'AN'
-                      ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
-                      : 'text-slate-600 dark:text-slate-300'
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${selectedSession === 'AN'
+                    ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-300'
+                    }`}
                 >
                   {daySessionStatus.an && <CheckCircle2 size={13} className="text-emerald-500" />}
                   <span>AN</span>
@@ -993,11 +1021,10 @@ export default function Attendance() {
                     return (
                       <tr
                         key={student.id}
-                        className={`transition-colors ${
-                          isSelected
-                            ? 'bg-primary-50/40 dark:bg-primary-950/20 hover:bg-primary-50/60 dark:hover:bg-primary-950/30'
-                            : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/50'
-                        }`}
+                        className={`transition-colors ${isSelected
+                          ? 'bg-primary-50/40 dark:bg-primary-950/20 hover:bg-primary-50/60 dark:hover:bg-primary-950/30'
+                          : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/50'
+                          }`}
                       >
                         <td className="p-4 pl-6 text-xs font-bold text-slate-500 dark:text-slate-400">
                           {student.admissionNumber || 'N/A'}
@@ -1039,11 +1066,10 @@ export default function Attendance() {
                               <button
                                 key={status}
                                 onClick={() => handleStatusChange(student.id, status)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                                  currentStatus === status
-                                    ? `${getStatusColor(status)} shadow-sm font-extrabold`
-                                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                                }`}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${currentStatus === status
+                                  ? `${getStatusColor(status)} shadow-sm font-extrabold`
+                                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                                  }`}
                               >
                                 {status}
                               </button>
@@ -1074,7 +1100,7 @@ export default function Attendance() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredStudents.map((student) => {
                   const stat = reportStats[student.id] || { present: 0, absent: 0, late: 0, total: 0 };
-                  const percentage = stat.total === 0 ? 100 : Math.round(((stat.present + stat.late) / stat.total) * 100);
+                  const percentage = calcPercentage(stat);
                   return (
                     <tr key={student.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                       <td className="p-4 pl-6 text-xs font-bold text-slate-500 dark:text-slate-400">
@@ -1089,7 +1115,7 @@ export default function Attendance() {
                       <td className="p-4 text-center text-xs font-bold text-amber-600">{stat.late}</td>
                       <td className="p-4 pr-6 text-right">
                         <span className="font-extrabold text-xs px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white">
-                          {percentage}%
+                          {percentage === null ? 'N/A' : `${percentage}%`}
                         </span>
                       </td>
                     </tr>

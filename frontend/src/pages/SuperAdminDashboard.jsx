@@ -2,7 +2,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { 
   LuLayoutDashboard, LuUsers, LuCreditCard, LuLogOut, LuMenu, LuX, 
-  LuKey, LuLifeBuoy, LuClipboardList, LuUserCog, LuPalette
+  LuKey, LuLifeBuoy, LuMail, LuClipboardList, LuUserCog, LuPalette
 } from 'react-icons/lu';
 import { useAuth } from '../context/AuthContext';
 import TopNavbar from '../components/TopNavbar';
@@ -29,6 +29,7 @@ export default function SuperAdminDashboard() {
     { name: 'Subscription & Billing', path: '/superadmin/billing', icon: LuCreditCard },
     { name: 'License & Usage', path: '/superadmin/license-usage', icon: LuKey },
     { name: 'Support Tickets', path: '/superadmin/support-tickets', icon: LuLifeBuoy },
+    { name: 'Contact Messages', path: '/superadmin/contact-messages', icon: LuMail },
     { name: 'Audit Logs & Activity', path: '/superadmin/audit-logs', icon: LuClipboardList },
     { name: 'Email Templates', path: '/superadmin/email-templates', icon: LuUserCog },
     { name: 'Platform Branding', path: '/superadmin/branding', icon: LuPalette },

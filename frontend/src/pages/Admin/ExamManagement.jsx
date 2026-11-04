@@ -9,15 +9,15 @@ import { bulkUpsertAssessmentGrades } from '../../api/assessments';
 import { getReportCardTemplate } from '../../api/reportCardTemplates';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { notifyDataChanged } from '../../utils/liveData';
-import { 
-  LuFileText as FileText, 
-  LuPlus as Plus, 
-  LuX as X, 
-  LuGraduationCap as GraduationCap, 
-  LuCalendar as Calendar, 
-  LuFileChartColumn as FileBarChart, 
-  LuLoaderCircle as Loader2, 
-  LuPrinter as Printer, 
+import {
+  LuFileText as FileText,
+  LuPlus as Plus,
+  LuX as X,
+  LuGraduationCap as GraduationCap,
+  LuCalendar as Calendar,
+  LuFileChartColumn as FileBarChart,
+  LuLoaderCircle as Loader2,
+  LuPrinter as Printer,
   LuPalette as Palette,
   LuCircleCheck as CheckCircle2,
   LuLock as Lock,
@@ -222,11 +222,87 @@ export default function ExamManagement() {
     });
   };
 
+  // ---- Per-subject exam dates -------------------------------------------------------------
+  // ISO helpers use UTC maths so the picked day never shifts with the browser timezone.
+  const addDaysISO = (iso, days) => {
+    const d = new Date(`${iso}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
+  const isSundayISO = (iso) => new Date(`${iso}T00:00:00Z`).getUTCDay() === 0;
+
+  // Changing the exam window drops subject dates that are now outside of it.
+  const handleExamWindowChange = (field, value) => {
+    setNewExam(prev => {
+      const next = { ...prev, [field]: value };
+      const subjectsConfig = prev.subjectsConfig.map(sc => {
+        if (!sc.examDate) return sc;
+        if (next.startDate && sc.examDate < next.startDate) return { ...sc, examDate: '' };
+        if (next.endDate && sc.examDate > next.endDate) return { ...sc, examDate: '' };
+        return sc;
+      });
+      return { ...next, subjectsConfig };
+    });
+  };
+
+  // One subject per day starting at the start date, skipping Sundays, never past the end date.
+  const handleAutoScheduleDates = () => {
+    if (!newExam.startDate) {
+      toast.error("Pick the exam Start Date first");
+      return;
+    }
+    let cursor = newExam.startDate;
+    let overflow = false;
+    const scheduled = newExam.subjectsConfig.map((sc) => {
+      while (isSundayISO(cursor)) cursor = addDaysISO(cursor, 1);
+      let date = cursor;
+      if (newExam.endDate && date > newExam.endDate) {
+        overflow = true;
+        date = newExam.endDate;
+      }
+      cursor = addDaysISO(cursor, 1);
+      return { ...sc, examDate: date };
+    });
+    setNewExam(prev => ({ ...prev, subjectsConfig: scheduled }));
+    if (overflow) {
+      toast("The exam window is shorter than the number of subjects, so some share the last day. Extend the End Date or edit the dates.", { icon: '⚠️' });
+    }
+  };
+
+  // Subjects that share a date with another subject (shown as a hint, not blocked)
+  const duplicateDateSubjects = useMemo(() => {
+    const byDate = {};
+    newExam.subjectsConfig.forEach((sc) => {
+      if (!sc.examDate) return;
+      (byDate[sc.examDate] = byDate[sc.examDate] || []).push(sc.subjectId);
+    });
+    const dup = new Set();
+    Object.values(byDate).forEach((ids) => { if (ids.length > 1) ids.forEach(id => dup.add(id)); });
+    return dup;
+  }, [newExam.subjectsConfig]);
+
   const handleCreateExam = async (e) => {
     e.preventDefault();
     if (!newExam.name || !newExam.name.trim()) {
       toast.error("Exam name is required");
       return;
+    }
+
+    // Each subject needs its own exam date, inside the exam window (teachers receive THIS date)
+    if (newExam.subjectsConfig.length > 0) {
+      const missing = newExam.subjectsConfig.filter(sc => !sc.examDate);
+      if (missing.length > 0) {
+        toast.error(`Set an exam date for: ${missing.map(m => m.subjectName || 'Subject').join(', ')}`);
+        return;
+      }
+      const outside = newExam.subjectsConfig.filter(sc =>
+        (newExam.startDate && sc.examDate < newExam.startDate) ||
+        (newExam.endDate && sc.examDate > newExam.endDate)
+      );
+      if (outside.length > 0) {
+        toast.error(`Exam date must be between the start and end date for: ${outside.map(m => m.subjectName || 'Subject').join(', ')}`);
+        return;
+      }
     }
     setCreating(true);
     try {
@@ -403,7 +479,7 @@ export default function ExamManagement() {
     const classId = selectedReportUnit?.classId || selectedClassId;
     const sectionId = selectedReportUnit?.sectionId || null;
     if (!selectedExamId || !classId) return;
-    
+
     setGeneratingReport(true);
     try {
       const res = await previewReportCards({
@@ -420,10 +496,10 @@ export default function ExamManagement() {
       const students = previewData.students || [];
       const assessments = students[0]?.marks
         ? Object.entries(students[0].marks).map(([id, m]) => ({
-            id,
-            title: m.title || 'Assessment',
-            totalMarks: m.max
-          }))
+          id,
+          title: m.title || 'Assessment',
+          totalMarks: m.max
+        }))
         : [];
 
       if (previewData.template) {
@@ -453,7 +529,7 @@ export default function ExamManagement() {
       toast.error("Please generate report card data and customize/publish a template first.");
       return;
     }
-    
+
     setPublishing(true);
     const loadingToast = toast.loading("Publishing report cards to parent portal...");
     try {
@@ -504,7 +580,7 @@ export default function ExamManagement() {
           <p className="text-slate-500 dark:text-slate-400 mt-1">Manage school-wide exams and generate report cards.</p>
         </div>
         {activeTab === 'manage' && (
-          <button 
+          <button
             onClick={() => setShowCreateModal(true)}
             className="px-4 py-2 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 shadow-sm flex items-center gap-2 transition-colors w-full sm:w-auto justify-center"
           >
@@ -516,13 +592,13 @@ export default function ExamManagement() {
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col min-h-[500px]">
         {/* Header Tabs */}
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex gap-2 bg-slate-50 dark:bg-slate-800 rounded-t-3xl overflow-x-auto custom-scrollbar">
-          <button 
+          <button
             onClick={() => setActiveTab('manage')}
             className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${activeTab === 'manage' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
           >
             Manage Exams
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('reports')}
             className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${activeTab === 'reports' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
           >
@@ -555,20 +631,19 @@ export default function ExamManagement() {
                             <FileText size={24} />
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <span className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${
-                              isFinalized 
-                                ? 'bg-purple-100 text-purple-800' 
-                                : isPublished 
-                                ? 'bg-emerald-100 text-emerald-800' 
-                                : 'bg-amber-100 text-amber-800'
-                            }`}>
+                            <span className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${isFinalized
+                                ? 'bg-purple-100 text-purple-800'
+                                : isPublished
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}>
                               {currentStatus}
                             </span>
                           </div>
                         </div>
 
                         <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-2">{exam.name}</h3>
-                        
+
                         <div className="flex flex-col gap-2 text-sm text-slate-500 dark:text-slate-400 mb-4">
                           <div className="flex items-center gap-2 font-medium text-slate-600 dark:text-slate-300">
                             <FileText size={16} className="text-primary-500" />
@@ -586,7 +661,7 @@ export default function ExamManagement() {
                               <div className="flex flex-wrap gap-1 mt-1">
                                 {exam.subjectsConfig.map((sc, i) => (
                                   <span key={i} className="px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-[11px] text-slate-600 dark:text-slate-300">
-                                    {sc.subjectName || 'Subject'} ({sc.maxMarks}m)
+                                    {sc.subjectName || 'Subject'} ({sc.maxMarks}m){sc.examDate ? ` · ${new Date(`${sc.examDate}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}` : ''}
                                   </span>
                                 ))}
                               </div>
@@ -660,7 +735,7 @@ export default function ExamManagement() {
               <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row gap-4 items-end bg-slate-50/50 dark:bg-slate-800/50">
                 <div className="flex-1 w-full">
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Exam</label>
-                  <select 
+                  <select
                     value={selectedExamId}
                     onChange={(e) => {
                       setSelectedExamId(e.target.value);
@@ -674,7 +749,7 @@ export default function ExamManagement() {
                 </div>
                 <div className="flex-1 w-full">
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Class</label>
-                  <select 
+                  <select
                     value={selectedReportUnitId}
                     onChange={(e) => {
                       const newUnitId = e.target.value;
@@ -693,7 +768,7 @@ export default function ExamManagement() {
                     ))}
                   </select>
                 </div>
-                <button 
+                <button
                   onClick={generateReportCard}
                   disabled={!selectedExamId || (!selectedReportUnitId && !selectedClassId) || generatingReport}
                   className="px-4 py-2 bg-primary-600 text-white text-sm font-semibold rounded-xl hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 h-11 shrink-0 w-full md:w-auto"
@@ -701,7 +776,7 @@ export default function ExamManagement() {
                   {generatingReport ? <Loader2 size={18} className="animate-spin" /> : <FileBarChart size={18} />}
                   Generate View
                 </button>
-                <button 
+                <button
                   onClick={() => setIsBuildingTemplate(true)}
                   className="px-6 py-2.5 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 h-11 shrink-0 w-full md:w-auto"
                 >
@@ -726,14 +801,14 @@ export default function ExamManagement() {
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                        <button 
+                        <button
                           onClick={handlePublishReportCards}
                           disabled={publishing}
                           className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50"
                         >
                           <FileText size={18} /> {publishing ? 'Publishing...' : 'Publish Report Cards'}
                         </button>
-                        <button 
+                        <button
                           onClick={() => window.print()}
                           className="px-4 py-2 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors flex items-center gap-2"
                         >
@@ -772,7 +847,7 @@ export default function ExamManagement() {
                                       {reportTemplate.header.schoolName || userProfile?.schoolName || 'YOUR SCHOOL NAME'}
                                     </h1>
                                     <div className="text-sm mt-2 text-slate-700 dark:text-slate-200">
-                                      {reportTemplate.header.showAddress && <span>123 Education Street, Learning City, 10001<br/></span>}
+                                      {reportTemplate.header.showAddress && <span>123 Education Street, Learning City, 10001<br /></span>}
                                       <span className="font-medium">
                                         {reportTemplate.header.showPhone && <span>Tel: +1 234 567 8900 </span>}
                                         {reportTemplate.header.showPhone && reportTemplate.header.showEmail && <span> | </span>}
@@ -1073,7 +1148,7 @@ export default function ExamManagement() {
                                       )}
                                     </tbody>
                                   </table>
-                                  
+
                                   <div className="mt-6 flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl font-sans print:bg-white print:border-slate-300">
                                     <div className="flex items-center gap-6">
                                       <div>
@@ -1085,12 +1160,12 @@ export default function ExamManagement() {
                                         <p className="text-lg font-black" style={{ color: reportTemplate.themeColor }}>
                                           {row.overallGrade || (
                                             Number(row.percentage) >= 91 ? 'A1' :
-                                            Number(row.percentage) >= 81 ? 'A2' :
-                                            Number(row.percentage) >= 71 ? 'B1' :
-                                            Number(row.percentage) >= 61 ? 'B2' :
-                                            Number(row.percentage) >= 51 ? 'C1' :
-                                            Number(row.percentage) >= 41 ? 'C2' :
-                                            Number(row.percentage) >= 33 ? 'D' : 'E'
+                                              Number(row.percentage) >= 81 ? 'A2' :
+                                                Number(row.percentage) >= 71 ? 'B1' :
+                                                  Number(row.percentage) >= 61 ? 'B2' :
+                                                    Number(row.percentage) >= 51 ? 'C1' :
+                                                      Number(row.percentage) >= 41 ? 'C2' :
+                                                        Number(row.percentage) >= 33 ? 'D' : 'E'
                                           )}
                                         </p>
                                       </div>
@@ -1161,20 +1236,19 @@ export default function ExamManagement() {
                   <h2 className="text-xl font-bold text-slate-900 dark:text-white">
                     {viewingProgressExam.name} — Live Marks Monitoring
                   </h2>
-                  <span className={`px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${
-                    viewingProgressExam.status === 'FINALIZED'
+                  <span className={`px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${viewingProgressExam.status === 'FINALIZED'
                       ? 'bg-purple-100 text-purple-800'
                       : viewingProgressExam.status === 'PUBLISHED'
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-amber-100 text-amber-800'
-                  }`}>
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-amber-100 text-amber-800'
+                    }`}>
                     {viewingProgressExam.status || 'DRAFT'}
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Real-time status of staff mark-entry submissions.</p>
               </div>
-              <button 
-                onClick={() => { setViewingProgressExam(null); setExamProgress(null); }} 
+              <button
+                onClick={() => { setViewingProgressExam(null); setExamProgress(null); }}
                 className="p-2 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors"
               >
                 <X size={20} />
@@ -1236,25 +1310,23 @@ export default function ExamManagement() {
                               {row.assignedStaffEmail && <span className="block text-xs text-slate-400">{row.assignedStaffEmail}</span>}
                             </td>
                             <td className="p-3.5 text-center">
-                              <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${
-                                row.status === 'LOCKED'
+                              <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${row.status === 'LOCKED'
                                   ? 'bg-purple-100 text-purple-800'
                                   : row.status === 'SUBMITTED'
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : row.status === 'IN_PROGRESS'
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-slate-100 text-slate-700'
-                              }`}>
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : row.status === 'IN_PROGRESS'
+                                      ? 'bg-blue-100 text-blue-800'
+                                      : 'bg-slate-100 text-slate-700'
+                                }`}>
                                 {row.status}
                               </span>
                             </td>
                             <td className="p-3.5 w-48">
                               <div className="flex items-center gap-2">
                                 <div className="flex-1 bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
-                                  <div 
-                                    className={`h-full rounded-full transition-all duration-300 ${
-                                      row.completionPercentage === 100 ? 'bg-emerald-500' : 'bg-primary-600'
-                                    }`}
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-300 ${row.completionPercentage === 100 ? 'bg-emerald-500' : 'bg-primary-600'
+                                      }`}
                                     style={{ width: `${row.completionPercentage}%` }}
                                   />
                                 </div>
@@ -1294,7 +1366,7 @@ export default function ExamManagement() {
               <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
                 <Edit3 size={18} className="text-amber-600" /> Admin Mark Override
               </h3>
-              <button 
+              <button
                 onClick={() => setOverrideModal({ isOpen: false, student: null, assessment: null, currentMarks: '', newMarks: '', reason: '' })}
                 className="p-1.5 text-slate-400 hover:bg-slate-200 rounded-full"
               >
@@ -1388,10 +1460,10 @@ export default function ExamManagement() {
               <div className="p-6 space-y-6 flex-1">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Exam Name *</label>
-                  <input 
+                  <input
                     type="text" required
                     value={newExam.name}
-                    onChange={(e) => setNewExam({...newExam, name: e.target.value})}
+                    onChange={(e) => setNewExam({ ...newExam, name: e.target.value })}
                     placeholder="e.g. Mid-Term Examination 2026"
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                   />
@@ -1402,7 +1474,7 @@ export default function ExamManagement() {
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Exam Type</label>
                     <select
                       value={newExam.examType}
-                      onChange={(e) => setNewExam({...newExam, examType: e.target.value})}
+                      onChange={(e) => setNewExam({ ...newExam, examType: e.target.value })}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
                     >
                       <option value="Unit Test">Unit Test</option>
@@ -1415,10 +1487,10 @@ export default function ExamManagement() {
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Term (Optional)</label>
-                    <input 
+                    <input
                       type="text"
                       value={newExam.term || ''}
-                      onChange={(e) => setNewExam({...newExam, term: e.target.value})}
+                      onChange={(e) => setNewExam({ ...newExam, term: e.target.value })}
                       placeholder="e.g. Term 1, Semester 1"
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                     />
@@ -1443,7 +1515,7 @@ export default function ExamManagement() {
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Target Section (Optional)</label>
                     <select
                       value={newExam.sectionId}
-                      onChange={(e) => setNewExam({...newExam, sectionId: e.target.value})}
+                      onChange={(e) => setNewExam({ ...newExam, sectionId: e.target.value })}
                       disabled={!newExam.classId}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 disabled:opacity-50"
                     >
@@ -1458,20 +1530,20 @@ export default function ExamManagement() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Start Date</label>
-                    <input 
+                    <input
                       type="date"
                       value={newExam.startDate}
-                      onChange={(e) => setNewExam({...newExam, startDate: e.target.value})}
+                      onChange={(e) => handleExamWindowChange('startDate', e.target.value)}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">End Date</label>
-                    <input 
+                    <input
                       type="date"
                       value={newExam.endDate}
                       min={newExam.startDate}
-                      onChange={(e) => setNewExam({...newExam, endDate: e.target.value})}
+                      onChange={(e) => handleExamWindowChange('endDate', e.target.value)}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                     />
                   </div>
@@ -1482,25 +1554,37 @@ export default function ExamManagement() {
                   <div className="flex justify-between items-center mb-3">
                     <div>
                       <h4 className="text-sm font-bold text-slate-900 dark:text-white">Subjects & Mark Scheme</h4>
-                      <p className="text-xs text-slate-500">Configured subjects will automatically generate teacher grading assessments upon exam publish.</p>
+                      <p className="text-xs text-slate-500">Each subject has its own exam date. Teachers receive that date for their grading assessment.</p>
                     </div>
-                    {allSubjects.length > 0 && (
-                      <select
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            handleAddSubjectConfig(e.target.value);
-                            e.target.value = '';
-                          }
-                        }}
-                        className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 font-semibold"
-                        defaultValue=""
-                      >
-                        <option value="" disabled>+ Add Subject</option>
-                        {allSubjects.map(sub => (
-                          <option key={sub.id} value={sub.id}>{sub.name}</option>
-                        ))}
-                      </select>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {newExam.subjectsConfig.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleAutoScheduleDates}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-primary-200 text-primary-700 bg-primary-50 hover:bg-primary-100 font-semibold whitespace-nowrap"
+                          title="Assign one subject per day from the start date (Sundays skipped)"
+                        >
+                          Auto-schedule dates
+                        </button>
+                      )}
+                      {allSubjects.length > 0 && (
+                        <select
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleAddSubjectConfig(e.target.value);
+                              e.target.value = '';
+                            }
+                          }}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 font-semibold"
+                          defaultValue=""
+                        >
+                          <option value="" disabled>+ Add Subject</option>
+                          {allSubjects.map(sub => (
+                            <option key={sub.id} value={sub.id}>{sub.name}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
                   </div>
 
                   {newExam.subjectsConfig.length === 0 ? (
@@ -1510,50 +1594,68 @@ export default function ExamManagement() {
                   ) : (
                     <div className="space-y-2">
                       {newExam.subjectsConfig.map((sc, idx) => (
-                        <div key={sc.subjectId || idx} className="grid grid-cols-12 gap-2 items-center p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
-                          <span className="col-span-4 font-bold text-slate-900 dark:text-white truncate">
-                            {sc.subjectName || 'Subject'}
-                          </span>
-                          <div className="col-span-2">
-                            <label className="text-[10px] text-slate-400 block font-semibold">Max</label>
-                            <input
-                              type="number"
-                              min="1"
-                              value={sc.maxMarks}
-                              onChange={(e) => handleSubjectConfigChange(idx, 'maxMarks', e.target.value)}
-                              className="w-full px-2 py-1 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
-                            />
-                          </div>
-                          <div className="col-span-2">
-                            <label className="text-[10px] text-slate-400 block font-semibold">Pass</label>
-                            <input
-                              type="number"
-                              min="0"
-                              value={sc.passMarks}
-                              onChange={(e) => handleSubjectConfigChange(idx, 'passMarks', e.target.value)}
-                              className="w-full px-2 py-1 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
-                            />
-                          </div>
-                          <div className="col-span-3">
-                            <label className="text-[10px] text-slate-400 block font-semibold">Weightage %</label>
-                            <input
-                              type="number"
-                              min="1"
-                              max="100"
-                              value={sc.weightage}
-                              onChange={(e) => handleSubjectConfigChange(idx, 'weightage', e.target.value)}
-                              className="w-full px-2 py-1 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
-                            />
-                          </div>
-                          <div className="col-span-1 text-right">
+                        <div key={sc.subjectId || idx} className="p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                              {sc.subjectName || 'Subject'}
+                            </span>
                             <button
                               type="button"
                               onClick={() => handleRemoveSubjectConfig(idx)}
                               className="p-1 text-red-500 hover:bg-red-50 rounded"
+                              title="Remove subject"
                             >
                               <Trash2 size={14} />
                             </button>
                           </div>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            <div>
+                              <label className="text-[10px] text-slate-400 block font-semibold">Exam Date *</label>
+                              <input
+                                type="date"
+                                required
+                                value={sc.examDate || ''}
+                                min={newExam.startDate || undefined}
+                                max={newExam.endDate || undefined}
+                                onChange={(e) => handleSubjectConfigChange(idx, 'examDate', e.target.value)}
+                                className={`w-full px-2 py-1 rounded bg-white dark:bg-slate-900 border font-bold ${duplicateDateSubjects.has(sc.subjectId) ? 'border-amber-400' : 'border-slate-200 dark:border-slate-700'}`}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-slate-400 block font-semibold">Max</label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={sc.maxMarks}
+                                onChange={(e) => handleSubjectConfigChange(idx, 'maxMarks', e.target.value)}
+                                className="w-full px-2 py-1 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-slate-400 block font-semibold">Pass</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={sc.passMarks}
+                                onChange={(e) => handleSubjectConfigChange(idx, 'passMarks', e.target.value)}
+                                className="w-full px-2 py-1 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-slate-400 block font-semibold">Weightage %</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="100"
+                                value={sc.weightage}
+                                onChange={(e) => handleSubjectConfigChange(idx, 'weightage', e.target.value)}
+                                className="w-full px-2 py-1 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
+                              />
+                            </div>
+                          </div>
+                          {duplicateDateSubjects.has(sc.subjectId) && (
+                            <p className="mt-1.5 text-[10px] font-semibold text-amber-600">Another subject is also on this date.</p>
+                          )}
                         </div>
                       ))}
                     </div>

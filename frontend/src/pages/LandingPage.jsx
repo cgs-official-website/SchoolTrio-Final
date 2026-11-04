@@ -5,6 +5,8 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { Float, MeshDistortMaterial } from '@react-three/drei';
 import { LuAtom as Atom, LuSparkles as Sparkles, LuShieldCheck as ShieldCheck, LuUsers as Users, LuChevronRight as ChevronRight, LuZap as Zap, LuGlobe as Globe, LuCheck as Check, LuGraduationCap as GraduationCap, LuBookOpen as BookOpen, LuLaptop as Laptop, LuMail as Mail, LuMapPin as MapPin, LuPhone as Phone, LuMenu as Menu, LuX as X, LuBriefcase, LuClock as Clock, LuMessageSquare as MessageSquare, LuFileText as FileText } from 'react-icons/lu';
 import { getPublicPlans } from '../api/billing';
+import toast from 'react-hot-toast';
+import { submitContactMessage } from '../api/contactMessages';
 
 // --- 3D Background Component ---
 function Hero3DBackground() {
@@ -72,6 +74,52 @@ export default function LandingPage() {
   const reducedMotion = useReducedMotion();
   const [plans, setPlans] = useState([]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [contactForm, setContactForm] = useState({ name: '', email: '', message: '' });
+  const [isSubmittingContact, setIsSubmittingContact] = useState(false);
+  const [contactSuccess, setContactSuccess] = useState(false);
+
+  const handleContactSubmit = async (e) => {
+    e.preventDefault();
+    if (isSubmittingContact) return;
+
+    const trimmedName = contactForm.name.trim();
+    const trimmedEmail = contactForm.email.trim();
+    const trimmedMessage = contactForm.message.trim();
+
+    if (!trimmedName) {
+      toast.error('Please enter your full name');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
+      toast.error('Please provide a valid email address');
+      return;
+    }
+
+    if (!trimmedMessage || trimmedMessage.length < 5) {
+      toast.error('Please enter a message (at least 5 characters)');
+      return;
+    }
+
+    setIsSubmittingContact(true);
+    try {
+      await submitContactMessage({
+        name: trimmedName,
+        email: trimmedEmail,
+        message: trimmedMessage
+      });
+      toast.success('Your message has been sent successfully! Our team will get back to you soon.');
+      setContactForm({ name: '', email: '', message: '' });
+      setContactSuccess(true);
+      setTimeout(() => setContactSuccess(false), 6000);
+    } catch (err) {
+      console.error('Failed to submit contact message:', err);
+      toast.error(err.message || 'Failed to submit contact message. Please try again.');
+    } finally {
+      setIsSubmittingContact(false);
+    }
+  };
 
   // Mouse Parallax values
   const mouseX = useMotionValue(0);
@@ -507,21 +555,65 @@ export default function LandingPage() {
               <div className="absolute -top-10 -right-10 w-40 h-40 bg-primary-600 rounded-full blur-[80px] opacity-30 -z-10 pointer-events-none"></div>
               
               <h3 className="text-2xl font-bold mb-8">Send a Message</h3>
-              <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
+              <form className="space-y-6" onSubmit={handleContactSubmit}>
                 <div className="relative group">
-                  <input type="text" id="name" className="w-full px-5 py-4 rounded-2xl bg-[#12101A]/80 border border-primary-900/50 focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none peer text-[#F5F5F7] placeholder-transparent" placeholder="John Doe" required />
+                  <input 
+                    type="text" 
+                    id="name" 
+                    value={contactForm.name}
+                    onChange={(e) => setContactForm(prev => ({ ...prev, name: e.target.value }))}
+                    disabled={isSubmittingContact}
+                    className="w-full px-5 py-4 rounded-2xl bg-[#12101A]/80 border border-primary-900/50 focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none peer text-[#F5F5F7] placeholder-transparent disabled:opacity-50" 
+                    placeholder="John Doe" 
+                    required 
+                  />
                   <label htmlFor="name" className="absolute left-5 -top-2.5 bg-[#12101A] px-1 text-sm font-bold text-[#A8A0AC] transition-all peer-placeholder-shown:text-base peer-placeholder-shown:top-4 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-primary-400">Full Name</label>
                 </div>
                 <div className="relative group">
-                  <input type="email" id="email" className="w-full px-5 py-4 rounded-2xl bg-[#12101A]/80 border border-primary-900/50 focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none peer text-[#F5F5F7] placeholder-transparent" placeholder="john@school.edu" required />
+                  <input 
+                    type="email" 
+                    id="email" 
+                    value={contactForm.email}
+                    onChange={(e) => setContactForm(prev => ({ ...prev, email: e.target.value }))}
+                    disabled={isSubmittingContact}
+                    className="w-full px-5 py-4 rounded-2xl bg-[#12101A]/80 border border-primary-900/50 focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none peer text-[#F5F5F7] placeholder-transparent disabled:opacity-50" 
+                    placeholder="john@school.edu" 
+                    required 
+                  />
                   <label htmlFor="email" className="absolute left-5 -top-2.5 bg-[#12101A] px-1 text-sm font-bold text-[#A8A0AC] transition-all peer-placeholder-shown:text-base peer-placeholder-shown:top-4 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-primary-400">Email Address</label>
                 </div>
                 <div className="relative group">
-                  <textarea id="message" rows="4" className="w-full px-5 py-4 rounded-2xl bg-[#12101A]/80 border border-primary-900/50 focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none resize-none peer text-[#F5F5F7] placeholder-transparent" placeholder="How can we help you?" required></textarea>
+                  <textarea 
+                    id="message" 
+                    rows="4" 
+                    value={contactForm.message}
+                    onChange={(e) => setContactForm(prev => ({ ...prev, message: e.target.value }))}
+                    disabled={isSubmittingContact}
+                    className="w-full px-5 py-4 rounded-2xl bg-[#12101A]/80 border border-primary-900/50 focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none resize-none peer text-[#F5F5F7] placeholder-transparent disabled:opacity-50" 
+                    placeholder="How can we help you?" 
+                    required
+                  ></textarea>
                   <label htmlFor="message" className="absolute left-5 -top-2.5 bg-[#12101A] px-1 text-sm font-bold text-[#A8A0AC] transition-all peer-placeholder-shown:text-base peer-placeholder-shown:top-4 peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-primary-400">Message</label>
                 </div>
-                <button className="w-full py-4 bg-gradient-to-r from-[#6B4A73] to-primary-400 text-white font-bold rounded-2xl hover:opacity-90 transition-opacity shadow-[0_0_15px_rgba(229,189,223,0.3)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#12101A] focus:ring-primary-400">
-                  Send Message
+                {contactSuccess && (
+                  <div className="p-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-sm font-semibold flex items-center gap-2">
+                    <Check size={18} className="text-emerald-400 shrink-0" />
+                    <span>Your message has been sent successfully! Our team will get back to you soon.</span>
+                  </div>
+                )}
+                <button 
+                  type="submit"
+                  disabled={isSubmittingContact}
+                  className="w-full py-4 bg-gradient-to-r from-[#6B4A73] to-primary-400 text-white font-bold rounded-2xl hover:opacity-90 transition-opacity shadow-[0_0_15px_rgba(229,189,223,0.3)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#12101A] focus:ring-primary-400 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isSubmittingContact ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Sending Message...</span>
+                    </>
+                  ) : (
+                    'Send Message'
+                  )}
                 </button>
               </form>
             </div>

@@ -31,7 +31,7 @@ export async function listClasses(req, res, next) {
 export async function getMyClasses(req, res, next) {
   try {
     const schoolId = req.tenant.schoolId;
-    const classes = await classService.getMyTeacherClasses(schoolId, req.user || req.auth);
+    const classes = await classService.getMyTeacherClasses(schoolId, req.user || req.auth, req.query);
     return ApiResponse.success(res, classes, 'Teacher assigned classes retrieved successfully');
   } catch (err) {
     next(err);

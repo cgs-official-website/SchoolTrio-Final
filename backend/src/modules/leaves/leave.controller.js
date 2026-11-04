@@ -181,6 +181,55 @@ export async function listStaffLeaves(req, res, next) {
 }
 
 /**
+ * Lists student leave applications for the authenticated class teacher's class(es).
+ * GET /api/v1/staff/me/class-leaves
+ */
+export async function listClassStudentLeaves(req, res, next) {
+  try {
+    const schoolId = req.tenant?.schoolId || req.auth?.schoolId || req.schoolId;
+    const actor = req.auth || req.user;
+
+    const result = await leaveService.getClassStudentLeaves(schoolId, actor, req.query);
+
+    return res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'Class student leave applications retrieved successfully',
+      data: result.leaves,
+      classes: result.classes,
+      pagination: result.pagination
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Class teacher approves/rejects a pending leave of a student in their own section/class.
+ * PATCH /api/v1/staff/me/class-leaves/:id/status
+ */
+export async function updateClassStudentLeaveStatus(req, res, next) {
+  try {
+    const schoolId = req.tenant?.schoolId || req.auth?.schoolId || req.schoolId;
+    const actor = req.auth || req.user;
+
+    const result = await leaveService.updateClassStudentLeaveStatus(
+      schoolId,
+      req.params.id,
+      req.body.status,
+      actor
+    );
+
+    return ApiResponse.success(
+      res,
+      result,
+      `Leave application ${req.body.status.toLowerCase()} successfully`
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
  * Submits a new leave application for the authenticated staff member.
  * POST /api/v1/staff/me/leaves
  */

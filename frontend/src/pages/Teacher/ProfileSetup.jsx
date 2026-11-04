@@ -19,12 +19,22 @@ import {
   LuCircleCheck
 } from 'react-icons/lu';
 import { normalizeGender } from '../../utils/genderUtils';
+import {
+  validateProfile,
+  sanitizeField,
+  normalizePhone,
+  computeProfileCompletion,
+  BLOOD_GROUPS,
+  GOVT_ID_TYPES
+} from '../../utils/profileValidation';
 
 export default function ProfileSetup() {
   const { currentUser, updateProfileData } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [staffId, setStaffId] = useState(null);
+  const [errors, setErrors] = useState({});
+  const [serverDoc, setServerDoc] = useState(null);
 
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
@@ -36,8 +46,11 @@ export default function ProfileSetup() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
   const [passwordStatus, setPasswordStatus] = useState(null);
-  
+
   const [formData, setFormData] = useState({
+    // Name
+    firstName: '',
+    lastName: '',
     // Personal Info
     dob: '',
     bloodGroup: '',
@@ -49,7 +62,7 @@ export default function ProfileSetup() {
     mobileNumber: '',
     residentialAddress: '',
     emergencyContact: '',
-    
+
     // Educational Information
     highestQualification: '',
     degreeSpecialization: '',
@@ -89,6 +102,7 @@ export default function ProfileSetup() {
         if (data.id) {
           setStaffId(data.id);
         }
+        setServerDoc(data);
 
         const custom = (typeof data.customData === 'object' && data.customData !== null)
           ? data.customData
@@ -106,8 +120,13 @@ export default function ProfileSetup() {
           ? data.financial
           : ((typeof custom.financial === 'object' && custom.financial !== null) ? custom.financial : {});
 
+        const fullName = String(data.name || '').trim();
+        const [derivedFirst, ...derivedRest] = fullName.split(/\s+/);
+
         setFormData(prev => ({
           ...prev,
+          firstName: custom.firstName || derivedFirst || '',
+          lastName: custom.lastName !== undefined && custom.firstName ? custom.lastName : derivedRest.join(' '),
           dob: data.dob || custom.dob || '',
           bloodGroup: data.bloodGroup || custom.bloodGroup || '',
           gender: normalizeGender(data.gender || custom.gender, 'Male'),
@@ -115,10 +134,10 @@ export default function ProfileSetup() {
           maritalStatus: data.maritalStatus || custom.maritalStatus || 'Single',
           fatherGuardianName: data.fatherGuardianName || custom.fatherGuardianName || custom.fatherName || '',
           languagesKnown: data.languagesKnown || custom.languagesKnown || '',
-          mobileNumber: data.phone || data.mobileNumber || '',
+          mobileNumber: normalizePhone(data.phone || data.mobileNumber || ''),
           residentialAddress: data.address || data.residentialAddress || custom.address || '',
-          emergencyContact: data.emergencyContact || custom.emergencyContact || '',
-          
+          emergencyContact: normalizePhone(data.emergencyContact || custom.emergencyContact || ''),
+
           highestQualification: quals.highestQualification || (typeof data.qualifications === 'string' ? data.qualifications : '') || '',
           degreeSpecialization: quals.degreeSpecialization || '',
           universityName: quals.universityName || '',
@@ -153,12 +172,56 @@ export default function ProfileSetup() {
     fetchTeacherProfile();
   }, [currentUser]);
 
+  // Sanitise while typing (no letters in mobile number, max 10 digits, etc.) and clear that field's error
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData((prev) => {
+      const next = { ...prev, [name]: sanitizeField(name, value, prev) };
+      // Changing the ID type invalidates a previously typed ID number
+      if (name === 'govtIdType') next.govtIdNumber = '';
+      return next;
+    });
+    setErrors((prev) => {
+      if (!prev[name] && !(name === 'govtIdType' && prev.govtIdNumber) && !(name === 'mobileNumber' && prev.emergencyContact)) return prev;
+      const rest = { ...prev };
+      delete rest[name];
+      if (name === 'govtIdType') delete rest.govtIdNumber;
+      return rest;
+    });
   };
+
+  // Validate a single field when the user leaves it
+  const handleBlur = (e) => {
+    const { name } = e.target;
+    const all = validateProfile(formData);
+    setErrors((prev) => {
+      const next = { ...prev };
+      if (all[name]) next[name] = all[name];
+      else delete next[name];
+      return next;
+    });
+  };
+
+  // Completion of what is actually saved on the server (updates right after a successful save)
+  const liveCompletion = computeProfileCompletion(serverDoc);
 
   const handleSave = async (e) => {
     e.preventDefault();
+
+    // Block the save when anything is wrong and show every problem next to its field
+    const validationErrors = validateProfile(formData);
+    setErrors(validationErrors);
+    const errorKeys = Object.keys(validationErrors);
+    if (errorKeys.length > 0) {
+      toast.error(`Please fix ${errorKeys.length} highlighted field${errorKeys.length > 1 ? 's' : ''} before saving.`);
+      const firstEl = document.querySelector(`[name="${errorKeys[0]}"]`);
+      if (firstEl) {
+        firstEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        firstEl.focus({ preventScroll: true });
+      }
+      return;
+    }
+
     setSaving(true);
     try {
       const financialData = {
@@ -177,6 +240,8 @@ export default function ProfileSetup() {
       };
 
       const payload = {
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
         phone: formData.mobileNumber || null,
         address: formData.residentialAddress || null,
         emergencyContact: formData.emergencyContact || null,
@@ -211,6 +276,8 @@ export default function ProfileSetup() {
           taxIdDetails: formData.taxIdDetails || ''
         },
         customData: {
+          firstName: formData.firstName.trim(),
+          lastName: formData.lastName.trim(),
           fatherGuardianName: formData.fatherGuardianName || '',
           fatherName: formData.fatherGuardianName || '',
           bankAccountNumber: formData.bankAccountNumber || '',
@@ -221,6 +288,7 @@ export default function ProfileSetup() {
         }
       };
 
+<<<<<<< HEAD
       const res = await staffApi.updateStaffSelf(payload);
       if (res?.data) {
         const updated = res.data;
@@ -238,12 +306,32 @@ export default function ProfileSetup() {
         }));
       }
 
+=======
+      await staffApi.updateStaffSelf(payload);
+
+      // Reload what the server actually stored, then tell the dashboard banner to recalculate
+      try {
+        const fresh = await staffApi.getStaffMe();
+        if (fresh?.data) setServerDoc(fresh.data);
+      } catch { /* non-fatal */ }
+>>>>>>> a5f2e33a4713df2b76973061fe68511fdd38acd3
       if (updateProfileData) {
         await updateProfileData();
       }
-      toast.success("Profile updated successfully!");
+      window.dispatchEvent(new CustomEvent('staff-profile-updated'));
+      toast.success("Profile saved successfully!");
     } catch (error) {
       console.error("Error updating profile", error);
+      // Surface server-side field errors next to the fields when the API returns them
+      const details = error?.details || error?.errors || error?.data?.errors;
+      if (Array.isArray(details)) {
+        const mapped = {};
+        details.forEach((d) => {
+          const key = String(d.path || d.field || '').split('.').pop();
+          if (key) mapped[key] = d.message;
+        });
+        if (Object.keys(mapped).length) setErrors((prev) => ({ ...prev, ...mapped }));
+      }
       toast.error("Failed to update profile: " + (error.message || error));
     } finally {
       setSaving(false);
@@ -321,6 +409,13 @@ export default function ProfileSetup() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Profile Setup</h1>
         <p className="text-slate-500 dark:text-slate-400 mt-1">Complete your profile to update all professional, banking, and personal details.</p>
+        <div className="mt-4 flex items-center gap-3">
+          <div className="flex-1 h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+            <div className="h-full bg-primary-600 transition-all duration-500" style={{ width: `${liveCompletion}%` }} />
+          </div>
+          <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{liveCompletion}% complete</span>
+        </div>
+        <p className="text-xs text-slate-400 mt-2"><span className="text-red-500">*</span> Required. Details are checked before saving.</p>
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">
@@ -331,49 +426,71 @@ export default function ProfileSetup() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Date of Birth</label>
-              <input type="date" name="dob" value={formData.dob} onChange={handleChange} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">First Name <span className="text-red-500">*</span></label>
+              <input type="text" name="firstName" value={formData.firstName} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.firstName ? "true" : "false"} placeholder="First name" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              {errors.firstName && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.firstName}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Last Name</label>
+              <input type="text" name="lastName" value={formData.lastName} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.lastName ? "true" : "false"} placeholder="Last name" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              {errors.lastName && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.lastName}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Date of Birth <span className="text-red-500">*</span></label>
+              <input type="date" name="dob" max={new Date().toISOString().split("T")[0]} value={formData.dob} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.dob ? "true" : "false"} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              {errors.dob && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.dob}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Gender</label>
-              <select name="gender" value={normalizeGender(formData.gender, 'Male')} onChange={handleChange} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm bg-white dark:bg-slate-900">
+              <select name="gender" value={normalizeGender(formData.gender, 'Male')} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.gender ? "true" : "false"} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm bg-white dark:bg-slate-900">
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
                 <option value="Other">Other</option>
               </select>
+              {errors.gender && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.gender}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Blood Group</label>
-              <input type="text" name="bloodGroup" value={formData.bloodGroup} onChange={handleChange} placeholder="e.g. O+" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              <select name="bloodGroup" value={formData.bloodGroup} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.bloodGroup ? "true" : "false"} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm bg-white dark:bg-slate-900">
+                <option value="">Select</option>
+                {BLOOD_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
+              {errors.bloodGroup && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.bloodGroup}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Nationality</label>
-              <input type="text" name="nationality" value={formData.nationality} onChange={handleChange} placeholder="e.g. Indian" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              <input type="text" name="nationality" value={formData.nationality} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.nationality ? "true" : "false"} placeholder="e.g. Indian" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              {errors.nationality && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.nationality}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Marital Status</label>
-              <select name="maritalStatus" value={formData.maritalStatus} onChange={handleChange} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm bg-white dark:bg-slate-900">
+              <select name="maritalStatus" value={formData.maritalStatus} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.maritalStatus ? "true" : "false"} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm bg-white dark:bg-slate-900">
                 <option value="Single">Single</option>
                 <option value="Married">Married</option>
                 <option value="Divorced">Divorced</option>
                 <option value="Widowed">Widowed</option>
               </select>
+              {errors.maritalStatus && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.maritalStatus}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Languages Known</label>
-              <input type="text" name="languagesKnown" value={formData.languagesKnown} onChange={handleChange} placeholder="e.g. English, Hindi" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              <input type="text" name="languagesKnown" value={formData.languagesKnown} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.languagesKnown ? "true" : "false"} placeholder="e.g. English, Hindi" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              {errors.languagesKnown && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.languagesKnown}</p>}
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Mobile Number</label>
-              <input type="tel" name="mobileNumber" value={formData.mobileNumber} onChange={handleChange} placeholder="9876543210" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Mobile Number <span className="text-red-500">*</span></label>
+              <input type="tel" name="mobileNumber" inputMode="numeric" autoComplete="off" value={formData.mobileNumber} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.mobileNumber ? "true" : "false"} placeholder="9876543210" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              {errors.mobileNumber && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.mobileNumber}</p>}
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Emergency Contact</label>
-              <input type="tel" name="emergencyContact" value={formData.emergencyContact} onChange={handleChange} placeholder="Emergency contact no." className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Emergency Contact <span className="text-red-500">*</span></label>
+              <input type="tel" name="emergencyContact" inputMode="numeric" autoComplete="off" value={formData.emergencyContact} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.emergencyContact ? "true" : "false"} placeholder="Emergency contact no." className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              {errors.emergencyContact && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.emergencyContact}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Father / Guardian Name</label>
-              <input type="text" name="fatherGuardianName" value={formData.fatherGuardianName} onChange={handleChange} placeholder="Father or Guardian Name" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              <input type="text" name="fatherGuardianName" value={formData.fatherGuardianName} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.fatherGuardianName ? "true" : "false"} placeholder="Father or Guardian Name" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              {errors.fatherGuardianName && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.fatherGuardianName}</p>}
             </div>
           </div>
         </div>
@@ -384,8 +501,8 @@ export default function ProfileSetup() {
             <LuMapPin className="text-indigo-500" /> Address Details
           </h2>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Residential Address</label>
-            <textarea name="residentialAddress" value={formData.residentialAddress} onChange={handleChange} rows="3" placeholder="Enter your full residential address" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none resize-none transition-all text-sm"></textarea>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Residential Address <span className="text-red-500">*</span></label>
+            <textarea name="residentialAddress" value={formData.residentialAddress} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.residentialAddress ? "true" : "false"} rows="3" placeholder="Enter your full residential address" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none resize-none transition-all text-sm"></textarea>
           </div>
         </div>
 
@@ -396,20 +513,24 @@ export default function ProfileSetup() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Highest Qualification</label>
-              <input type="text" name="highestQualification" value={formData.highestQualification} onChange={handleChange} placeholder="e.g. M.Sc, B.Ed" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-sm" />
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Highest Qualification <span className="text-red-500">*</span></label>
+              <input type="text" name="highestQualification" value={formData.highestQualification} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.highestQualification ? "true" : "false"} placeholder="e.g. M.Sc, B.Ed" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-sm" />
+              {errors.highestQualification && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.highestQualification}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Degree & Specialization</label>
-              <input type="text" name="degreeSpecialization" value={formData.degreeSpecialization} onChange={handleChange} placeholder="e.g. Physics" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-sm" />
+              <input type="text" name="degreeSpecialization" value={formData.degreeSpecialization} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.degreeSpecialization ? "true" : "false"} placeholder="e.g. Physics" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-sm" />
+              {errors.degreeSpecialization && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.degreeSpecialization}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">University / College Name</label>
-              <input type="text" name="universityName" value={formData.universityName} onChange={handleChange} placeholder="University / College Name" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-sm" />
+              <input type="text" name="universityName" value={formData.universityName} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.universityName ? "true" : "false"} placeholder="University / College Name" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-sm" />
+              {errors.universityName && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.universityName}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Year of Passing</label>
-              <input type="text" name="yearOfPassing" value={formData.yearOfPassing} onChange={handleChange} placeholder="e.g. 2018" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-sm" />
+              <input type="text" name="yearOfPassing" inputMode="numeric" autoComplete="off" value={formData.yearOfPassing} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.yearOfPassing ? "true" : "false"} placeholder="e.g. 2018" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-sm" />
+              {errors.yearOfPassing && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.yearOfPassing}</p>}
             </div>
           </div>
         </div>
@@ -422,23 +543,28 @@ export default function ProfileSetup() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Years of Previous Experience</label>
-              <input type="number" name="previousExperience" value={formData.previousExperience} onChange={handleChange} placeholder="e.g. 5" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-amber-500 outline-none transition-all text-sm" />
+              <input type="text" inputMode="decimal" name="previousExperience" value={formData.previousExperience} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.previousExperience ? "true" : "false"} placeholder="e.g. 5" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-amber-500 outline-none transition-all text-sm" />
+              {errors.previousExperience && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.previousExperience}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Previous School / Organization</label>
-              <input type="text" name="previousOrganization" value={formData.previousOrganization} onChange={handleChange} placeholder="Previous school name" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-amber-500 outline-none transition-all text-sm" />
+              <input type="text" name="previousOrganization" value={formData.previousOrganization} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.previousOrganization ? "true" : "false"} placeholder="Previous school name" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-amber-500 outline-none transition-all text-sm" />
+              {errors.previousOrganization && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.previousOrganization}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Subject Specialization</label>
-              <input type="text" name="subjectSpecialization" value={formData.subjectSpecialization} onChange={handleChange} placeholder="e.g. Mathematics" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-amber-500 outline-none transition-all text-sm" />
+              <input type="text" name="subjectSpecialization" value={formData.subjectSpecialization} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.subjectSpecialization ? "true" : "false"} placeholder="e.g. Mathematics" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-amber-500 outline-none transition-all text-sm" />
+              {errors.subjectSpecialization && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.subjectSpecialization}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Grades/Classes Handled</label>
-              <input type="text" name="gradesClassesHandled" value={formData.gradesClassesHandled} onChange={handleChange} placeholder="e.g. Class 8 - 10" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-amber-500 outline-none transition-all text-sm" />
+              <input type="text" name="gradesClassesHandled" value={formData.gradesClassesHandled} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.gradesClassesHandled ? "true" : "false"} placeholder="e.g. Class 8 - 10" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-amber-500 outline-none transition-all text-sm" />
+              {errors.gradesClassesHandled && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.gradesClassesHandled}</p>}
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Professional Certifications</label>
-              <input type="text" name="professionalCertifications" value={formData.professionalCertifications} onChange={handleChange} placeholder="e.g. TEFL, Microsoft Certified Educator" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-amber-500 outline-none transition-all text-sm" />
+              <input type="text" name="professionalCertifications" value={formData.professionalCertifications} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.professionalCertifications ? "true" : "false"} placeholder="e.g. TEFL, Microsoft Certified Educator" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-amber-500 outline-none transition-all text-sm" />
+              {errors.professionalCertifications && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.professionalCertifications}</p>}
             </div>
           </div>
         </div>
@@ -451,35 +577,45 @@ export default function ProfileSetup() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Government ID Type</label>
-              <input type="text" name="govtIdType" value={formData.govtIdType} onChange={handleChange} placeholder="e.g. Aadhaar / Voter ID" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" />
+              <select name="govtIdType" value={formData.govtIdType} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.govtIdType ? "true" : "false"} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm bg-white dark:bg-slate-900">
+                {GOVT_ID_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              {errors.govtIdType && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.govtIdType}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Government ID Number</label>
-              <input type="text" name="govtIdNumber" value={formData.govtIdNumber} onChange={handleChange} placeholder="ID number" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" />
+              <input type="text" name="govtIdNumber" value={formData.govtIdNumber} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.govtIdNumber ? "true" : "false"} placeholder="ID number" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" />
+              {errors.govtIdNumber && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.govtIdNumber}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Aadhaar Number</label>
-              <input type="text" name="aadharNumber" value={formData.aadharNumber} onChange={handleChange} placeholder="12-digit Aadhaar" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" />
+              <input type="text" name="aadharNumber" inputMode="numeric" autoComplete="off" value={formData.aadharNumber} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.aadharNumber ? "true" : "false"} placeholder="12-digit Aadhaar" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" />
+              {errors.aadharNumber && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.aadharNumber}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">PAN Number</label>
-              <input type="text" name="panNumber" value={formData.panNumber} onChange={handleChange} placeholder="PAN number" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none uppercase transition-all text-sm" />
+              <input type="text" name="panNumber" value={formData.panNumber} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.panNumber ? "true" : "false"} placeholder="PAN number" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none uppercase transition-all text-sm" />
+              {errors.panNumber && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.panNumber}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">PF Number</label>
-              <input type="text" name="pfNumber" value={formData.pfNumber} onChange={handleChange} placeholder="PF number" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" />
+              <input type="text" name="pfNumber" value={formData.pfNumber} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.pfNumber ? "true" : "false"} placeholder="PF number" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" />
+              {errors.pfNumber && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.pfNumber}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">ESIC Number</label>
-              <input type="text" name="esicNumber" value={formData.esicNumber} onChange={handleChange} placeholder="ESIC number" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" />
+              <input type="text" name="esicNumber" inputMode="numeric" autoComplete="off" value={formData.esicNumber} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.esicNumber ? "true" : "false"} placeholder="ESIC number" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" />
+              {errors.esicNumber && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.esicNumber}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">UAN Number</label>
-              <input type="text" name="uanNumber" value={formData.uanNumber} onChange={handleChange} placeholder="UAN number" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" />
+              <input type="text" name="uanNumber" inputMode="numeric" autoComplete="off" value={formData.uanNumber} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.uanNumber ? "true" : "false"} placeholder="UAN number" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" />
+              {errors.uanNumber && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.uanNumber}</p>}
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Tax Identification / PAN Details</label>
-              <input type="text" name="taxIdDetails" value={formData.taxIdDetails} onChange={handleChange} placeholder="Tax Details" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" />
+              <input type="text" name="taxIdDetails" value={formData.taxIdDetails} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.taxIdDetails ? "true" : "false"} placeholder="Tax Details" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" />
+              {errors.taxIdDetails && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.taxIdDetails}</p>}
             </div>
           </div>
         </div>
@@ -492,19 +628,23 @@ export default function ProfileSetup() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Bank Name</label>
-              <input type="text" name="bankName" value={formData.bankName} onChange={handleChange} placeholder="e.g. HDFC Bank" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm" />
+              <input type="text" name="bankName" value={formData.bankName} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.bankName ? "true" : "false"} placeholder="e.g. HDFC Bank" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm" />
+              {errors.bankName && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.bankName}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Account Number</label>
-              <input type="text" name="bankAccountNumber" value={formData.bankAccountNumber} onChange={handleChange} placeholder="Account number" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm" />
+              <input type="text" name="bankAccountNumber" inputMode="numeric" autoComplete="off" value={formData.bankAccountNumber} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.bankAccountNumber ? "true" : "false"} placeholder="Account number" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm" />
+              {errors.bankAccountNumber && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.bankAccountNumber}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Branch Name</label>
-              <input type="text" name="branchName" value={formData.branchName} onChange={handleChange} placeholder="Branch name" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm" />
+              <input type="text" name="branchName" value={formData.branchName} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.branchName ? "true" : "false"} placeholder="Branch name" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm" />
+              {errors.branchName && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.branchName}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">IFSC Code</label>
-              <input type="text" name="ifscCode" value={formData.ifscCode} onChange={handleChange} placeholder="IFSC code" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none uppercase transition-all text-sm" />
+              <input type="text" name="ifscCode" value={formData.ifscCode} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.ifscCode ? "true" : "false"} placeholder="IFSC code" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none uppercase transition-all text-sm" />
+              {errors.ifscCode && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.ifscCode}</p>}
             </div>
           </div>
         </div>
@@ -527,11 +667,10 @@ export default function ProfileSetup() {
 
           {passwordStatus && (
             <div
-              className={`mb-4 p-3.5 rounded-xl text-sm flex items-start gap-2.5 ${
-                passwordStatus.type === 'success'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40'
-                  : 'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/40'
-              }`}
+              className={`mb-4 p-3.5 rounded-xl text-sm flex items-start gap-2.5 ${passwordStatus.type === 'success'
+                ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40'
+                : 'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/40'
+                }`}
             >
               {passwordStatus.type === 'success' && <LuCircleCheck className="shrink-0 mt-0.5 text-emerald-600" size={17} />}
               <span>{passwordStatus.message}</span>

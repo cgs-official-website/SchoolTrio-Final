@@ -12,6 +12,9 @@ export default function LeaveRequests() {
   const schoolId = userProfile?.schoolId;
 
   const [leaves, setLeaves] = useState([]);
+  const [classLeaves, setClassLeaves] = useState([]);
+  const [classInfo, setClassInfo] = useState([]);
+  const [reviewingId, setReviewingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -45,12 +48,36 @@ export default function LeaveRequests() {
     }
   }, [schoolId]);
 
+  // Student leave requests of the class this teacher is class teacher of (read-only)
+  const fetchClassLeaves = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      const res = await leavesApi.getMyClassStudentLeaves({ limit: 100 });
+      if (res && res.success && Array.isArray(res.data)) {
+        setClassLeaves(res.data);
+        setClassInfo(Array.isArray(res.classes) ? res.classes : []);
+      } else {
+        setClassLeaves([]);
+        setClassInfo([]);
+      }
+    } catch (error) {
+      console.error('Failed to load class student leave requests:', error);
+      setClassLeaves([]);
+      setClassInfo([]);
+    }
+  }, [schoolId]);
+
   useEffect(() => {
     fetchMyLeaves();
   }, [fetchMyLeaves]);
 
+  useEffect(() => {
+    fetchClassLeaves();
+  }, [fetchClassLeaves]);
+
   // Live data synchronization for staff leave requests
   useLiveDataRefresh(fetchMyLeaves, [fetchMyLeaves], ['leaves', 'leave']);
+  useLiveDataRefresh(fetchClassLeaves, [fetchClassLeaves], ['leaves', 'leave']);
 
   const handleOpenModal = () => {
     setFormData({
@@ -127,8 +154,25 @@ export default function LeaveRequests() {
     }
   };
 
+  // Approve / Reject a student's leave (first reviewer - teacher or admin - decides for everyone)
+  const handleReviewStudentLeave = async (leaveId, newStatus) => {
+    setReviewingId(leaveId);
+    try {
+      await leavesApi.updateClassStudentLeaveStatus(leaveId, { status: newStatus });
+      notifyDataChanged('leaves');
+      notifyDataChanged('leave');
+      toast.success(`Leave request ${newStatus.toLowerCase()} successfully!`);
+    } catch (error) {
+      console.error(error);
+      toast.error(error?.message || `Failed to ${newStatus.toLowerCase()} leave request.`);
+    } finally {
+      setReviewingId(null);
+      await fetchClassLeaves();
+    }
+  };
+
   const getStatusBadge = (status) => {
-    switch(status) {
+    switch (status) {
       case 'Approved': return <span className="flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-700 rounded-full text-xs font-bold"><LuCircleCheck size={14} /> Approved</span>;
       case 'Rejected': return <span className="flex items-center gap-1.5 px-3 py-1 bg-red-50 text-red-700 rounded-full text-xs font-bold"><LuCircleX size={14} /> Rejected</span>;
       default: return <span className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-bold animate-pulse"><LuClock size={14} /> Pending</span>;
@@ -143,7 +187,7 @@ export default function LeaveRequests() {
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Leave Requests</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1">Apply for leaves and track your approval status.</p>
         </div>
-        <button 
+        <button
           onClick={handleOpenModal}
           className="px-6 py-2.5 bg-primary-600 text-white font-bold rounded-xl hover:bg-primary-700 transition-colors flex items-center gap-2"
         >
@@ -152,7 +196,7 @@ export default function LeaveRequests() {
       </div>
 
       {/* Main Request History Box */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col flex-1 min-h-[320px] overflow-hidden">
         <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between shrink-0">
           <h3 className="font-bold text-slate-900 dark:text-white text-lg">Leave History</h3>
           <span className="text-xs text-slate-400 dark:text-slate-300 font-semibold">{leaves.length} Applications</span>
@@ -223,16 +267,107 @@ export default function LeaveRequests() {
         </div>
       </div>
 
+      {/* Student Leave Requests of the class teacher's own class (read-only) */}
+      {classInfo.length > 0 && (
+        <div className="mt-8 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden shrink-0">
+          <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-slate-900 dark:text-white text-lg">Student Leave Requests</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Students of {classInfo.map(c => c.name).join(', ')}
+              </p>
+            </div>
+            <span className="text-xs text-slate-400 dark:text-slate-300 font-semibold">{classLeaves.length} Applications</span>
+          </div>
+
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {classLeaves.map(leave => (
+                <div key={leave.id} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary-350 hover:shadow-md transition-all flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start mb-3 gap-2">
+                      <span className="px-3 py-1 bg-primary-50 text-primary-700 rounded-lg text-xs font-extrabold uppercase tracking-wide">
+                        {leave.leaveType}
+                      </span>
+                      {getStatusBadge(leave.status)}
+                    </div>
+
+                    <div className="mb-3">
+                      <p className="text-sm font-extrabold text-slate-900 dark:text-white">{leave.applicantName}</p>
+                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        {[leave.className && (leave.sectionName ? `${leave.className} - ${leave.sectionName}` : leave.className), leave.admissionNumber].filter(Boolean).join(' • ')}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2 mb-4">
+                      <p className="text-xs font-bold text-slate-400 dark:text-slate-300 flex items-center gap-2">
+                        <LuCalendar size={14} className="text-slate-400 dark:text-slate-300" />
+                        {new Date(leave.startDate).toLocaleDateString('en-GB')} — {new Date(leave.endDate).toLocaleDateString('en-GB')}
+                      </p>
+                      <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-relaxed line-clamp-3">
+                        "{leave.reason}"
+                      </h4>
+                    </div>
+                  </div>
+
+                  {leave.status === 'Pending' && (
+                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center gap-3 mb-1">
+                      <button
+                        type="button"
+                        disabled={reviewingId === leave.id}
+                        onClick={() => handleReviewStudentLeave(leave.id, 'Approved')}
+                        className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold transition-colors disabled:opacity-50"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        disabled={reviewingId === leave.id}
+                        onClick={() => handleReviewStudentLeave(leave.id, 'Rejected')}
+                        className="flex-1 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition-colors disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  )}
+
+                  {leave.supportingDoc && leave.supportingDoc.url && (
+                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      <span className="truncate max-w-[120px] mr-2">{leave.supportingDoc.name}</span>
+                      <a
+                        href={leave.supportingDoc.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary-600 hover:text-primary-800 font-bold hover:underline flex items-center gap-0.5 shrink-0"
+                      >
+                        <LuDownload size={12} />
+                        Download
+                      </a>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {classLeaves.length === 0 && (
+                <div className="col-span-full text-center py-8 text-slate-500 dark:text-slate-400">
+                  <p className="text-sm font-medium">No student leave requests for your class yet.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Request Leave Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
-          <form 
+          <form
             onSubmit={handleSubmit}
             className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden transform transition-all flex flex-col max-h-[90vh]"
           >
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">Request Leave</h3>
-              <button 
+              <button
                 type="button"
                 onClick={() => setShowModal(false)}
                 className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300 rounded-xl transition-colors"
@@ -314,9 +449,9 @@ export default function LeaveRequests() {
                     <div className="flex text-sm text-slate-600 dark:text-slate-300 justify-center">
                       <label className="relative cursor-pointer bg-white dark:bg-slate-900 rounded-md font-bold text-primary-600 hover:text-primary-700 focus-within:outline-none">
                         <span>{selectedFile ? 'Change file' : 'Select a file'}</span>
-                        <input 
-                          type="file" 
-                          className="sr-only" 
+                        <input
+                          type="file"
+                          className="sr-only"
                           onChange={(e) => {
                             const file = e.target.files[0];
                             if (file) {

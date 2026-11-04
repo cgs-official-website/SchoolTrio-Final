@@ -119,6 +119,7 @@ model User {
   roleAssignments       UserRoleAssignment[]
   supportTickets        SupportTicket[]
   supportTicketMessages SupportTicketMessage[]
+  contactReplies        ContactMessageReply[]
 
   @@unique([schoolId, email])
   @@index([schoolId])
@@ -341,20 +342,23 @@ model Class {
 }
 
 model Section {
-  id        String   @id @default(uuid()) @db.Uuid
-  schoolId  String   @map("school_id") @db.Uuid
-  classId   String   @map("class_id") @db.Uuid
-  name      String   @db.VarChar(50)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  schoolId       String   @map("school_id") @db.Uuid
+  classId        String   @map("class_id") @db.Uuid
+  name           String   @db.VarChar(50)
+  classTeacherId String?  @map("class_teacher_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   class              Class               @relation(fields: [schoolId, classId], references: [schoolId, id], onDelete: Cascade)
+  classTeacher       StaffProfile?       @relation("SectionClassTeacherRelation", fields: [classTeacherId], references: [id], onDelete: SetNull)
   students           Student[]
   timetablePeriods   TimetablePeriod[]
   attendanceSessions AttendanceSession[]
 
   @@unique([schoolId, id])
   @@unique([schoolId, classId, name])
+  @@index([classTeacherId])
   @@map("sections")
 }
 
@@ -558,6 +562,7 @@ model StaffProfile {
   user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignedClass Class?            @relation("AssignedClassRelation", fields: [assignedClassId], references: [id], onDelete: SetNull)
   headedClasses Class[]           @relation("ClassTeacherRelation")
+  headedSections Section[]        @relation("SectionClassTeacherRelation")
   payroll       HRPayrollRecord[]
   lessonPlans   LessonPlan[]
   timetables    TimetablePeriod[]
@@ -609,7 +614,9 @@ model AttendanceSession {
   records AttendanceRecord[]
 
   @@unique([schoolId, id])
-  @@unique([schoolId, classId, date, session])
+  // Uniqueness per (class, section, date, session) is enforced by a DB expression index
+  // (attendance_sessions_class_section_date_session_key) because section_id may be NULL.
+  @@index([schoolId, classId, date, session])
   @@index([schoolId, date])
   @@map("attendance_sessions")
 }
@@ -1429,5 +1436,51 @@ model SupportTicketMessage {
 
   @@index([ticketId, createdAt])
   @@map("support_ticket_messages")
+}
+
+// ============================================================
+// 12. PUBLIC CONTACT MESSAGES & RESPONSES
+// ============================================================
+
+model ContactMessage {
+  id                  String                @id @default(uuid()) @db.Uuid
+  name                String                @db.VarChar(150)
+  email               String                @db.VarChar(255)
+  subject             String?               @db.VarChar(255)
+  message             String                @db.Text
+  status              String                @default("new") @db.VarChar(30)
+  ipAddress           String?               @map("ip_address") @db.VarChar(45)
+  userAgent           String?               @map("user_agent") @db.VarChar(255)
+  reply               String?               @db.Text
+  repliedAt           DateTime?             @map("replied_at")
+  repliedBy           String?               @map("replied_by") @db.VarChar(200)
+  emailDeliveryStatus String?               @map("email_delivery_status") @db.VarChar(50)
+  emailDeliveryError  String?               @map("email_delivery_error") @db.Text
+  createdAt           DateTime              @default(now()) @map("created_at")
+  updatedAt           DateTime              @updatedAt @map("updated_at")
+
+  replies             ContactMessageReply[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([email])
+  @@map("contact_messages")
+}
+
+model ContactMessageReply {
+  id                  String         @id @default(uuid()) @db.Uuid
+  messageId           String         @map("message_id") @db.Uuid
+  adminId             String?        @map("admin_id") @db.Uuid
+  adminName           String         @map("admin_name") @db.VarChar(200)
+  replyText           String         @map("reply_text") @db.Text
+  emailDeliveryStatus String         @default("pending") @map("email_delivery_status") @db.VarChar(50)
+  emailDeliveryError  String?        @map("email_delivery_error") @db.Text
+  createdAt           DateTime       @default(now()) @map("created_at")
+
+  message             ContactMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  admin               User?          @relation(fields: [adminId], references: [id], onDelete: SetNull)
+
+  @@index([messageId, createdAt])
+  @@map("contact_message_replies")
 }
 

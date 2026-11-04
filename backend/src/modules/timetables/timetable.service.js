@@ -50,30 +50,30 @@ export function formatPeriod(period) {
     updatedAt: period.updatedAt,
     class: period.class
       ? {
-          id: period.class.id,
-          name: period.class.name
-        }
+        id: period.class.id,
+        name: period.class.name
+      }
       : null,
     section: period.section
       ? {
-          id: period.section.id,
-          name: period.section.name
-        }
+        id: period.section.id,
+        name: period.section.name
+      }
       : null,
     subject: period.subject
       ? {
-          id: period.subject.id,
-          name: period.subject.name,
-          code: period.subject.code || null
-        }
+        id: period.subject.id,
+        name: period.subject.name,
+        code: period.subject.code || null
+      }
       : null,
     teacher: period.teacher
       ? {
-          id: period.teacher.id,
-          name: period.teacher.name,
-          email: period.teacher.email || null,
-          phone: period.teacher.phone || null
-        }
+        id: period.teacher.id,
+        name: period.teacher.name,
+        email: period.teacher.email || null,
+        phone: period.teacher.phone || null
+      }
       : null
   };
 }
@@ -108,6 +108,41 @@ export function formatScheduleGrid(periods = []) {
   }
 
   return grid;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Narrows a list of periods to the ones a given section should see.
+ *
+ * Each section of a class owns its timetable (its own subjects / teachers / periods).
+ * For every class in `periods`:
+ *   - if the viewer's section(s) have periods of their own -> only those are returned;
+ *   - otherwise the legacy shared (section-less) periods are returned as a fallback, so
+ *     timetables created before per-section support keep working until they are re-saved.
+ *
+ * @param {Array<Object>} periods - Raw periods (with classId / sectionId)
+ * @param {Array<string>} sectionIds - Section ids of the viewer
+ * @returns {Array<Object>}
+ */
+export function pickSectionPeriods(periods = [], sectionIds = []) {
+  const wanted = new Set((sectionIds || []).filter(Boolean));
+  const byClass = new Map();
+  for (const p of periods) {
+    if (!byClass.has(p.classId)) byClass.set(p.classId, []);
+    byClass.get(p.classId).push(p);
+  }
+
+  const result = [];
+  for (const classPeriods of byClass.values()) {
+    const own = classPeriods.filter((p) => p.sectionId && wanted.has(p.sectionId));
+    if (own.length > 0) {
+      result.push(...own);
+    } else {
+      result.push(...classPeriods.filter((p) => !p.sectionId));
+    }
+  }
+  return result;
 }
 
 /**
@@ -169,6 +204,8 @@ export async function listTimetables(schoolId, query = {}, actor = {}) {
     dayOfWeek: query.dayOfWeek
   };
 
+  let scopedSectionIds = null;
+
   // 1. Parent Scope Enforcement
   if (isParent(actor)) {
     const userId = actor.id || actor.userId;
@@ -185,6 +222,14 @@ export async function listTimetables(schoolId, query = {}, actor = {}) {
     } else if (authorizedClassIds.length === 1) {
       filterOptions.classId = authorizedClassIds[0];
     }
+
+    // Parents only see the timetable of the section(s) their children attend
+    const parentSectionIds = await timetableRepository.findAuthorizedSectionIdsForParent(
+      schoolId,
+      userId,
+      filterOptions.classId || null
+    );
+    scopedSectionIds = parentSectionIds;
   }
 
   // 2. Student Scope Enforcement
@@ -201,9 +246,16 @@ export async function listTimetables(schoolId, query = {}, actor = {}) {
     }
 
     filterOptions.classId = student.classId;
+    scopedSectionIds = student.sectionId ? [student.sectionId] : [];
   }
 
-  const periods = await timetableRepository.findTimetablePeriods(schoolId, filterOptions);
+  let periods = await timetableRepository.findTimetablePeriods(schoolId, filterOptions);
+
+  // Students / parents: only their own section's timetable (not every section of the class)
+  if (scopedSectionIds && !filterOptions.sectionId) {
+    periods = pickSectionPeriods(periods, scopedSectionIds);
+  }
+
   return periods.map(formatPeriod);
 }
 
@@ -215,7 +267,7 @@ export async function listTimetables(schoolId, query = {}, actor = {}) {
  * @param {Object} [actor={}] - Authenticated actor
  * @returns {Promise<Object>}
  */
-export async function getClassTimetable(schoolId, classId, actor = {}) {
+export async function getClassTimetable(schoolId, classId, actor = {}, options = {}) {
   if (!schoolId) {
     throw new TenantAccessError('Tenant context required to get class timetable');
   }
@@ -234,23 +286,58 @@ export async function getClassTimetable(schoolId, classId, actor = {}) {
     }
   }
 
-  // Student Authorization Check
+  // Resolve which section's timetable is requested
+  let scopedSectionIds = null;
+  let targetSection = null;
+
+  if (options.sectionId) {
+    if (!UUID_RE.test(options.sectionId)) {
+      throw new ValidationError('sectionId must be a valid UUID');
+    }
+    targetSection = await timetableRepository.findSectionInTenant(schoolId, options.sectionId, classId);
+    if (!targetSection) {
+      throw new NotFoundError('Section not found for this class');
+    }
+    scopedSectionIds = [targetSection.id];
+  }
+
+  // Student Authorization Check (students are always pinned to their own section)
   if (isStudent(actor)) {
     const userId = actor.id || actor.userId;
     const student = await timetableRepository.findStudentByUserId(schoolId, userId);
     if (!student || student.classId !== classId) {
       throw new NotFoundError('Class not found for active school');
     }
+    scopedSectionIds = student.sectionId ? [student.sectionId] : [];
   }
 
-  const periods = await timetableRepository.findTimetablePeriods(schoolId, { classId });
+  // Parents are limited to the section(s) of their own children
+  if (isParent(actor)) {
+    const userId = actor.id || actor.userId;
+    const childSectionIds = await timetableRepository.findAuthorizedSectionIdsForParent(schoolId, userId, classId);
+    scopedSectionIds = scopedSectionIds
+      ? scopedSectionIds.filter((id) => childSectionIds.includes(id))
+      : childSectionIds;
+  }
+
+  let periods = await timetableRepository.findTimetablePeriods(schoolId, { classId });
+  if (scopedSectionIds) {
+    periods = pickSectionPeriods(periods, scopedSectionIds);
+  }
   const schedule = formatScheduleGrid(periods);
+
+  // Class teacher of the requested section (falls back to the class-level teacher)
+  const sectionTeacher = targetSection
+    ? await timetableRepository.findSectionClassTeacher(schoolId, targetSection.id)
+    : null;
 
   return {
     classId: targetClass.id,
     className: targetClass.name,
-    classTeacherId: targetClass.classTeacherId || null,
-    classTeacherName: targetClass.classTeacher?.name || null,
+    sectionId: targetSection?.id || null,
+    sectionName: targetSection?.name || null,
+    classTeacherId: sectionTeacher?.id || targetClass.classTeacherId || null,
+    classTeacherName: sectionTeacher?.name || targetClass.classTeacher?.name || null,
     schedule,
     periods: periods.map(formatPeriod)
   };
@@ -297,6 +384,9 @@ export async function createTimetablePeriod(schoolId, data, actor = {}) {
   }
 
   // 4. Verify teacher if provided
+  if (!data.teacherId) {
+    throw new ValidationError('A teacher must be assigned to the period');
+  }
   if (data.teacherId) {
     const targetTeacher = await timetableRepository.findTeacherInTenant(schoolId, data.teacherId);
     if (!targetTeacher) {
@@ -356,7 +446,7 @@ export async function createTimetablePeriod(schoolId, data, actor = {}) {
       startTime: created.startTime,
       endTime: created.endTime
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
   return formatPeriod(created);
 }
@@ -407,6 +497,9 @@ export async function updateTimetablePeriod(schoolId, id, data, actor = {}) {
   }
 
   // 4. Verify teacher if provided
+  if (data.teacherId !== undefined && !data.teacherId) {
+    throw new ValidationError('A teacher must be assigned to the period');
+  }
   if (data.teacherId) {
     const targetTeacher = await timetableRepository.findTeacherInTenant(schoolId, data.teacherId);
     if (!targetTeacher) {
@@ -466,7 +559,7 @@ export async function updateTimetablePeriod(schoolId, id, data, actor = {}) {
     userName: actor?.name || actor?.email || 'Administrator',
     userRole: actor?.role || actor?.systemRole || null,
     modifiedFields: data
-  }).catch(() => {});
+  }).catch(() => { });
 
   return formatPeriod(updated);
 }
@@ -508,7 +601,7 @@ export async function deleteTimetablePeriod(schoolId, id, actor = {}) {
         endTime: existing.endTime
       }
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
   return {
     message: 'Timetable period deleted successfully',
@@ -534,6 +627,18 @@ export async function replaceClassTimetable(schoolId, classId, payload = {}, act
   const targetClass = await timetableRepository.findClassInTenant(schoolId, classId);
   if (!targetClass) {
     throw new NotFoundError('Class not found for active school');
+  }
+
+  // 1b. Section-scoped save: only this section's timetable is replaced
+  let targetSection = null;
+  if (payload.sectionId) {
+    if (!UUID_RE.test(payload.sectionId)) {
+      throw new ValidationError('sectionId must be a valid UUID');
+    }
+    targetSection = await timetableRepository.findSectionInTenant(schoolId, payload.sectionId, classId);
+    if (!targetSection) {
+      throw new NotFoundError(`Section '${payload.sectionId}' not found for class in active school`);
+    }
   }
 
   // 2. Flatten and normalize incoming slots from schedule map or periods array
@@ -581,8 +686,8 @@ export async function replaceClassTimetable(schoolId, classId, payload = {}, act
       throw new ValidationError(`Period at index ${i} has endTime earlier than or equal to startTime (${slot.startTime} - ${slot.endTime})`);
     }
 
-    // Verify section if provided
-    if (slot.sectionId) {
+    // Verify section if provided (a section-scoped save forces every slot onto that section)
+    if (!targetSection && slot.sectionId) {
       const section = await timetableRepository.findSectionInTenant(schoolId, slot.sectionId, classId);
       if (!section) {
         throw new NotFoundError(`Section '${slot.sectionId}' not found for class in active school`);
@@ -597,7 +702,12 @@ export async function replaceClassTimetable(schoolId, classId, payload = {}, act
       }
     }
 
-    // Verify teacher if provided
+    // A teacher must be assigned to every period
+    if (!slot.teacherId) {
+      throw new ValidationError(`Period at index ${i} requires a teacher to be assigned`);
+    }
+
+    // Verify teacher
     if (slot.teacherId) {
       const teacher = await timetableRepository.findTeacherInTenant(schoolId, slot.teacherId);
       if (!teacher) {
@@ -607,7 +717,7 @@ export async function replaceClassTimetable(schoolId, classId, payload = {}, act
 
     validatedPeriods.push({
       classId,
-      sectionId: slot.sectionId || null,
+      sectionId: targetSection ? targetSection.id : (slot.sectionId || null),
       subjectId: slot.subjectId || null,
       teacherId: slot.teacherId || null,
       dayOfWeek: slot.dayOfWeek,
@@ -677,8 +787,13 @@ export async function replaceClassTimetable(schoolId, classId, payload = {}, act
 
   // 4. Execute atomic replacement inside transaction
   const savedPeriods = await timetableRepository.runTransaction(async (tx) => {
-    return timetableRepository.replaceClassTimetable(schoolId, classId, validatedPeriods, tx);
+    return timetableRepository.replaceClassTimetable(schoolId, classId, validatedPeriods, tx, {
+      sectionId: targetSection?.id || null
+    });
   });
+
+  // Return only what the saved section should see (its own periods, or the shared fallback)
+  const visiblePeriods = targetSection ? pickSectionPeriods(savedPeriods, [targetSection.id]) : savedPeriods;
 
   createAuditLog({
     schoolId,
@@ -689,19 +804,22 @@ export async function replaceClassTimetable(schoolId, classId, payload = {}, act
     userRole: actor?.role || actor?.systemRole || null,
     modifiedFields: {
       classId,
+      sectionId: targetSection?.id || null,
       periodCount: validatedPeriods.length
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
-  const schedule = formatScheduleGrid(savedPeriods);
+  const schedule = formatScheduleGrid(visiblePeriods);
 
   return {
     classId: targetClass.id,
     className: targetClass.name,
+    sectionId: targetSection?.id || null,
+    sectionName: targetSection?.name || null,
     classTeacherId: targetClass.classTeacherId || null,
     classTeacherName: targetClass.classTeacher?.name || null,
     schedule,
-    periods: savedPeriods.map(formatPeriod)
+    periods: visiblePeriods.map(formatPeriod)
   };
 }
 
@@ -733,6 +851,20 @@ export async function getMySchedule(schoolId, actor) {
       classId: teacherProfile.assignedClassId
     });
     assignedClassName = teacherProfile.assignedClass?.name || null;
+
+    // A class teacher heads ONE section (stored as the section id in assignments): show that
+    // section's timetable, not the merged timetable of every section of the class.
+    const assignedUnitId = teacherProfile.customData?.assignments?.assignedClassId;
+    if (assignedUnitId && assignedUnitId !== teacherProfile.assignedClassId && UUID_RE.test(assignedUnitId)) {
+      const headedSection = await timetableRepository.findSectionInTenant(
+        schoolId,
+        assignedUnitId,
+        teacherProfile.assignedClassId
+      );
+      if (headedSection) {
+        classPeriods = pickSectionPeriods(classPeriods, [headedSection.id]);
+      }
+    }
   }
 
   return {
