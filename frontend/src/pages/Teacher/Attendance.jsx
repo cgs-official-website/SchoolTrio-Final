@@ -791,7 +791,16 @@ export default function Attendance() {
             </div>
             <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">Daily Attendance</h1>
             <p className="text-primary-100 mt-1">
-              Mark student attendance for {selectedDate} ({selectedSession === 'FN' ? 'Forenoon' : 'Afternoon'})
+              {(() => {
+                const sessionLabel = selectedSession === 'FN' ? 'Forenoon' : 'Afternoon';
+                if (daySessionStatus.fn && daySessionStatus.an) {
+                  return `Attendance marked for ${selectedDate} (Forenoon & Afternoon)`;
+                }
+                const selectedMarked = selectedSession === 'FN' ? daySessionStatus.fn : daySessionStatus.an;
+                return selectedMarked
+                  ? `Attendance marked for ${selectedDate} (${sessionLabel})`
+                  : `Mark student attendance for ${selectedDate} (${sessionLabel})`;
+              })()}
             </p>
           </div>
 

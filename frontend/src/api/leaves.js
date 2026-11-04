@@ -109,6 +109,35 @@ export async function createMyLeave(payload = {}) {
 }
 
 /**
+ * Lists student leave applications for the authenticated class teacher's own class(es).
+ * Calls GET /api/v1/staff/me/class-leaves.
+ *
+ * @param {Object} [query={}] - Optional query filters ({ page, limit, status, order })
+ * @returns {Promise<{ success: boolean, data: Array<Object>, classes: Array<Object>, pagination: Object }>}
+ */
+export async function getMyClassStudentLeaves(query = {}) {
+  const qs = buildQueryString(query);
+  return apiClient(`/api/v1/staff/me/class-leaves${qs}`, {
+    method: 'GET'
+  });
+}
+
+/**
+ * Class teacher approves / rejects a pending student leave of their own section/class.
+ * Calls PATCH /api/v1/staff/me/class-leaves/:id/status.
+ *
+ * @param {string} id - Leave application UUID
+ * @param {Object} payload - { status: 'Approved' | 'Rejected' }
+ * @returns {Promise<{ success: boolean, data: Object, message?: string }>}
+ */
+export async function updateClassStudentLeaveStatus(id, payload = {}) {
+  return apiClient(`/api/v1/staff/me/class-leaves/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+}
+
+/**
  * Lists leave applications for a specific student.
  * Calls GET /api/v1/students/:studentId/leaves.
  *
@@ -215,6 +244,8 @@ export const leavesApi = {
   deleteLeave,
   getMyLeaves,
   createMyLeave,
+  getMyClassStudentLeaves,
+  updateClassStudentLeaveStatus,
   getStudentLeaves,
   createStudentLeave,
   getPendingLeavesCount,

@@ -414,6 +414,141 @@ export async function createStaffLeave(schoolId, staffProfileId, data, tx = pris
   });
 }
 
+/**
+ * Resolves the teaching scope (section or whole class) a class teacher is responsible for.
+ *
+ * The teacher's assignment is stored as a "teaching unit" in
+ * StaffProfile.customData.assignments.assignedClassId (a Section UUID when assigned to a section,
+ * or a Class UUID when assigned to a whole class), mirrored in StaffProfile.assignedClassId (class).
+ * - Section assignment  -> only students of that exact section.
+ * - Class assignment    -> students of that class (all sections).
+ * - No resolvable unit  -> falls back to classes where Class.classTeacherId = this staff.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Object} staffProfile - StaffProfile record ({ id, assignedClassId, customData })
+ * @param {Object} [tx=prisma]
+ * @returns {Promise<{ classIds: string[], sectionIds: string[], labels: Array<{ id: string, name: string }> }>}
+ */
+export async function findClassTeacherScope(schoolId, staffProfile, tx = prisma) {
+  const scope = { classIds: [], sectionIds: [], labels: [] };
+  const unitId = staffProfile.customData?.assignments?.assignedClassId || staffProfile.assignedClassId;
+
+  if (unitId) {
+    const section = await tx.section.findFirst({
+      where: { id: unitId, schoolId },
+      select: { id: true, name: true, class: { select: { name: true } } }
+    });
+    if (section) {
+      scope.sectionIds.push(section.id);
+      scope.labels.push({
+        id: section.id,
+        name: section.class?.name ? `${section.class.name} - ${section.name}` : section.name
+      });
+      return scope;
+    }
+
+    const cls = await tx.class.findFirst({
+      where: { id: unitId, schoolId },
+      select: { id: true, name: true }
+    });
+    if (cls) {
+      scope.classIds.push(cls.id);
+      scope.labels.push({ id: cls.id, name: cls.name });
+      return scope;
+    }
+  }
+
+  const headed = await tx.class.findMany({
+    where: { schoolId, classTeacherId: staffProfile.id },
+    select: { id: true, name: true }
+  });
+  headed.forEach(c => {
+    scope.classIds.push(c.id);
+    scope.labels.push({ id: c.id, name: c.name });
+  });
+  return scope;
+}
+
+/**
+ * Checks whether a student belongs to the class teacher's scope (their section or class).
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} studentId - Student UUID
+ * @param {{ classIds: string[], sectionIds: string[] }} scope - Result of findClassTeacherScope
+ * @param {Object} [tx=prisma]
+ * @returns {Promise<boolean>}
+ */
+export async function isStudentInTeacherScope(schoolId, studentId, scope, tx = prisma) {
+  const or = [
+    ...(scope.classIds.length ? [{ classId: { in: scope.classIds } }] : []),
+    ...(scope.sectionIds.length ? [{ sectionId: { in: scope.sectionIds } }] : [])
+  ];
+  if (or.length === 0) return false;
+
+  const student = await tx.student.findFirst({
+    where: { id: studentId, schoolId, OR: or },
+    select: { id: true }
+  });
+  return !!student;
+}
+
+/**
+ * Retrieves paginated student leave applications for all students enrolled in the given classes.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {{ classIds: string[], sectionIds: string[] }} scope - Class/section scope of the class teacher
+ * @param {Object} [options={}] - { page, limit, status, order }
+ * @param {Object} [tx=prisma]
+ * @returns {Promise<{ leaves: Array, total: number, students: Array }>}
+ */
+export async function findLeavesForClassStudents(schoolId, scope, options = {}, tx = prisma) {
+  const page = Math.max(1, Number(options.page) || 1);
+  const limit = Math.min(500, Math.max(1, Number(options.limit) || 50));
+  const skip = (page - 1) * limit;
+
+  const students = await tx.student.findMany({
+    where: {
+      schoolId,
+      OR: [
+        ...(scope.classIds.length ? [{ classId: { in: scope.classIds } }] : []),
+        ...(scope.sectionIds.length ? [{ sectionId: { in: scope.sectionIds } }] : [])
+      ]
+    },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      admissionNumber: true,
+      class: { select: { name: true } },
+      section: { select: { name: true } }
+    }
+  });
+
+  if (students.length === 0) {
+    return { leaves: [], total: 0, students };
+  }
+
+  const where = {
+    schoolId,
+    applicantId: { in: students.map(s => s.id) }
+  };
+
+  if (options.status && options.status !== 'all') {
+    where.status = options.status;
+  }
+
+  const orderBy = {
+    createdAt: options.order === 'asc' ? 'asc' : 'desc'
+  };
+
+  const [total, leaves] = await Promise.all([
+    tx.leaveApplication.count({ where }),
+    tx.leaveApplication.findMany({ where, skip, take: limit, orderBy })
+  ]);
+
+  return { leaves, total, students };
+}
+
 // ============================================================
 // LEAVE APPROVAL RULES REPOSITORY METHODS
 // ============================================================

@@ -128,6 +128,9 @@ export default function LeaveManagement() {
     if (role === 'teacher') {
       return <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[11px] font-bold uppercase tracking-wider">Teacher</span>;
     }
+    if (role === 'staff') {
+      return <span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[11px] font-bold uppercase tracking-wider">Non-Teaching</span>;
+    }
     return <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-[11px] font-bold uppercase tracking-wider">Student</span>;
   };
 
@@ -150,13 +153,13 @@ export default function LeaveManagement() {
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
         {/* Tabs */}
         <div className="flex border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 px-6 pt-4 shrink-0 overflow-x-auto w-full custom-scrollbar">
-          <button 
+          <button
             onClick={() => setActiveTab('pending')}
             className={`px-6 py-3 font-bold text-sm border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${activeTab === 'pending' ? 'border-primary-600 text-primary-700 bg-white dark:bg-slate-900' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100/50'}`}
           >
             <LuClock size={18} /> Pending Requests ({pendingLeaves.length})
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('history')}
             className={`px-6 py-3 font-bold text-sm border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${activeTab === 'history' ? 'border-primary-600 text-primary-700 bg-white dark:bg-slate-900' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100/50'}`}
           >
@@ -175,8 +178,8 @@ export default function LeaveManagement() {
               {activeTab === 'pending' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {pendingLeaves.map(leave => (
-                    <div 
-                      key={leave.id} 
+                    <div
+                      key={leave.id}
                       onClick={() => setSelectedLeave(leave)}
                       className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary-350 hover:shadow-md hover:scale-[1.01] transition-all flex flex-col justify-between cursor-pointer"
                     >
@@ -223,8 +226,8 @@ export default function LeaveManagement() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {pastLeaves.map(leave => (
-                    <div 
-                      key={leave.id} 
+                    <div
+                      key={leave.id}
                       onClick={() => setSelectedLeave(leave)}
                       className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary-350 hover:shadow-md hover:scale-[1.01] transition-all flex flex-col justify-between cursor-pointer opacity-85"
                     >
@@ -287,7 +290,7 @@ export default function LeaveManagement() {
                 <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">Leave Details</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-semibold">Submitted by {selectedLeave.applicantName} ({selectedLeave.applicantRole})</p>
               </div>
-              <button 
+              <button
                 onClick={() => setSelectedLeave(null)}
                 className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300 rounded-xl transition-colors"
               >

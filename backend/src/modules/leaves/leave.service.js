@@ -457,6 +457,140 @@ export async function createStaffLeave(schoolId, actor, data) {
   return formatTenantLeave(createdLeave, applicantMap);
 }
 
+/**
+ * Lists student leave applications for the class/section the authenticated teacher is class teacher of.
+ * Read-only view: scoped strictly to students of the teacher's own assigned section (or class).
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Object} actor - Authenticated teacher user
+ * @param {Object} [query={}] - Query filters (page, limit, status, order)
+ * @returns {Promise<{ leaves: Array, pagination: Object, classes: Array }>}
+ */
+export async function getClassStudentLeaves(schoolId, actor, query = {}) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required to list class student leaves');
+  }
+
+  const userId = actor?.id || actor?.userId;
+  const staffProfile = await leaveRepository.findStaffProfileByUserId(schoolId, userId);
+  if (!staffProfile) {
+    throw new ForbiddenError('Staff profile not found for this user in current tenant');
+  }
+
+  const page = Math.max(1, Number(query.page) || 1);
+  const limit = Math.min(500, Math.max(1, Number(query.limit) || 50));
+
+  const scope = await leaveRepository.findClassTeacherScope(schoolId, staffProfile);
+  if (scope.classIds.length === 0 && scope.sectionIds.length === 0) {
+    return {
+      leaves: [],
+      classes: [],
+      pagination: { page, limit, total: 0, totalPages: 1, hasNextPage: false, hasPrevPage: false }
+    };
+  }
+
+  const { leaves, total, students } = await leaveRepository.findLeavesForClassStudents(
+    schoolId,
+    scope,
+    { page, limit, status: query.status, order: query.order || 'desc' }
+  );
+
+  const studentMap = new Map(students.map(s => [s.id, s]));
+  const applicantMap = new Map();
+  students.forEach(s => {
+    applicantMap.set(s.id, {
+      applicantName: [s.firstName, s.lastName].filter(Boolean).join(' ') || 'Student',
+      applicantRole: 'student'
+    });
+  });
+
+  const totalPages = Math.ceil(total / limit) || 1;
+
+  return {
+    leaves: leaves.map(l => {
+      const student = studentMap.get(l.applicantId);
+      return {
+        ...formatTenantLeave(l, applicantMap),
+        admissionNumber: student?.admissionNumber || null,
+        className: student?.class?.name || null,
+        sectionName: student?.section?.name || null
+      };
+    }),
+    classes: scope.labels,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNextPage: page * limit < total,
+      hasPrevPage: page > 1
+    }
+  };
+}
+
+/**
+ * Lets a class teacher approve/reject a pending leave of a student in their own section/class.
+ * Uses the same atomic "Pending -> Approved/Rejected" update as the admin flow, so whoever acts
+ * first (teacher or admin) decides, and the shared record shows the result to everyone
+ * (admin, teacher, parent/student). A later attempt by the other party gets a conflict error.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} leaveId - LeaveApplication UUID
+ * @param {string} newStatus - 'Approved' | 'Rejected'
+ * @param {Object} actor - Authenticated teacher user
+ * @returns {Promise<Object>} Updated leave DTO
+ */
+export async function updateClassStudentLeaveStatus(schoolId, leaveId, newStatus, actor) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required to update leave status');
+  }
+
+  const userId = actor?.id || actor?.userId;
+  const staffProfile = await leaveRepository.findStaffProfileByUserId(schoolId, userId);
+  if (!staffProfile) {
+    throw new ForbiddenError('Staff profile not found for this user in current tenant');
+  }
+
+  const leave = await leaveRepository.findLeaveById(schoolId, leaveId);
+  if (!leave) {
+    throw new NotFoundError('Leave application');
+  }
+
+  // Only leaves of students in this teacher's own section/class can be reviewed
+  const scope = await leaveRepository.findClassTeacherScope(schoolId, staffProfile);
+  const inScope = await leaveRepository.isStudentInTeacherScope(schoolId, leave.applicantId, scope);
+  if (!inScope) {
+    throw new NotFoundError('Leave application');
+  }
+
+  const updateCount = await leaveRepository.updateLeaveStatus(schoolId, leaveId, newStatus, userId);
+  if (updateCount === 0) {
+    const existing = await leaveRepository.findLeaveById(schoolId, leaveId);
+    throw new ConflictError(
+      `Leave request has already been reviewed (current status: ${existing?.status})`
+    );
+  }
+
+  const updatedLeave = await leaveRepository.findLeaveById(schoolId, leaveId);
+  const applicantMap = await leaveRepository.resolveApplicantMap(schoolId, [updatedLeave]);
+
+  createAuditLog({
+    schoolId,
+    entityType: 'LeaveApplication',
+    entityId: leaveId,
+    actionPerformed: newStatus === 'Approved' ? 'APPROVE_LEAVE' : 'REJECT_LEAVE',
+    userName: staffProfile.name || actor?.name || actor?.email || 'Teacher',
+    userRole: actor?.systemRole || actor?.role || 'TEACHER',
+    modifiedFields: {
+      status: newStatus,
+      reviewedBy: userId,
+      reviewedByRole: 'TEACHER'
+    }
+  });
+
+  return formatTenantLeave(updatedLeave, applicantMap);
+}
+
 // ============================================================
 // LEAVE APPROVAL RULES SERVICE METHODS
 // ============================================================
@@ -479,10 +613,10 @@ export function formatLeaveApprovalRule(rule) {
     order: rule.order,
     role: rule.role
       ? {
-          id: rule.role.id,
-          name: rule.role.name,
-          slug: rule.role.slug
-        }
+        id: rule.role.id,
+        name: rule.role.name,
+        slug: rule.role.slug
+      }
       : null,
     createdAt: rule.createdAt,
     updatedAt: rule.updatedAt
