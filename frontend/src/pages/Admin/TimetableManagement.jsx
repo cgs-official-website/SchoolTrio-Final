@@ -377,6 +377,10 @@ export default function TimetableManagement() {
   const handleAddSlot = (e) => {
     e.preventDefault();
     if (!newSlot.subject) return;
+    if (!newSlot.teacherId) {
+      toast.error('Please assign a teacher to this period.');
+      return;
+    }
 
     const newSchedule = { ...schedule };
 
@@ -480,6 +484,20 @@ export default function TimetableManagement() {
     setSaving(true);
     try {
       const uploadedCustomData = await uploadCustomDataFiles(customData, schoolId, 'timetables');
+
+      // Every period must have a teacher before the timetable is saved
+      const missingTeacher = [];
+      ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].forEach((day) => {
+        (schedule[day] || []).forEach((slot) => {
+          const tObj = typeof slot.teacher === 'object' && slot.teacher !== null ? slot.teacher : null;
+          const hasTeacher = slot.teacherId || tObj?.id || (typeof slot.teacher === 'string' && teachers.some(t => t.name === slot.teacher));
+          if (!hasTeacher) missingTeacher.push(day);
+        });
+      });
+      if (missingTeacher.length > 0) {
+        toast.error(`Assign a teacher to every period (missing on ${[...new Set(missingTeacher)].join(', ')}).`);
+        return;
+      }
 
       const payloadSchedule = {};
       const dayKeys = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -590,8 +608,8 @@ export default function TimetableManagement() {
                   key={day}
                   onClick={() => setMasterDay(day)}
                   className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${masterDay === day
-                      ? 'bg-primary-600 text-white shadow-md shadow-primary-600/20'
-                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300'
+                    ? 'bg-primary-600 text-white shadow-md shadow-primary-600/20'
+                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300'
                     }`}
                 >
                   {day}
@@ -851,8 +869,9 @@ export default function TimetableManagement() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Teacher (Optional)</label>
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Teacher <span className="text-red-500">*</span></label>
                     <select
+                      required
                       value={newSlot.teacherId}
                       onChange={(e) => {
                         const teacher = teachers.find(t => t.id === e.target.value);
@@ -869,7 +888,7 @@ export default function TimetableManagement() {
                         <option value="">-- Select Subject First --</option>
                       ) : (
                         <>
-                          <option value="">-- No Teacher Assigned --</option>
+                          <option value="">-- Select Teacher --</option>
                           {(() => {
                             const eligible = getEligibleTeachersForSubject(newSlot.subject, [selectedSectionId, selectedClassId], teachers, subjects);
                             const eligibleIds = new Set(eligible.map(t => t.id));

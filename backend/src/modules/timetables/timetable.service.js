@@ -382,6 +382,9 @@ export async function createTimetablePeriod(schoolId, data, actor = {}) {
   }
 
   // 4. Verify teacher if provided
+  if (!data.teacherId) {
+    throw new ValidationError('A teacher must be assigned to the period');
+  }
   if (data.teacherId) {
     const targetTeacher = await timetableRepository.findTeacherInTenant(schoolId, data.teacherId);
     if (!targetTeacher) {
@@ -460,6 +463,9 @@ export async function updateTimetablePeriod(schoolId, id, data, actor = {}) {
   }
 
   // 4. Verify teacher if provided
+  if (data.teacherId !== undefined && !data.teacherId) {
+    throw new ValidationError('A teacher must be assigned to the period');
+  }
   if (data.teacherId) {
     const targetTeacher = await timetableRepository.findTeacherInTenant(schoolId, data.teacherId);
     if (!targetTeacher) {
@@ -627,7 +633,12 @@ export async function replaceClassTimetable(schoolId, classId, payload = {}, act
       }
     }
 
-    // Verify teacher if provided
+    // A teacher must be assigned to every period
+    if (!slot.teacherId) {
+      throw new ValidationError(`Period at index ${i} requires a teacher to be assigned`);
+    }
+
+    // Verify teacher
     if (slot.teacherId) {
       const teacher = await timetableRepository.findTeacherInTenant(schoolId, slot.teacherId);
       if (!teacher) {
