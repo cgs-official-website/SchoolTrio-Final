@@ -48,6 +48,9 @@ export default function ProfileSetup() {
   const [passwordStatus, setPasswordStatus] = useState(null);
 
   const [formData, setFormData] = useState({
+    // Name
+    firstName: '',
+    lastName: '',
     // Personal Info
     dob: '',
     bloodGroup: '',
@@ -117,8 +120,13 @@ export default function ProfileSetup() {
           ? data.financial
           : ((typeof custom.financial === 'object' && custom.financial !== null) ? custom.financial : {});
 
+        const fullName = String(data.name || '').trim();
+        const [derivedFirst, ...derivedRest] = fullName.split(/\s+/);
+
         setFormData(prev => ({
           ...prev,
+          firstName: custom.firstName || derivedFirst || '',
+          lastName: custom.lastName !== undefined && custom.firstName ? custom.lastName : derivedRest.join(' '),
           dob: data.dob || custom.dob || '',
           bloodGroup: data.bloodGroup || custom.bloodGroup || '',
           gender: normalizeGender(data.gender || custom.gender, 'Male'),
@@ -217,6 +225,8 @@ export default function ProfileSetup() {
     setSaving(true);
     try {
       const payload = {
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
         phone: formData.mobileNumber || null,
         address: formData.residentialAddress || null,
         emergencyContact: formData.emergencyContact || null,
@@ -250,6 +260,8 @@ export default function ProfileSetup() {
           taxIdDetails: formData.taxIdDetails || ''
         },
         customData: {
+          firstName: formData.firstName.trim(),
+          lastName: formData.lastName.trim(),
           fatherGuardianName: formData.fatherGuardianName || '',
           fatherName: formData.fatherGuardianName || '',
           financial: {
@@ -386,6 +398,16 @@ export default function ProfileSetup() {
             <LuUser className="text-primary-500" /> Personal Details
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">First Name <span className="text-red-500">*</span></label>
+              <input type="text" name="firstName" value={formData.firstName} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.firstName ? "true" : "false"} placeholder="First name" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              {errors.firstName && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.firstName}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Last Name</label>
+              <input type="text" name="lastName" value={formData.lastName} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.lastName ? "true" : "false"} placeholder="Last name" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
+              {errors.lastName && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.lastName}</p>}
+            </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Date of Birth <span className="text-red-500">*</span></label>
               <input type="date" name="dob" max={new Date().toISOString().split("T")[0]} value={formData.dob} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.dob ? "true" : "false"} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 outline-none transition-all text-sm" />
@@ -619,8 +641,8 @@ export default function ProfileSetup() {
           {passwordStatus && (
             <div
               className={`mb-4 p-3.5 rounded-xl text-sm flex items-start gap-2.5 ${passwordStatus.type === 'success'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40'
-                  : 'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/40'
+                ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40'
+                : 'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/40'
                 }`}
             >
               {passwordStatus.type === 'success' && <LuCircleCheck className="shrink-0 mt-0.5 text-emerald-600" size={17} />}

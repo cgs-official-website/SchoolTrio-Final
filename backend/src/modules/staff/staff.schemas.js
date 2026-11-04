@@ -398,6 +398,18 @@ function validateSelfProfileFormats(data, ctx) {
 export const updateStaffSelfSchema = {
   body: z
     .object({
+      firstName: z
+        .string()
+        .trim()
+        .min(1, 'First name cannot be empty')
+        .max(100, 'First name must not exceed 100 characters')
+        .optional(),
+      lastName: z
+        .string()
+        .trim()
+        .max(100, 'Last name must not exceed 100 characters')
+        .nullable()
+        .optional(),
       phone: z
         .string()
         .trim()
@@ -499,4 +511,3 @@ export const bulkImportStaffSchema = {
       .max(100, 'Cannot import more than 100 staff members in a single request')
   })
 };
-

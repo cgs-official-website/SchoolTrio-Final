@@ -180,7 +180,8 @@ export async function listSessions(schoolId, query = {}) {
     skip,
     take: limit,
     sort: query.sort,
-    order: query.order
+    order: query.order,
+    includeRecords: query.includeRecords === true || query.includeRecords === 'true'
   };
 
   const [sessions, total] = await Promise.all([
@@ -1181,4 +1182,3 @@ export async function updateAttendanceSettings(schoolId, data, actor = null) {
     lastCutoffCheckDate: mergedData.lastCutoffCheckDate || null
   };
 }
-

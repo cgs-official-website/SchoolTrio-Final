@@ -49,6 +49,9 @@ export function sanitizeField(name, value, formData = {}) {
         const cleaned = v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, max);
         return formData.govtIdType === 'Aadhaar' ? cleaned.replace(/\D/g, '') : cleaned;
     }
+    if (['firstName', 'lastName'].includes(name)) {
+        return v.replace(/[^A-Za-z\s.'-]/g, '').slice(0, 100);
+    }
     if (['nationality', 'fatherGuardianName', 'languagesKnown'].includes(name)) {
         return v.replace(/[^A-Za-z\s.,'-]/g, '').slice(0, 100);
     }
@@ -71,6 +74,11 @@ const isBlank = (v) => v === undefined || v === null || String(v).trim() === '';
 export function validateProfile(f) {
     const e = {};
     const req = (key, msg) => { if (isBlank(f[key])) e[key] = msg; };
+
+    // ---- Name ----
+    req('firstName', 'First name is required');
+    if (!e.firstName && !NAME_RE.test(f.firstName.trim())) e.firstName = 'Only letters are allowed';
+    if (!isBlank(f.lastName) && !NAME_RE.test(f.lastName.trim())) e.lastName = 'Only letters are allowed';
 
     // ---- Personal ----
     req('dob', 'Date of birth is required');

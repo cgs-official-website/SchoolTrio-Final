@@ -75,7 +75,8 @@ export const listAttendanceSessionsSchema = {
     page: z.coerce.number().int().min(1).default(PAGINATION_DEFAULTS.PAGE).optional(),
     limit: z.coerce.number().int().min(1).max(PAGINATION_DEFAULTS.MAX_LIMIT).default(PAGINATION_DEFAULTS.LIMIT).optional(),
     sort: z.enum(['date', 'createdAt', 'updatedAt']).default('date').optional(),
-    order: z.enum(['asc', 'desc']).default('desc').optional()
+    order: z.enum(['asc', 'desc']).default('desc').optional(),
+    includeRecords: z.preprocess((v) => v === true || v === 'true' || v === '1', z.boolean()).optional()
   }).refine(data => {
     if (data.startDate && data.endDate) {
       return data.startDate <= data.endDate;
@@ -183,4 +184,3 @@ export const updateAttendanceSettingsSchema = {
     timezone: z.string().max(50).optional()
   })
 };
-

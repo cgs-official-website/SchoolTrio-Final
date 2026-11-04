@@ -1004,6 +1004,8 @@ export async function updateStaffSelf(schoolId, userId, data) {
 
   // Safe subset allowed for self-service
   const allowedData = {
+    firstName: data.firstName,
+    lastName: data.lastName,
     phone: data.phone,
     address: data.address,
     emergencyContact: data.emergencyContact,
@@ -1420,5 +1422,3 @@ export async function bulkImportStaff(schoolId, staffPayload = [], actor = null)
     errors
   };
 }
-
-

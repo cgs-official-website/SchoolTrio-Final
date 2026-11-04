@@ -99,7 +99,7 @@ export async function findSessions(schoolId, options = {}, tx = prisma) {
 
   return tx.attendanceSession.findMany({
     where,
-    select: SESSION_SELECT_CONFIG,
+    select: options.includeRecords ? SESSION_DETAIL_SELECT_CONFIG : SESSION_SELECT_CONFIG,
     skip: options.skip,
     take: options.take,
     orderBy
@@ -869,5 +869,3 @@ export async function resolvePendingAttendanceNotifications(schoolId, classId, d
     }
   });
 }
-
-
