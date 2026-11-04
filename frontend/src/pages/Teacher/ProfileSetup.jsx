@@ -288,7 +288,6 @@ export default function ProfileSetup() {
         }
       };
 
-<<<<<<< HEAD
       const res = await staffApi.updateStaffSelf(payload);
       if (res?.data) {
         const updated = res.data;
@@ -306,15 +305,12 @@ export default function ProfileSetup() {
         }));
       }
 
-=======
-      await staffApi.updateStaffSelf(payload);
 
       // Reload what the server actually stored, then tell the dashboard banner to recalculate
       try {
         const fresh = await staffApi.getStaffMe();
         if (fresh?.data) setServerDoc(fresh.data);
       } catch { /* non-fatal */ }
->>>>>>> a5f2e33a4713df2b76973061fe68511fdd38acd3
       if (updateProfileData) {
         await updateProfileData();
       }

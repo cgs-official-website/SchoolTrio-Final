@@ -408,7 +408,6 @@ export default function TimetableManagement() {
       return;
     }
 
-<<<<<<< HEAD
     if (!newSlot.startTime || !newSlot.endTime) {
       toast.error("Please enter both start time and end time.");
       return;
@@ -431,9 +430,6 @@ export default function TimetableManagement() {
       );
       return;
     }
-=======
-    const newSchedule = { ...schedule };
->>>>>>> a5f2e33a4713df2b76973061fe68511fdd38acd3
 
     // Resolve subjectId and teacherId from current subjects/teachers lists if not already explicitly set
     const subObj = subjects.find(s => s.name === newSlot.subject || s.id === newSlot.subject);
@@ -911,17 +907,11 @@ export default function TimetableManagement() {
                       Free Day
                     </div>
                   ) : (
-<<<<<<< HEAD
                     (schedule[day] || []).map(slot => {
                       const conflictInfo = getSlotConflict(day, slot);
                       return (
                       <div key={slot.id} className={`bg-white dark:bg-slate-900 rounded-2xl border ${conflictInfo ? 'border-rose-400 dark:border-rose-600 ring-1 ring-rose-300/50 dark:ring-rose-800/50' : 'border-slate-200 dark:border-slate-700'} p-3 shadow-sm hover:shadow-md transition-shadow group relative`}>
                         
-=======
-                    (schedule[day] || []).map(slot => (
-                      <div key={slot.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 shadow-sm hover:shadow-md transition-shadow group relative">
-
->>>>>>> a5f2e33a4713df2b76973061fe68511fdd38acd3
                         <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
                           <Clock size={12} className="text-primary-500" />
                           {formatTime12hr(slot.startTime)} - {formatTime12hr(slot.endTime)}
