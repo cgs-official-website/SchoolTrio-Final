@@ -15,6 +15,13 @@ const formatTime12hr = (time24) => {
   return `${hour.toString().padStart(2, '0')}:${m} ${period}`;
 };
 
+// "V" + section "B" -> "V - B" (falls back to class name only when the period has no section)
+const getClassLabel = (slot) => {
+  const cls = slot.className || (typeof slot.class === 'object' && slot.class !== null ? (slot.class.name || '') : (slot.class || ''));
+  const sec = slot.sectionName || (typeof slot.section === 'object' && slot.section !== null ? (slot.section.name || '') : (slot.section || ''));
+  return [cls, sec].filter(Boolean).join(' - ');
+};
+
 export default function TeacherTimetable() {
   const { userProfile } = useAuth();
   const schoolId = userProfile?.schoolId;
@@ -67,23 +74,23 @@ export default function TeacherTimetable() {
 
   const handleExport = () => {
     const exportData = [];
-    
+
     days.forEach(day => {
       const daySlots = schedule[day] || [];
       daySlots.forEach(slot => {
         const row = { "Day": day };
         const timeStr = slot.time || `${formatTime12hr(slot.startTime)} - ${formatTime12hr(slot.endTime)}`;
         const subjectStr = slot.subjectName || (typeof slot.subject === 'object' && slot.subject !== null ? (slot.subject.name || slot.subject.code || '') : (slot.subject || ''));
-        const classStr = slot.className || (typeof slot.class === 'object' && slot.class !== null ? (slot.class.name || '') : (slot.class || ''));
+        const classStr = getClassLabel(slot);
         const roomStr = slot.roomNumber || slot.room || 'Room (Auto)';
         const teacherStr = slot.teacherName || (typeof slot.teacher === 'object' && slot.teacher !== null ? (slot.teacher.name || '') : (slot.teacher || 'Unassigned'));
-        
+
         if (selectedFields.time) row["Time Slot"] = timeStr;
         if (selectedFields.subject) row["Subject Name"] = subjectStr;
         if (selectedFields.class) row["Class / Section"] = classStr;
         if (selectedFields.room) row["Room / Location"] = roomStr;
         if (selectedFields.teacher) row["Teacher Name"] = teacherStr;
-        
+
         exportData.push(row);
       });
     });
@@ -102,10 +109,10 @@ export default function TeacherTimetable() {
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Weekly Timetable");
-    
+
     const rawName = exportFileName.trim() || (viewType === 'class' ? "My_Class_Timetable" : "My_Subject_Timetable");
     const finalFileName = rawName.toLowerCase().endsWith('.xlsx') ? rawName : `${rawName}.xlsx`;
-    
+
     XLSX.writeFile(workbook, finalFileName);
     setShowExportModal(false);
     toast.success("Timetable exported successfully!");
@@ -117,14 +124,14 @@ export default function TeacherTimetable() {
       const res = await getMyTimetable();
       const data = res.data || {};
       setIsClassTeacher(Boolean(data.isClassTeacher));
-      
+
       const subSched = data.subjectSchedule || {
         Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: []
       };
       const clsSched = data.classSchedule || {
         Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: []
       };
-      
+
       setSubjectTimetable(subSched);
       setClassTimetable(clsSched);
     } catch (err) {
@@ -205,25 +212,25 @@ export default function TeacherTimetable() {
         <div className="flex-1 overflow-auto p-2 sm:p-6 custom-scrollbar">
           <div className="grid grid-cols-1 xl:grid-cols-6 gap-6 min-w-[1000px] xl:min-w-0 items-start">
             {days.map(day => (
-              <div key={day} className="flex flex-col bg-slate-50/50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 p-4">
+              <div key={day} className="flex flex-col min-w-0 bg-slate-50/50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 p-3">
                 <div className="text-center pb-4 mb-4 border-b border-slate-200 dark:border-slate-700">
                   <h3 className="text-lg font-black text-slate-900 dark:text-white">{day}</h3>
                 </div>
-                
-                <div className="flex-1 space-y-4">
+
+                <div className="flex-1 min-w-0 space-y-4">
                   {schedule[day]?.length > 0 ? schedule[day].map(period => (
-                    <div key={period.id} className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-slate-700 hover:shadow-md transition-all group">
-                      <div className="flex items-center gap-2 text-xs font-bold text-primary-600 mb-2">
+                    <div key={period.id} className="min-w-0 overflow-hidden bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-slate-700 hover:shadow-md transition-all group">
+                      <div className="flex items-start gap-2 text-xs font-bold text-primary-600 mb-2 flex-wrap">
                         <LuClock size={14} />
                         {period.time || (period.startTime && period.endTime ? `${formatTime12hr(period.startTime)} - ${formatTime12hr(period.endTime)}` : '')}
                       </div>
-                      <h4 className="text-base font-bold text-slate-900 dark:text-white mb-1">{period.subjectName || period.subject?.name || period.subject || 'Subject'}</h4>
-                      <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-3">{period.className || period.class?.name || period.class || ''}</p>
+                      <h4 className="text-base font-bold text-slate-900 dark:text-white mb-1 break-words [overflow-wrap:anywhere]">{period.subjectName || period.subject?.name || period.subject || 'Subject'}</h4>
+                      <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-3">{getClassLabel(period)}</p>
                       {viewType === 'class' && (period.teacherName || (typeof period.teacher === 'object' && period.teacher !== null ? period.teacher?.name : period.teacher)) && (
                         <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3">Teacher: {period.teacherName || (typeof period.teacher === 'object' && period.teacher !== null ? period.teacher?.name : period.teacher)}</p>
                       )}
-                      
-                      <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400 pt-3 border-t border-slate-100 dark:border-slate-800">
+
+                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs font-semibold text-slate-500 dark:text-slate-400 pt-3 border-t border-slate-100 dark:border-slate-800">
                         <span className="flex items-center gap-1"><LuMapPin size={12} /> {period.roomNumber || period.room || 'Room (Auto)'}</span>
                         <span className="flex items-center gap-1 text-primary-500 group-hover:text-primary-600 cursor-pointer"><LuBookOpen size={12} /> Prep</span>
                       </div>
@@ -250,7 +257,7 @@ export default function TeacherTimetable() {
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">Export Timetable</h3>
                 <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5 font-medium">Select columns to include in the exported Excel spreadsheet</p>
               </div>
-              <button 
+              <button
                 onClick={() => setShowExportModal(false)}
                 className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300 rounded-xl transition-colors"
               >
@@ -296,11 +303,11 @@ export default function TeacherTimetable() {
               {/* Checkbox Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 {availableFieldsList.map((field) => (
-                  <label 
+                  <label
                     key={field.key}
                     className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50/50 cursor-pointer select-none transition-colors"
                   >
-                    <input 
+                    <input
                       type="checkbox"
                       checked={selectedFields[field.key]}
                       onChange={() => handleFieldToggle(field.key)}
