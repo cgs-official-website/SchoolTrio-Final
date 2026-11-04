@@ -253,7 +253,8 @@ export async function submitAttendanceSession(schoolId, data, actor = null) {
     where: {
       id: { in: studentIds },
       schoolId,
-      classId
+      classId,
+      ...(sectionId ? { sectionId } : {})
     },
     select: { id: true }
   });
@@ -261,7 +262,7 @@ export async function submitAttendanceSession(schoolId, data, actor = null) {
   const foundStudentIds = new Set(validStudents.map(s => s.id));
   const hasInvalidStudent = studentIds.some(id => !foundStudentIds.has(id));
   if (hasInvalidStudent) {
-    throw new ValidationError('One or more students do not belong to the target class and school');
+    throw new ValidationError('One or more students do not belong to the target class/section and school');
   }
 
   // 5. Resolve Academic Year and Absentee Threshold
@@ -828,41 +829,41 @@ export async function getDashboardStats(schoolId, dateStr = null, sessionFilter 
 
       const sections = secList.length > 0
         ? secList.map(s => {
-            const secStudents = enrolled.filter(stu => stu.sectionId === s.id);
-            const secName = (s.name || '').trim();
-            return {
-              id: `${c.id}_${s.id}`,
-              key: `${c.id}:${s.id}`,
-              classId: c.id,
-              sectionId: s.id,
-              className: c.name,
-              sectionName: secName,
-              formattedName: secName ? `${c.name} - Section ${secName}` : c.name,
-              gradeLevel,
-              total: secStudents.length,
-              present: 0,
-              absent: 0,
-              late: 0,
-              percentage: 0,
-              isUnmarked: true
-            };
-          })
-        : [{
-            id: c.id,
-            key: `${c.id}:all`,
+          const secStudents = enrolled.filter(stu => stu.sectionId === s.id);
+          const secName = (s.name || '').trim();
+          return {
+            id: `${c.id}_${s.id}`,
+            key: `${c.id}:${s.id}`,
             classId: c.id,
-            sectionId: null,
+            sectionId: s.id,
             className: c.name,
-            sectionName: null,
-            formattedName: c.name,
+            sectionName: secName,
+            formattedName: secName ? `${c.name} - Section ${secName}` : c.name,
             gradeLevel,
-            total: enrolled.length,
+            total: secStudents.length,
             present: 0,
             absent: 0,
             late: 0,
             percentage: 0,
             isUnmarked: true
-          }];
+          };
+        })
+        : [{
+          id: c.id,
+          key: `${c.id}:all`,
+          classId: c.id,
+          sectionId: null,
+          className: c.name,
+          sectionName: null,
+          formattedName: c.name,
+          gradeLevel,
+          total: enrolled.length,
+          present: 0,
+          absent: 0,
+          late: 0,
+          percentage: 0,
+          isUnmarked: true
+        }];
 
       return {
         classId: c.id,

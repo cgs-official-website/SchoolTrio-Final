@@ -26,14 +26,16 @@ export default function ClassRoster() {
     let isMounted = true;
 
     // Load assigned classes for dropdown selection
-    listMyClasses()
+    // classTeacherOnly: a class teacher of V-B must only see V-B (never sibling section V-A)
+    listMyClasses({ classTeacherOnly: true })
       .then(res => {
         if (!isMounted) return;
         const classes = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
         setClassList(classes);
         const flattened = flattenClassesWithSections(classes);
         if (flattened.length > 0) {
-          const matching = flattened.find(c => c.classId === userProfile?.assignedClassId);
+          const matching = flattened.find(c => c.rawSection?.isClassTeacher)
+            || flattened.find(c => c.classId === userProfile?.assignedClassId);
           const initial = matching || flattened[0];
           setClassId(initial.classId);
           setSectionId(initial.sectionId || null);
@@ -313,7 +315,7 @@ export default function ClassRoster() {
             </div>
           </div>
 
-          {flattenedClassOptions.length > 0 && (
+          {flattenedClassOptions.length > 1 && (
             <div className="w-full md:w-auto">
               <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-1">Select Class</label>
               <select

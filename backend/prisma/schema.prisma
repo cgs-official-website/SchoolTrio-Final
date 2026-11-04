@@ -613,7 +613,9 @@ model AttendanceSession {
   records AttendanceRecord[]
 
   @@unique([schoolId, id])
-  @@unique([schoolId, classId, date, session])
+  // Uniqueness per (class, section, date, session) is enforced by a DB expression index
+  // (attendance_sessions_class_section_date_session_key) because section_id may be NULL.
+  @@index([schoolId, classId, date, session])
   @@index([schoolId, date])
   @@map("attendance_sessions")
 }

@@ -10,6 +10,7 @@ import {
 } from '../../utils/app-error.js';
 import { SYSTEM_ROLES, ERROR_CODES } from '../../config/constants.js';
 import { parsePagination, buildPaginationMetadata } from '../../utils/pagination.js';
+import { verifyTeacherClassAccess } from '../classes/class.service.js';
 import { syncStudentClassFeeInvoices } from '../fees/fee.service.js';
 
 /**
@@ -30,9 +31,22 @@ import { syncStudentClassFeeInvoices } from '../fees/fee.service.js';
  * @param {Object} query - Express request query
  * @returns {Promise<{ students: Array, pagination: Object }>}
  */
-export async function listStudents(schoolId, query = {}) {
+export async function listStudents(schoolId, query = {}, actor = null) {
   if (!schoolId) {
     throw new TenantAccessError('Tenant context required to list students');
+  }
+
+  // Teachers only see the sections they are assigned to (class teacher of V-B must not see V-A).
+  let scopedSectionIds;
+  const actorRole = actor?.systemRole || actor?.role;
+  if (actorRole === SYSTEM_ROLES.TEACHER && query.classId) {
+    const access = await verifyTeacherClassAccess(schoolId, actor.id || actor.userId, query.classId);
+    if (access.allowed && access.allowedSectionIds) {
+      if (query.sectionId && !access.allowedSectionIds.has(query.sectionId)) {
+        return { students: [], pagination: buildPaginationMetadata(0, 1, query.limit ? Number(query.limit) : 20) };
+      }
+      scopedSectionIds = Array.from(access.allowedSectionIds);
+    }
   }
 
   const paginationParams = parsePagination(query, {
@@ -46,6 +60,7 @@ export async function listStudents(schoolId, query = {}) {
     admissionNumber: query.admissionNumber ? query.admissionNumber.trim() : undefined,
     classId: query.classId || undefined,
     sectionId: query.sectionId || undefined,
+    sectionIds: scopedSectionIds,
     status: query.status || undefined,
     gender: query.gender ? query.gender.trim() : undefined,
     bloodGroup: query.bloodGroup || undefined,
@@ -175,7 +190,7 @@ export async function createStudent(schoolId, data, actor = null) {
 
   // Automatically generate invoices for active fee structures in this class
   if (created.classId) {
-    syncStudentClassFeeInvoices(schoolId, created.id, created.classId).catch(() => {});
+    syncStudentClassFeeInvoices(schoolId, created.id, created.classId).catch(() => { });
   }
 
   return created;
@@ -377,7 +392,7 @@ export async function updateStudent(schoolId, studentId, data, actor = null) {
 
   // If class was updated, sync fee structures for the new class
   if (data.classId && data.classId !== existingStudent.classId) {
-    syncStudentClassFeeInvoices(schoolId, studentId, data.classId).catch(() => {});
+    syncStudentClassFeeInvoices(schoolId, studentId, data.classId).catch(() => { });
   }
 
   return updated;
@@ -493,7 +508,7 @@ export async function updateStudentPerformanceStatus(schoolId, studentId, status
         new: status
       }
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
   return updated;
 }
@@ -626,7 +641,7 @@ export async function bulkImportStudents(schoolId, studentsPayload = [], actor =
   const planStr = typeof school?.plan === 'string' ? school.plan : (school?.plan?.name || '');
   const effectiveSeatLimit = school?.seatLimit || (
     planStr.toLowerCase() === 'enterprise' ? 2000 :
-    planStr.toLowerCase() === 'basic' ? 100 : 500
+      planStr.toLowerCase() === 'basic' ? 100 : 500
   );
 
 
@@ -651,8 +666,8 @@ export async function bulkImportStudents(schoolId, studentsPayload = [], actor =
     }),
     uniqueClassIds.length > 0
       ? prisma.feeStructure.findMany({
-          where: { schoolId, classId: { in: uniqueClassIds } }
-        })
+        where: { schoolId, classId: { in: uniqueClassIds } }
+      })
       : Promise.resolve([])
   ]);
 
@@ -833,7 +848,7 @@ export async function bulkImportStudents(schoolId, studentsPayload = [], actor =
       updatedCount,
       failedCount: errors.length
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
   return {
     success: true,

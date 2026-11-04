@@ -223,27 +223,33 @@ export async function deleteSession(schoolId, id, tx = prisma) {
  */
 export async function upsertSession(data, tx = prisma) {
   const { schoolId, classId, date, session, sectionId, markedByUserId, submittedAt } = data;
-  return tx.attendanceSession.upsert({
-    where: {
-      schoolId_classId_date_session: {
-        schoolId,
-        classId,
-        date,
-        session
-      }
-    },
-    create: {
+
+  // One session per (class, SECTION, date, session). V-A and V-B can both be marked for the same
+  // date/session without overwriting each other. sectionId = null means a class-wide session.
+  const existing = await tx.attendanceSession.findFirst({
+    where: { schoolId, classId, sectionId: sectionId || null, date, session },
+    select: { id: true }
+  });
+
+  if (existing) {
+    return tx.attendanceSession.update({
+      where: { schoolId_id: { schoolId, id: existing.id } },
+      data: {
+        ...(markedByUserId ? { markedByUserId } : {}),
+        submittedAt: submittedAt || new Date()
+      },
+      select: SESSION_SELECT_CONFIG
+    });
+  }
+
+  return tx.attendanceSession.create({
+    data: {
       schoolId,
       classId,
       sectionId: sectionId || null,
       date,
       session,
       markedByUserId,
-      submittedAt: submittedAt || new Date()
-    },
-    update: {
-      ...(sectionId ? { sectionId } : {}),
-      ...(markedByUserId ? { markedByUserId } : {}),
       submittedAt: submittedAt || new Date()
     },
     select: SESSION_SELECT_CONFIG

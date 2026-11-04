@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useAuth } from '../../context/AuthContext';
 import {
   listAttendanceSessions,
   getAttendanceSession,
@@ -23,6 +22,7 @@ import {
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { notifyDataChanged } from '../../utils/liveData';
+import { useTeacherScope } from '../../hooks/useTeacherScope';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
 const DAILY_FIELDS_LIST = [
@@ -44,8 +44,10 @@ const REPORT_FIELDS_LIST = [
 ];
 
 export default function Attendance() {
-  const { userProfile } = useAuth();
-  const classId = userProfile?.assignedClassId;
+  // Class + SECTION the teacher is class teacher of (e.g. V - B). Students, sessions and saves
+  // are all scoped to this section so V-A students never appear for the V-B teacher.
+  const { classId: scopedClassId, sectionId, label: scopeLabel, loading: scopeLoading } = useTeacherScope();
+  const classId = scopeLoading ? null : scopedClassId;
 
   const today = new Date().toISOString().split('T')[0];
   const [selectedDate, setSelectedDate] = useState(today);
@@ -182,6 +184,7 @@ export default function Attendance() {
       // Fetch Active Students Roster
       const stuRes = await listStudents({
         classId: targetClassId,
+        ...(sectionId ? { sectionId } : {}),
         status: 'Active',
         limit: 100,
         sort: 'firstName',
@@ -200,7 +203,7 @@ export default function Attendance() {
         toast.error('Failed to load class roster.');
       }
     }
-  }, []);
+  }, [sectionId]);
 
   // ============================================================
   // 2. FETCH ATTENDANCE SESSION FOR DATE & SESSION (REST)
@@ -218,6 +221,7 @@ export default function Attendance() {
     try {
       const res = await listAttendanceSessions({
         classId: targetClassId,
+        ...(sectionId ? { sectionId } : {}),
         date: targetDate,
         limit: 20
       });
@@ -317,7 +321,7 @@ export default function Attendance() {
         setRefreshing(false);
       }
     }
-  }, []);
+  }, [sectionId]);
 
   // Initial Class & Roster load
   useEffect(() => {
@@ -375,6 +379,7 @@ export default function Attendance() {
         do {
           const res = await listAttendanceSessions({
             classId,
+            ...(sectionId ? { sectionId } : {}),
             startDate: startDate || undefined,
             endDate: endDate || undefined,
             page: currentPage,
@@ -424,7 +429,7 @@ export default function Attendance() {
     return () => {
       isMounted = false;
     };
-  }, [viewMode, classId]);
+  }, [viewMode, classId, sectionId]);
 
   // Aggregate historical stats
   useEffect(() => {
@@ -559,7 +564,7 @@ export default function Attendance() {
         // Create new session (POST /api/v1/attendance/sessions)
         const payload = {
           classId,
-          sectionId: classDetails?.sectionId || undefined,
+          sectionId: sectionId || undefined,
           date: selectedDate,
           session: selectedSession,
           records: formattedRecords
@@ -727,6 +732,14 @@ export default function Attendance() {
     }
   };
 
+  if (scopeLoading) {
+    return (
+      <div className="flex justify-center items-center h-[60vh]">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent"></div>
+      </div>
+    );
+  }
+
   if (!classId) {
     return (
       <div className="p-8 text-center text-slate-500 dark:text-slate-400">
@@ -749,7 +762,7 @@ export default function Attendance() {
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-wider">
-                {classDetails ? `${classDetails.name || ''} ${classDetails.section || ''}`.trim() : 'Class Attendance'}
+                {scopeLabel || (classDetails ? `${classDetails.name || ''} ${classDetails.section || ''}`.trim() : 'Class Attendance')}
               </span>
               {viewMode === 'daily' && (
                 <>
@@ -812,11 +825,10 @@ export default function Attendance() {
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${
-                  viewMode === mode
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${viewMode === mode
                     ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 {mode}
               </button>
@@ -842,11 +854,10 @@ export default function Attendance() {
                 <button
                   type="button"
                   onClick={() => setSelectedSession('FN')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    selectedSession === 'FN'
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${selectedSession === 'FN'
                       ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
                       : 'text-slate-600 dark:text-slate-300'
-                  }`}
+                    }`}
                 >
                   {daySessionStatus.fn && <CheckCircle2 size={13} className="text-emerald-500" />}
                   <span>FN</span>
@@ -859,11 +870,10 @@ export default function Attendance() {
                 <button
                   type="button"
                   onClick={() => setSelectedSession('AN')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    selectedSession === 'AN'
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${selectedSession === 'AN'
                       ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
                       : 'text-slate-600 dark:text-slate-300'
-                  }`}
+                    }`}
                 >
                   {daySessionStatus.an && <CheckCircle2 size={13} className="text-emerald-500" />}
                   <span>AN</span>
@@ -993,11 +1003,10 @@ export default function Attendance() {
                     return (
                       <tr
                         key={student.id}
-                        className={`transition-colors ${
-                          isSelected
+                        className={`transition-colors ${isSelected
                             ? 'bg-primary-50/40 dark:bg-primary-950/20 hover:bg-primary-50/60 dark:hover:bg-primary-950/30'
                             : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/50'
-                        }`}
+                          }`}
                       >
                         <td className="p-4 pl-6 text-xs font-bold text-slate-500 dark:text-slate-400">
                           {student.admissionNumber || 'N/A'}
@@ -1039,11 +1048,10 @@ export default function Attendance() {
                               <button
                                 key={status}
                                 onClick={() => handleStatusChange(student.id, status)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                                  currentStatus === status
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${currentStatus === status
                                     ? `${getStatusColor(status)} shadow-sm font-extrabold`
                                     : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                                }`}
+                                  }`}
                               >
                                 {status}
                               </button>
