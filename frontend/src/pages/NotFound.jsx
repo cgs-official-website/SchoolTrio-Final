@@ -21,6 +21,7 @@ import {
   LuFileText,
   LuSearch,
   LuBuilding2,
+  LuMail,
   LuSun,
   LuMoon,
   LuSquareCheck,
@@ -130,7 +131,8 @@ export default function NotFound() {
     // SuperAdmin Modules
     { label: 'SuperAdmin Analytics', path: '/superadmin', category: 'SuperAdmin', icon: LuLayoutDashboard, keywords: 'superadmin global stats tenants platform' },
     { label: 'Tenant Management', path: '/superadmin/tenants', category: 'SuperAdmin', icon: LuBuilding2, keywords: 'superadmin schools tenants institutes' },
-    { label: 'Subscription Plans', path: '/superadmin/billing', category: 'SuperAdmin', icon: LuCreditCard, keywords: 'superadmin pricing plans subscription billing' }
+    { label: 'Subscription Plans', path: '/superadmin/billing', category: 'SuperAdmin', icon: LuCreditCard, keywords: 'superadmin pricing plans subscription billing' },
+    { label: 'Contact Messages', path: '/superadmin/contact-messages', category: 'SuperAdmin', icon: LuMail, keywords: 'superadmin inquiries visitor contact messages replies' }
   ], []);
 
   // Filter destinations based on user input

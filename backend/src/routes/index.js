@@ -44,6 +44,7 @@ import { publicRegistrationRouter } from '../modules/registration/registration.r
 import emailTemplateRoutes from '../modules/email-templates/email-templates.routes.js';
 import { platformBrandingRouter } from '../modules/platform-branding/platform-branding.routes.js';
 import { emailsRouter } from '../modules/emails/emails.routes.js';
+import { publicContactMessagesRouter, superAdminContactMessagesRouter } from '../modules/contact-messages/contact-messages.routes.js';
 
 const router = Router();
 
@@ -306,6 +307,17 @@ router.use('/support-tickets', supportTicketsRouter);
  * SuperAdmin Global Support Tickets Endpoints mounted under /api/v1/superadmin/support-tickets
  */
 router.use('/superadmin/support-tickets', superAdminSupportTicketsRouter);
+
+/**
+ * Public Contact Messages Endpoints mounted under /api/v1/public/contact-messages and /api/v1/contact-messages
+ */
+router.use('/public/contact-messages', publicContactMessagesRouter);
+router.use('/contact-messages', publicContactMessagesRouter);
+
+/**
+ * SuperAdmin Global Contact Messages Endpoints mounted under /api/v1/superadmin/contact-messages
+ */
+router.use('/superadmin/contact-messages', superAdminContactMessagesRouter);
 
 /**
  * SuperAdmin Platform Suite Endpoints mounted under /api/v1/superadmin
