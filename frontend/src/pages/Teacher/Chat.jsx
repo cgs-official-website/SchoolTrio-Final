@@ -7,7 +7,29 @@ import toast from 'react-hot-toast';
 import ChatInput from '../../components/ChatInput';
 import CustomAudioPlayer from '../../components/CustomAudioPlayer';
 import ConfirmModal from '../../components/ConfirmModal';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import * as XLSX from 'xlsx';
+
+function areMessagesEqual(prev, next) {
+  if (prev === next) return true;
+  if (!prev || !next) return false;
+  if (prev.length !== next.length) return false;
+  for (let i = 0; i < prev.length; i++) {
+    const a = prev[i];
+    const b = next[i];
+    if (
+      a.id !== b.id ||
+      a.text !== b.text ||
+      a.mediaUrl !== b.mediaUrl ||
+      a.mediaType !== b.mediaType ||
+      a.isDeletedForEveryone !== b.isDeletedForEveryone
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export default function TeacherChat() {
   const { userProfile, currentUser } = useAuth();
@@ -270,6 +292,75 @@ export default function TeacherChat() {
     };
   }, [activeStudent, schoolId]);
 
+  // Auto-refresh via live data broadcast
+  useLiveDataRefresh(useCallback(() => {
+    fetchStudentsAndChats();
+    fetchChannels();
+    if (activeTab === 'dms' && chatRoomData?.id) {
+      chatsApi.listChatMessages(chatRoomData.id, { limit: 100 })
+        .then(res => {
+          const newMsgs = Array.isArray(res?.data) ? res.data : [];
+          setMessages(prev => areMessagesEqual(prev, newMsgs) ? prev : newMsgs);
+        })
+        .catch(() => {});
+    }
+  }, [fetchStudentsAndChats, fetchChannels, activeTab, chatRoomData?.id]), [fetchStudentsAndChats, fetchChannels, activeTab, chatRoomData?.id], ['chats', 'all']);
+
+  // Periodic message polling for active DM room
+  useEffect(() => {
+    if (activeTab !== 'dms' || !chatRoomData?.id || !schoolId) return;
+
+    let isCancelled = false;
+    const pollMessages = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const messagesRes = await chatsApi.listChatMessages(chatRoomData.id, { limit: 100 });
+        if (isCancelled) return;
+        const newMsgs = Array.isArray(messagesRes?.data) ? messagesRes.data : [];
+        setMessages(prev => areMessagesEqual(prev, newMsgs) ? prev : newMsgs);
+      } catch (err) {}
+    };
+
+    const interval = setInterval(pollMessages, 3000);
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeTab, chatRoomData?.id, schoolId]);
+
+  // Periodic polling for active Channel posts
+  useEffect(() => {
+    if (activeTab !== 'channels' || !activeChannel?.id || !schoolId) return;
+
+    let isCancelled = false;
+    const pollChannelPosts = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const res = await chatsApi.listChannelPosts(activeChannel.id, { limit: 100 });
+        if (isCancelled) return;
+        const newPosts = Array.isArray(res?.data) ? res.data : [];
+        setMessages(prev => areMessagesEqual(prev, newPosts) ? prev : newPosts);
+      } catch (err) {}
+    };
+
+    const interval = setInterval(pollChannelPosts, 4000);
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeTab, activeChannel?.id, schoolId]);
+
+  // Periodic polling for student list unread updates
+  useEffect(() => {
+    if (!schoolId) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchStudentsAndChats();
+      }
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [schoolId, fetchStudentsAndChats]);
+
   // Auto-scroll to bottom of messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -288,6 +379,7 @@ export default function TeacherChat() {
         const res = await chatsApi.createChannelPost(activeChannel.id, payload);
         const createdPost = res?.data || res;
         setMessages(prev => [...prev, createdPost]);
+        notifyDataChanged('chats');
       } else if (activeTab === 'dms' && activeStudent) {
         let roomId = chatRoomData?.id;
         if (!roomId) {
@@ -306,6 +398,7 @@ export default function TeacherChat() {
         const createdMsg = res?.data || res;
 
         setMessages(prev => [...prev, createdMsg]);
+        notifyDataChanged('chats');
         
         // Update local room metadata & student ordering
         const previewText = text || (mediaType ? `[${mediaType}]` : '[Attachment]');

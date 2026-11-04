@@ -213,18 +213,26 @@ export async function updateRole(schoolId, roleId, data, actor = null) {
   const updatedRole = await rbacRepository.updateRole(schoolId, roleId, updates);
 
   // Invalidate tenant RBAC cache
-  await RedisCacheService.delPattern(`rbac:perms:${schoolId}:*`);
+  try {
+    await RedisCacheService.delPattern(`rbac:perms:${schoolId}:*`);
+  } catch (_err) {
+    // Non-blocking cache error
+  }
 
   // Record audit log
-  await rbacRepository.createAuditLog({
-    schoolId,
-    entityType: 'SchoolRole',
-    entityId: updatedRole.id,
-    actionPerformed: `UPDATE_ROLE: ${updatedRole.name} (${updatedRole.slug})`,
-    userName: actor?.email || actor?.userId || 'Administrator',
-    userRole: actor?.systemRole || null,
-    modifiedFields: updates
-  });
+  try {
+    await rbacRepository.createAuditLog({
+      schoolId,
+      entityType: 'SchoolRole',
+      entityId: updatedRole.id,
+      actionPerformed: `UPDATE_ROLE: ${updatedRole.name} (${updatedRole.slug})`,
+      userName: actor?.email || actor?.userId || 'Administrator',
+      userRole: actor?.systemRole || null,
+      modifiedFields: updates
+    });
+  } catch (_err) {
+    // Non-blocking audit log error
+  }
 
   return updatedRole;
 }
@@ -349,20 +357,28 @@ export async function updateRolePermissions(schoolId, roleId, permissionsInput, 
   }
 
   // Invalidate tenant RBAC cache
-  await RedisCacheService.delPattern(`rbac:perms:${schoolId}:*`);
+  try {
+    await RedisCacheService.delPattern(`rbac:perms:${schoolId}:*`);
+  } catch (_err) {
+    // Non-blocking cache error
+  }
 
   // Record audit log
-  await rbacRepository.createAuditLog({
-    schoolId,
-    entityType: 'SchoolRole',
-    entityId: roleId,
-    actionPerformed: `UPDATE_PERMISSIONS: ${role.name} (${role.slug})`,
-    userName: actor?.email || actor?.userId || 'Administrator',
-    userRole: actor?.systemRole || null,
-    modifiedFields: {
-      updatedModulesCount: normalized.length
-    }
-  });
+  try {
+    await rbacRepository.createAuditLog({
+      schoolId,
+      entityType: 'SchoolRole',
+      entityId: roleId,
+      actionPerformed: `UPDATE_PERMISSIONS: ${role.name} (${role.slug})`,
+      userName: actor?.email || actor?.userId || 'Administrator',
+      userRole: actor?.systemRole || null,
+      modifiedFields: {
+        updatedModulesCount: normalized.length
+      }
+    });
+  } catch (_err) {
+    // Non-blocking audit log error
+  }
 
   return {
     role: {

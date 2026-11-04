@@ -717,6 +717,30 @@ export async function updateStaff(schoolId, id, data, actor = null) {
       ...otherCustom
     } = data.customData;
     Object.assign(newCustom, otherCustom);
+    if (_f && typeof _f === 'object') {
+      newCustom.financial = {
+        ...(typeof newCustom.financial === 'object' && newCustom.financial !== null ? newCustom.financial : {}),
+        ..._f
+      };
+    }
+    if (_q && typeof _q === 'object') {
+      newCustom.qualifications = {
+        ...(typeof newCustom.qualifications === 'object' && newCustom.qualifications !== null ? newCustom.qualifications : {}),
+        ..._q
+      };
+    }
+    if (_e && typeof _e === 'object') {
+      newCustom.experience = {
+        ...(typeof newCustom.experience === 'object' && newCustom.experience !== null ? newCustom.experience : {}),
+        ..._e
+      };
+    }
+    if (_d && typeof _d === 'object') {
+      newCustom.documents = {
+        ...(typeof newCustom.documents === 'object' && newCustom.documents !== null ? newCustom.documents : {}),
+        ..._d
+      };
+    }
     customDataChanged = true;
   }
 
@@ -854,7 +878,8 @@ export async function updateStaff(schoolId, id, data, actor = null) {
     await RedisCacheService.del(`rbac:perms:${schoolId}:${updatedStaff.userId}`);
   }
 
-  return serializeStaff(updatedStaff, hasHRPayrollAccess(actor));
+  const isSelf = actor?.isSelf || (actor?.userId && updatedStaff?.userId && actor.userId === updatedStaff.userId);
+  return serializeStaff(updatedStaff, hasHRPayrollAccess(actor) || Boolean(isSelf));
 }
 
 /**
@@ -977,13 +1002,15 @@ export async function updateStaffSelf(schoolId, userId, data) {
     qualifications: data.qualifications,
     experience: data.experience,
     documents: data.documents,
+    financial: data.financial || data.customData?.financial,
     customData: data.customData
   };
 
   return updateStaff(schoolId, existingStaff.id, allowedData, {
     userId,
     email: existingStaff.email,
-    systemRole: existingStaff.user?.systemRole
+    systemRole: existingStaff.user?.systemRole,
+    isSelf: true
   });
 }
 

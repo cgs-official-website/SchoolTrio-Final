@@ -139,10 +139,10 @@ export default function ProfileSetup() {
           uanNumber: fin.uanNumber || docs.uanNumber || '',
           taxIdDetails: fin.taxIdDetails || docs.taxIdDetails || '',
 
-          bankAccountNumber: fin.bankAccountNumber || '',
-          bankName: fin.bankName || '',
-          branchName: fin.branchName || '',
-          ifscCode: fin.ifscCode || ''
+          bankAccountNumber: fin.bankAccountNumber || custom.bankAccountNumber || custom.financial?.bankAccountNumber || '',
+          bankName: fin.bankName || custom.bankName || custom.financial?.bankName || '',
+          branchName: fin.branchName || custom.branchName || custom.financial?.branchName || '',
+          ifscCode: fin.ifscCode || custom.ifscCode || custom.financial?.ifscCode || ''
         }));
       } catch (error) {
         console.error("Error fetching teacher profile", error);
@@ -161,6 +161,21 @@ export default function ProfileSetup() {
     e.preventDefault();
     setSaving(true);
     try {
+      const financialData = {
+        bankAccountNumber: formData.bankAccountNumber || '',
+        bankName: formData.bankName || '',
+        branchName: formData.branchName || '',
+        ifscCode: formData.ifscCode || '',
+        panNumber: formData.panNumber || '',
+        aadharNumber: formData.aadharNumber || '',
+        pfNumber: formData.pfNumber || '',
+        esicNumber: formData.esicNumber || '',
+        uanNumber: formData.uanNumber || '',
+        govtIdType: formData.govtIdType || 'Aadhaar',
+        govtIdNumber: formData.govtIdNumber || '',
+        taxIdDetails: formData.taxIdDetails || ''
+      };
+
       const payload = {
         phone: formData.mobileNumber || null,
         address: formData.residentialAddress || null,
@@ -171,6 +186,7 @@ export default function ProfileSetup() {
         maritalStatus: formData.maritalStatus || 'Single',
         nationality: formData.nationality || null,
         languagesKnown: formData.languagesKnown || null,
+        financial: financialData,
         qualifications: {
           highestQualification: formData.highestQualification || '',
           degreeSpecialization: formData.degreeSpecialization || '',
@@ -197,24 +213,31 @@ export default function ProfileSetup() {
         customData: {
           fatherGuardianName: formData.fatherGuardianName || '',
           fatherName: formData.fatherGuardianName || '',
-          financial: {
-            bankAccountNumber: formData.bankAccountNumber || '',
-            bankName: formData.bankName || '',
-            branchName: formData.branchName || '',
-            ifscCode: formData.ifscCode || '',
-            panNumber: formData.panNumber || '',
-            aadharNumber: formData.aadharNumber || '',
-            pfNumber: formData.pfNumber || '',
-            esicNumber: formData.esicNumber || '',
-            uanNumber: formData.uanNumber || '',
-            govtIdType: formData.govtIdType || 'Aadhaar',
-            govtIdNumber: formData.govtIdNumber || '',
-            taxIdDetails: formData.taxIdDetails || ''
-          }
+          bankAccountNumber: formData.bankAccountNumber || '',
+          bankName: formData.bankName || '',
+          branchName: formData.branchName || '',
+          ifscCode: formData.ifscCode || '',
+          financial: financialData
         }
       };
 
-      await staffApi.updateStaffSelf(payload);
+      const res = await staffApi.updateStaffSelf(payload);
+      if (res?.data) {
+        const updated = res.data;
+        const uFin = (typeof updated.financial === 'object' && updated.financial !== null)
+          ? updated.financial
+          : ((typeof updated.customData?.financial === 'object' && updated.customData?.financial !== null)
+              ? updated.customData.financial
+              : {});
+        setFormData(prev => ({
+          ...prev,
+          bankAccountNumber: uFin.bankAccountNumber ?? prev.bankAccountNumber,
+          bankName: uFin.bankName ?? prev.bankName,
+          branchName: uFin.branchName ?? prev.branchName,
+          ifscCode: uFin.ifscCode ?? prev.ifscCode
+        }));
+      }
+
       if (updateProfileData) {
         await updateProfileData();
       }

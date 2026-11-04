@@ -56,7 +56,14 @@ export async function findTimetablePeriods(schoolId, filterOptions = {}, tx = pr
   };
 
   if (filterOptions.classId) where.classId = filterOptions.classId;
-  if (filterOptions.teacherId) where.teacherId = filterOptions.teacherId;
+  if (filterOptions.excludeClassId) where.classId = { not: filterOptions.excludeClassId };
+  if (filterOptions.teacherId) {
+    if (Array.isArray(filterOptions.teacherId)) {
+      where.teacherId = { in: filterOptions.teacherId };
+    } else {
+      where.teacherId = filterOptions.teacherId;
+    }
+  }
   if (filterOptions.subjectId) where.subjectId = filterOptions.subjectId;
   if (filterOptions.sectionId) where.sectionId = filterOptions.sectionId;
   if (filterOptions.dayOfWeek !== undefined && filterOptions.dayOfWeek !== null) {

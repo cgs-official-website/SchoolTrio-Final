@@ -6,6 +6,28 @@ import { LuMessageSquare as MessageSquare, LuFile as FileIcon, LuDownload as Dow
 import toast from 'react-hot-toast';
 import ChatInput from '../../components/ChatInput';
 import CustomAudioPlayer from '../../components/CustomAudioPlayer';
+import { notifyDataChanged } from '../../utils/liveData';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+
+function areMessagesEqual(prev, next) {
+  if (prev === next) return true;
+  if (!prev || !next) return false;
+  if (prev.length !== next.length) return false;
+  for (let i = 0; i < prev.length; i++) {
+    const a = prev[i];
+    const b = next[i];
+    if (
+      a.id !== b.id ||
+      a.text !== b.text ||
+      a.mediaUrl !== b.mediaUrl ||
+      a.mediaType !== b.mediaType ||
+      a.isDeletedForEveryone !== b.isDeletedForEveryone
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export default function ParentChat() {
   const { userProfile, currentUser } = useAuth();
@@ -254,6 +276,76 @@ export default function ParentChat() {
     }
   }, [activeTab, activeConversation?.roomId, activeChannel?.id, loadRoomMessages, loadChannelPosts]);
 
+  // Auto-refresh via live data broadcast
+  useLiveDataRefresh(useCallback(() => {
+    if (studentId) fetchConversations(studentId);
+    fetchChannels();
+    if (activeTab === 'dms' && activeConversation?.roomId) {
+      chatsApi.listChatMessages(activeConversation.roomId)
+        .then(res => {
+          if (!mountedRef.current) return;
+          const newMsgs = Array.isArray(res?.data) ? res.data : [];
+          setMessages(prev => areMessagesEqual(prev, newMsgs) ? prev : newMsgs);
+        })
+        .catch(() => {});
+    }
+  }, [studentId, fetchConversations, fetchChannels, activeTab, activeConversation?.roomId]), [studentId, fetchConversations, fetchChannels, activeTab, activeConversation?.roomId], ['chats', 'all']);
+
+  // Periodic message polling for active DM room
+  useEffect(() => {
+    if (activeTab !== 'dms' || !activeConversation?.roomId) return;
+
+    let isCancelled = false;
+    const pollMessages = async () => {
+      if (document.visibilityState !== 'visible' || !mountedRef.current) return;
+      try {
+        const res = await chatsApi.listChatMessages(activeConversation.roomId);
+        if (isCancelled || !mountedRef.current) return;
+        const newMsgs = Array.isArray(res?.data) ? res.data : [];
+        setMessages(prev => areMessagesEqual(prev, newMsgs) ? prev : newMsgs);
+      } catch (err) {}
+    };
+
+    const interval = setInterval(pollMessages, 3000);
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeTab, activeConversation?.roomId]);
+
+  // Periodic polling for active Channel posts
+  useEffect(() => {
+    if (activeTab !== 'channels' || !activeChannel?.id) return;
+
+    let isCancelled = false;
+    const pollChannelPosts = async () => {
+      if (document.visibilityState !== 'visible' || !mountedRef.current) return;
+      try {
+        const res = await chatsApi.listChannelPosts(activeChannel.id);
+        if (isCancelled || !mountedRef.current) return;
+        const newPosts = Array.isArray(res?.data) ? res.data : [];
+        setMessages(prev => areMessagesEqual(prev, newPosts) ? prev : newPosts);
+      } catch (err) {}
+    };
+
+    const interval = setInterval(pollChannelPosts, 4000);
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeTab, activeChannel?.id]);
+
+  // Periodic polling for conversations list
+  useEffect(() => {
+    if (!studentId) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && mountedRef.current) {
+        fetchConversations(studentId);
+      }
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [studentId, fetchConversations]);
+
   // Auto-scroll to bottom on message change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -278,6 +370,7 @@ export default function ParentChat() {
         const createdMsg = await chatsApi.sendChatMessage(activeConversation.roomId, payload);
         if (createdMsg) {
           setMessages(prev => [...prev, createdMsg]);
+          notifyDataChanged('chats');
           // Update last message in conversation list
           const previewText = text || (mediaType ? `[${mediaType}]` : '[Attachment]');
           setConversations(prev => prev.map(c => 

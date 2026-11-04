@@ -13,6 +13,40 @@ export function isEndTimeAfterStartTime(start, end) {
   return start.localeCompare(end) < 0;
 }
 
+/**
+ * Converts HH:mm time string to total minutes from midnight (0-1439).
+ * Returns null if invalid.
+ * @param {string} timeStr - HH:mm
+ * @returns {number|null}
+ */
+export function timeToMinutes(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+  const parts = timeStr.trim().split(':');
+  if (parts.length < 2) return null;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+/**
+ * Checks whether two time intervals [startA, endA] and [startB, endB] overlap.
+ * Back-to-back intervals (e.g. 09:00-10:00 and 10:00-11:00) do NOT overlap.
+ * @param {string} startA
+ * @param {string} endA
+ * @param {string} startB
+ * @param {string} endB
+ * @returns {boolean}
+ */
+export function areTimeIntervalsOverlapping(startA, endA, startB, endB) {
+  const sA = timeToMinutes(startA);
+  const eA = timeToMinutes(endA);
+  const sB = timeToMinutes(startB);
+  const eB = timeToMinutes(endB);
+  if (sA === null || eA === null || sB === null || eB === null) return false;
+  return sA < eB && eA > sB;
+}
+
 export const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export const DAY_OF_WEEK_TO_NAME = Object.freeze({

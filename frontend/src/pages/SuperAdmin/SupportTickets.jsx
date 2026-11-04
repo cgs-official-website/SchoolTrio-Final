@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LuLifeBuoy, LuSearch, LuMessageSquare, LuCircleCheck, LuClock, LuX, LuSend, LuTrash2, LuUser } from 'react-icons/lu';
 import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import ConfirmModal from '../../components/ConfirmModal';
 
 const zunaConfig = {
@@ -14,7 +14,48 @@ const zunaConfig = {
 };
 
 const zunaApp = getApps().find(a => a.name === 'ZunaSharedApp') || initializeApp(zunaConfig, 'ZunaSharedApp');
-const zunaDb = getFirestore(zunaApp);
+let zunaDb;
+try {
+  zunaDb = initializeFirestore(zunaApp, {
+    experimentalAutoDetectLongPolling: true
+  });
+} catch (e) {
+  zunaDb = getFirestore(zunaApp);
+}
+
+
+function formatTicketDate(val, includeTime = false) {
+  if (!val) return 'Recently';
+  try {
+    let d;
+    if (typeof val?.toDate === 'function') {
+      d = val.toDate();
+    } else if (val?.seconds !== undefined) {
+      d = new Date(val.seconds * 1000 + (val.nanoseconds || 0) / 1e6);
+    } else if (typeof val === 'number' || typeof val === 'string') {
+      d = new Date(val);
+    } else {
+      d = new Date(val);
+    }
+    if (isNaN(d.getTime())) return 'Recently';
+    return includeTime ? d.toLocaleString('en-GB') : d.toLocaleDateString('en-GB');
+  } catch (e) {
+    return 'Recently';
+  }
+}
+
+function getTimeMs(val) {
+  if (!val) return 0;
+  try {
+    if (typeof val?.toMillis === 'function') return val.toMillis();
+    if (typeof val?.toDate === 'function') return val.toDate().getTime();
+    if (val?.seconds !== undefined) return val.seconds * 1000 + (val.nanoseconds || 0) / 1e6;
+    const t = new Date(val).getTime();
+    return isNaN(t) ? 0 : t;
+  } catch (e) {
+    return 0;
+  }
+}
 
 export default function SupportTickets() {
   const [tickets, setTickets] = useState([]);
@@ -48,7 +89,7 @@ export default function SupportTickets() {
         }
       });
       const combined = Array.from(ticketMap.values());
-      combined.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+      combined.sort((a, b) => getTimeMs(b.createdAt) - getTimeMs(a.createdAt));
       setTickets(combined);
     };
 
@@ -73,7 +114,7 @@ export default function SupportTickets() {
         };
       }).filter(t => t.status !== 'deleted');
       mergeAndEmit();
-    }, (err) => console.warn('Firestore tickets snapshot warn:', err));
+    }, (err) => { console.warn('Firestore tickets snapshot warn:', err); mergeAndEmit(); });
 
     // Subscribe to Firestore 'support_tickets' collection
     const unsub2 = onSnapshot(collection(zunaDb, 'support_tickets'), (snapshot) => {
@@ -90,7 +131,7 @@ export default function SupportTickets() {
         };
       });
       mergeAndEmit();
-    }, (err) => console.warn('Firestore support_tickets snapshot warn:', err));
+    }, (err) => { console.warn('Firestore support_tickets snapshot warn:', err); mergeAndEmit(); });
 
     // Listen to cross-tab BroadcastChannel
     let bc;
@@ -280,7 +321,7 @@ export default function SupportTickets() {
           <div className="space-y-4">
             {paginatedTickets.map(ticket => {
               const msgCount = ticket.messages?.length || 1;
-              const dateStr = ticket.createdAt ? (new Date(ticket.createdAt).toLocaleDateString('en-GB')) : 'Today';
+              const dateStr = formatTicketDate(ticket.createdAt);
               return (
                 <div
                   key={ticket.id}
@@ -408,7 +449,7 @@ export default function SupportTickets() {
                 </select>
               </div>
               <div className="text-slate-400 dark:text-slate-300 font-medium">
-                Created: {selectedTicket.createdAt ? new Date(selectedTicket.createdAt).toLocaleString() : 'Recently'}
+                Created: {formatTicketDate(selectedTicket.createdAt, true)}
               </div>
             </div>
 

@@ -216,7 +216,7 @@ export default function TopNavbar({
     return () => {
       isMounted = false;
     };
-  }, [userProfile?.schoolId, userProfile?.role, userProfile?.id, userProfile?.userId, userProfile?.uid, showNotifications]);
+  }, [userProfile?.schoolId, userProfile?.role, userProfile?.id, userProfile?.userId, userProfile?.uid, showNotifications, unreadCounts?.notifications, unreadCounts?.noticeboard]);
 
   const refreshNoticesAndAlerts = useCallback(async () => {
     if (!userProfile?.schoolId) return;
@@ -237,6 +237,19 @@ export default function TopNavbar({
   }, [userProfile?.schoolId]);
 
   useLiveDataRefresh(refreshNoticesAndAlerts, [refreshNoticesAndAlerts], ['notices', 'notifications', 'all']);
+
+  // Periodic polling for incoming unread notifications / notices
+  useEffect(() => {
+    if (!userProfile?.schoolId) return;
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refreshNoticesAndAlerts();
+      }
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [userProfile?.schoolId, refreshNoticesAndAlerts]);
 
   const allNotifications = [
     ...notifications.map(n => ({
@@ -264,13 +277,18 @@ export default function TopNavbar({
 
   const unreadCount = allNotifications.filter(n => {
     if (n.type === 'notice') {
-      return !n.viewedBy?.some(v => v.uid === currentUserId || v.userId === currentUserId);
+      return !n.viewedBy?.some(v => v && (v.uid === currentUserId || v.userId === currentUserId || v.parentUserId === currentUserId || v.id === currentUserId));
     }
     if (n.type === 'personal') {
-      return n.read === false;
+      return !n.read && !n.isRead;
     }
     return true; // chats are unread by definition if they exist here
   }).length;
+
+  const hasUnread = unreadCount > 0 || 
+    (unreadCounts?.notifications || 0) > 0 || 
+    (unreadCounts?.noticeboard || 0) > 0 || 
+    (unreadCounts?.chats || 0) > 0;
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -432,8 +450,8 @@ export default function TopNavbar({
             title="Notifications"
           >
             <Bell size={20} />
-            {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+            {hasUnread && (
+              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900"></span>
             )}
           </button>
 
@@ -462,7 +480,7 @@ export default function TopNavbar({
               <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
                 <h3 className="font-semibold text-slate-900 dark:text-white">Notifications</h3>
                 <div className="flex items-center gap-3">
-                  {unreadCount > 0 && (
+                  {hasUnread && (
                     <button 
                       onClick={handleMarkAllAsRead} 
                       className="text-xs font-bold text-primary-600 hover:text-primary-700 transition-colors"
@@ -470,7 +488,9 @@ export default function TopNavbar({
                       Mark all read
                     </button>
                   )}
-                  <span className="text-xs font-medium bg-primary-100 text-primary-700 px-2 py-0.5 rounded-full">{unreadCount} new</span>
+                  <span className="text-xs font-medium bg-primary-100 text-primary-700 px-2 py-0.5 rounded-full">
+                    {Math.max(unreadCount, (unreadCounts?.notifications || 0) + (unreadCounts?.noticeboard || 0) + (unreadCounts?.chats || 0))} new
+                  </span>
                 </div>
               </div>
               <div className="max-h-[28rem] overflow-y-auto custom-scrollbar">
@@ -483,9 +503,9 @@ export default function TopNavbar({
                   <div className="divide-y divide-slate-100">
                     {allNotifications.map((notice) => {
                       const isUnread = notice.type === 'notice' 
-                        ? !notice.viewedBy?.some(v => v.uid === currentUserId || v.userId === currentUserId)
+                        ? !notice.viewedBy?.some(v => v && (v.uid === currentUserId || v.userId === currentUserId || v.parentUserId === currentUserId || v.id === currentUserId))
                         : notice.type === 'personal'
-                          ? notice.read === false
+                          ? (!notice.read && !notice.isRead)
                           : true;
 
                       return (

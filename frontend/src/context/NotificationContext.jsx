@@ -250,8 +250,21 @@ export const NotificationProvider = ({ children }) => {
     window.addEventListener('visibilitychange', handleFocus);
     window.addEventListener('focus', handleFocus);
 
+    const pollInterval = setInterval(() => {
+      if (isMounted && document.visibilityState === 'visible') {
+        fetchNoticeUnread();
+        fetchChatUnread();
+        fetchNotificationUnread();
+        fetchHomeworkUnread();
+        fetchLeavesPending();
+        fetchCanteenPending();
+        fetchComplaintsPending();
+      }
+    }, 15000);
+
     return () => {
       isMounted = false;
+      clearInterval(pollInterval);
       window.removeEventListener(LIVE_DATA_EVENT, handleCustomEvent);
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('visibilitychange', handleFocus);

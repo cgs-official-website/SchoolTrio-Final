@@ -6,7 +6,7 @@ import { listSubjects } from '../../api/subjects';
 import { listTimetables, getClassTimetable, replaceClassTimetable } from '../../api/timetables';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { notifyDataChanged } from '../../utils/liveData';
-import { LuCalendar as Calendar, LuPlus as Plus, LuX as X, LuClock as Clock, LuBookOpen as BookOpen, LuUser as User, LuTrash2 as Trash2, LuPencil as Edit2 } from 'react-icons/lu';
+import { LuCalendar as Calendar, LuPlus as Plus, LuX as X, LuClock as Clock, LuBookOpen as BookOpen, LuUser as User, LuTrash2 as Trash2, LuPencil as Edit2, LuCircleAlert as AlertCircle } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
 import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
@@ -14,13 +14,39 @@ import { uploadCustomDataFiles } from '../../utils/cloudinary';
 import usePermissions from '../../hooks/usePermissions';
 import { sortClassesAscending, formatClassSection, getSectionName } from '../../utils/classSorting';
 
-const formatTime12hr = (time24) => {
+export const formatTime12hr = (time24) => {
   if (!time24) return '';
   const [h, m] = time24.split(':');
   let hour = parseInt(h, 10);
   const period = hour >= 12 ? 'PM' : 'AM';
   hour = hour % 12 || 12;
   return `${hour.toString().padStart(2, '0')}:${m} ${period}`;
+};
+
+export const timeToMinutes = (timeStr) => {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+  const parts = timeStr.trim().split(':');
+  if (parts.length < 2) return null;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+};
+
+export const isEndTimeAfterStartTime = (start, end) => {
+  const s = timeToMinutes(start);
+  const e = timeToMinutes(end);
+  if (s === null || e === null) return false;
+  return s < e;
+};
+
+export const areTimeIntervalsOverlapping = (startA, endA, startB, endB) => {
+  const sA = timeToMinutes(startA);
+  const eA = timeToMinutes(endA);
+  const sB = timeToMinutes(startB);
+  const eB = timeToMinutes(endB);
+  if (sA === null || eA === null || sB === null || eB === null) return false;
+  return sA < eB && eA > sB;
 };
 
 const TimePicker12Hour = ({ value, onChange, required }) => {
@@ -357,19 +383,77 @@ export default function TimetableManagement() {
     e.preventDefault();
     if (!newSlot.subject) return;
 
-    const newSchedule = { ...schedule };
-    
+    if (!newSlot.startTime || !newSlot.endTime) {
+      toast.error("Please enter both start time and end time.");
+      return;
+    }
+
+    if (!isEndTimeAfterStartTime(newSlot.startTime, newSlot.endTime)) {
+      toast.error("End time must be later than start time.");
+      return;
+    }
+
+    // 1. Conflict Detection: Overlapping periods within the same class on activeDay
+    const currentDaySlots = schedule[activeDay] || [];
+    const conflictingClassSlot = currentDaySlots.find(s => 
+      s.id !== editingSlotId && areTimeIntervalsOverlapping(newSlot.startTime, newSlot.endTime, s.startTime, s.endTime)
+    );
+    if (conflictingClassSlot) {
+      const subName = formatDisplayValue(conflictingClassSlot.subject, 'Subject');
+      toast.error(
+        `Class schedule conflict: Overlaps with ${subName} (${formatTime12hr(conflictingClassSlot.startTime)} - ${formatTime12hr(conflictingClassSlot.endTime)}) on ${activeDay}. Periods within the same class cannot overlap.`
+      );
+      return;
+    }
+
     // Resolve subjectId and teacherId from current subjects/teachers lists if not already explicitly set
     const subObj = subjects.find(s => s.name === newSlot.subject || s.id === newSlot.subject);
     const subId = newSlot.subjectId || subObj?.id || null;
     const teacherObj = teachers.find(t => t.id === newSlot.teacherId);
     const teacherDisplayName = newSlot.teacher || teacherObj?.name || (teacherObj?.firstName ? `${teacherObj.firstName} ${teacherObj.lastName || ''}`.trim() : '');
+    const resolvedTeacherId = newSlot.teacherId || teacherObj?.id || null;
+
+    // 2. Conflict Detection: Teacher schedule overlap across classes and within class
+    if (resolvedTeacherId) {
+      // 2a. Check overlapping periods for same teacher in current class
+      const conflictingSameClassTeacherSlot = currentDaySlots.find(s =>
+        s.id !== editingSlotId &&
+        (s.teacherId === resolvedTeacherId || (s.teacher && s.teacher === teacherDisplayName)) &&
+        areTimeIntervalsOverlapping(newSlot.startTime, newSlot.endTime, s.startTime, s.endTime)
+      );
+      if (conflictingSameClassTeacherSlot) {
+        toast.error(
+          `Teacher conflict: ${teacherDisplayName || 'Teacher'} is already assigned to another period in this class from ${formatTime12hr(conflictingSameClassTeacherSlot.startTime)} to ${formatTime12hr(conflictingSameClassTeacherSlot.endTime)} on ${activeDay}.`
+        );
+        return;
+      }
+
+      // 2b. Check across all other classes in allTimetables
+      for (const [classId, classGrid] of Object.entries(allTimetables)) {
+        if (classId === selectedClassId) continue;
+        const otherSlots = classGrid?.[activeDay] || [];
+        const conflictingOther = otherSlots.find(s =>
+          (s.teacherId === resolvedTeacherId || (s.teacher && s.teacher === teacherDisplayName)) &&
+          areTimeIntervalsOverlapping(newSlot.startTime, newSlot.endTime, s.startTime, s.endTime)
+        );
+        if (conflictingOther) {
+          const conflictingClassObj = classes.find(c => c.id === classId);
+          const conflictingClassName = conflictingClassObj ? formatClassSection(conflictingClassObj) : 'another class';
+          toast.error(
+            `Teacher conflict: ${teacherDisplayName || 'Teacher'} is already assigned to ${conflictingClassName} on ${activeDay} from ${formatTime12hr(conflictingOther.startTime)} to ${formatTime12hr(conflictingOther.endTime)}. A teacher cannot be assigned to two different classes in the same time slot.`
+          );
+          return;
+        }
+      }
+    }
+
+    const newSchedule = { ...schedule };
 
     const slotData = {
       ...newSlot,
       subjectId: subId,
       teacher: teacherDisplayName,
-      teacherId: newSlot.teacherId || null
+      teacherId: resolvedTeacherId
     };
 
     if (!newSchedule[activeDay]) {
@@ -450,12 +534,112 @@ export default function TimetableManagement() {
     setConfirmModalState({ isOpen: false, day: null, slotId: null });
   };
 
+  // Helper to detect if a specific slot has a conflict
+  const getSlotConflict = useCallback((day, slot) => {
+    const daySlots = schedule[day] || [];
+    // 1. Class overlap within same day
+    const classConflict = daySlots.find(s => s.id !== slot.id && areTimeIntervalsOverlapping(slot.startTime, slot.endTime, s.startTime, s.endTime));
+    if (classConflict) {
+      return {
+        type: 'class',
+        message: `Overlaps with ${formatDisplayValue(classConflict.subject, 'another period')} (${formatTime12hr(classConflict.startTime)} - ${formatTime12hr(classConflict.endTime)})`
+      };
+    }
+    // 2. Teacher conflict
+    const slotTeacherId = slot.teacherId || (teachers.find(t => t.name === slot.teacher || t.id === slot.teacher)?.id);
+    if (slotTeacherId) {
+      // In same class
+      const sameClassTeacherConflict = daySlots.find(s =>
+        s.id !== slot.id &&
+        (s.teacherId === slotTeacherId || (s.teacher && s.teacher === slot.teacher)) &&
+        areTimeIntervalsOverlapping(slot.startTime, slot.endTime, s.startTime, s.endTime)
+      );
+      if (sameClassTeacherConflict) {
+        return {
+          type: 'teacher',
+          message: `Teacher assigned to multiple periods at this time`
+        };
+      }
+      // In other classes
+      for (const [otherClassId, classGrid] of Object.entries(allTimetables)) {
+        if (otherClassId === selectedClassId) continue;
+        const otherSlots = classGrid?.[day] || [];
+        const tc = otherSlots.find(os => {
+          const osTId = os.teacherId || (teachers.find(t => t.name === os.teacher || t.id === os.teacher)?.id);
+          return (osTId === slotTeacherId || (os.teacher && os.teacher === slot.teacher)) &&
+            areTimeIntervalsOverlapping(slot.startTime, slot.endTime, os.startTime, os.endTime);
+        });
+        if (tc) {
+          const clsObj = classes.find(c => c.id === otherClassId);
+          const clsName = clsObj ? formatClassSection(clsObj) : 'another class';
+          return {
+            type: 'teacher',
+            message: `Teacher assigned to ${clsName} (${formatTime12hr(tc.startTime)} - ${formatTime12hr(tc.endTime)})`
+          };
+        }
+      }
+    }
+    return null;
+  }, [schedule, allTimetables, selectedClassId, teachers, classes]);
+
   const handleSaveTimetable = async () => {
     if (!selectedClassId) return;
     if (!hasCreatePermission && !hasEditPermission) {
       toast.error("You do not have permission to modify timetables.");
       return;
     }
+
+    // Pre-save validation: Check for any overlapping periods or teacher conflicts
+    const dayKeys = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    for (const day of dayKeys) {
+      const daySlots = schedule[day] || [];
+      // Check class overlap
+      for (let i = 0; i < daySlots.length; i++) {
+        for (let j = i + 1; j < daySlots.length; j++) {
+          const s1 = daySlots[i];
+          const s2 = daySlots[j];
+          if (areTimeIntervalsOverlapping(s1.startTime, s1.endTime, s2.startTime, s2.endTime)) {
+            toast.error(
+              `Class schedule conflict: Overlapping periods detected on ${day} (${formatTime12hr(s1.startTime)}-${formatTime12hr(s1.endTime)} and ${formatTime12hr(s2.startTime)}-${formatTime12hr(s2.endTime)}). Periods within the same class cannot have overlapping time schedules.`
+            );
+            return;
+          }
+          const t1 = s1.teacherId || (teachers.find(t => t.name === s1.teacher || t.id === s1.teacher)?.id);
+          const t2 = s2.teacherId || (teachers.find(t => t.name === s2.teacher || t.id === s2.teacher)?.id);
+          if (t1 && t2 && t1 === t2 && areTimeIntervalsOverlapping(s1.startTime, s1.endTime, s2.startTime, s2.endTime)) {
+            toast.error(
+              `Teacher conflict: ${s1.teacher || 'Teacher'} is assigned to overlapping periods on ${day} (${formatTime12hr(s1.startTime)}-${formatTime12hr(s1.endTime)} and ${formatTime12hr(s2.startTime)}-${formatTime12hr(s2.endTime)}).`
+            );
+            return;
+          }
+        }
+      }
+
+      // Check teacher overlap against all other classes
+      for (const slot of daySlots) {
+        const slotTeacherId = slot.teacherId || (teachers.find(t => t.name === slot.teacher || t.id === slot.teacher)?.id);
+        if (!slotTeacherId) continue;
+        for (const [otherClassId, classGrid] of Object.entries(allTimetables)) {
+          if (otherClassId === selectedClassId) continue;
+          const otherSlots = classGrid?.[day] || [];
+          const conflicting = otherSlots.find(os => {
+            const osTId = os.teacherId || (teachers.find(t => t.name === os.teacher || t.id === os.teacher)?.id);
+            return (osTId === slotTeacherId || (os.teacher && os.teacher === slot.teacher)) &&
+              areTimeIntervalsOverlapping(slot.startTime, slot.endTime, os.startTime, os.endTime);
+          });
+          if (conflicting) {
+            const conflictingClassObj = classes.find(c => c.id === otherClassId);
+            const conflictingClassName = conflictingClassObj ? formatClassSection(conflictingClassObj) : 'another class';
+            const teacherName = slot.teacher || 'Teacher';
+            toast.error(
+              `Teacher conflict: ${teacherName} is already assigned to ${conflictingClassName} on ${day} from ${formatTime12hr(conflicting.startTime)} to ${formatTime12hr(conflicting.endTime)}. A teacher cannot be assigned to two different classes in the same time slot.`
+            );
+            return;
+          }
+        }
+      }
+    }
+
     setSaving(true);
     try {
       const uploadedCustomData = await uploadCustomDataFiles(customData, schoolId, 'timetables');
@@ -677,8 +861,10 @@ export default function TimetableManagement() {
                       Free Day
                     </div>
                   ) : (
-                    (schedule[day] || []).map(slot => (
-                      <div key={slot.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 shadow-sm hover:shadow-md transition-shadow group relative">
+                    (schedule[day] || []).map(slot => {
+                      const conflictInfo = getSlotConflict(day, slot);
+                      return (
+                      <div key={slot.id} className={`bg-white dark:bg-slate-900 rounded-2xl border ${conflictInfo ? 'border-rose-400 dark:border-rose-600 ring-1 ring-rose-300/50 dark:ring-rose-800/50' : 'border-slate-200 dark:border-slate-700'} p-3 shadow-sm hover:shadow-md transition-shadow group relative`}>
                         
                         <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
                           <Clock size={12} className="text-primary-500" />
@@ -694,6 +880,16 @@ export default function TimetableManagement() {
                           <User size={12} className="text-slate-400 dark:text-slate-300" />
                           {formatTeacherDisplay(slot.teacher, 'Not Assigned')}
                         </div>
+
+                        {conflictInfo && (
+                          <div
+                            className="text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-lg px-2 py-1 flex items-center gap-1.5 mt-2 shadow-xs"
+                            title={conflictInfo.message}
+                          >
+                            <AlertCircle size={13} className="text-rose-500 shrink-0" />
+                            <span className="truncate">{conflictInfo.message}</span>
+                          </div>
+                        )}
 
                         {/* Edit and Delete Buttons (visible on hover) */}
                         <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
@@ -717,7 +913,8 @@ export default function TimetableManagement() {
                           )}
                         </div>
                       </div>
-                    ))
+                    );
+                    })
                   )}
                 </div>
               ))}

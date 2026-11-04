@@ -173,6 +173,9 @@ export async function createRoleWithPermissions(data, tx = prisma) {
 
   return basePrisma.$transaction(async (trx) => {
     return execute(trx);
+  }, {
+    timeout: 15000,
+    maxWait: 5000
   });
 }
 
@@ -264,28 +267,24 @@ export async function upsertRolePermissions(schoolId, roleId, normalizedPermissi
   }
 
   const execute = async (client) => {
-    for (const perm of normalizedPermissions) {
-      await client.rolePermission.upsert({
+    if (Array.isArray(normalizedPermissions) && normalizedPermissions.length > 0) {
+      const moduleKeys = normalizedPermissions.map(p => p.moduleKey);
+      await client.rolePermission.deleteMany({
         where: {
-          schoolRoleId_moduleKey: {
-            schoolRoleId: roleId,
-            moduleKey: perm.moduleKey
-          }
-        },
-        update: {
-          canRead: perm.canRead,
-          canCreate: perm.canCreate,
-          canEdit: perm.canEdit,
-          canDelete: perm.canDelete
-        },
-        create: {
           schoolRoleId: roleId,
-          moduleKey: perm.moduleKey,
-          canRead: perm.canRead,
-          canCreate: perm.canCreate,
-          canEdit: perm.canEdit,
-          canDelete: perm.canDelete
+          moduleKey: { in: moduleKeys }
         }
+      });
+
+      await client.rolePermission.createMany({
+        data: normalizedPermissions.map(p => ({
+          schoolRoleId: roleId,
+          moduleKey: p.moduleKey,
+          canRead: Boolean(p.canRead),
+          canCreate: Boolean(p.canCreate),
+          canEdit: Boolean(p.canEdit),
+          canDelete: Boolean(p.canDelete)
+        }))
       });
     }
 
@@ -301,6 +300,9 @@ export async function upsertRolePermissions(schoolId, roleId, normalizedPermissi
 
   return basePrisma.$transaction(async (trx) => {
     return execute(trx);
+  }, {
+    timeout: 15000,
+    maxWait: 5000
   });
 }
 

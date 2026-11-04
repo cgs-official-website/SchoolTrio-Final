@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { LuX, LuLifeBuoy, LuSend, LuCircleAlert, LuCircleCheck, LuMessageSquare, LuClock, LuPlus, LuChevronRight, LuArrowLeft } from "react-icons/lu";
 import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, collection, addDoc, serverTimestamp, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 
 const zunaConfig = {
   apiKey: "AIzaSyAzEP2LTXsGvCsFyxITkgoon_2AL4yGKyo",
@@ -14,13 +14,56 @@ const zunaConfig = {
 };
 
 const zunaApp = getApps().find(a => a.name === 'ZunaSharedApp') || initializeApp(zunaConfig, 'ZunaSharedApp');
-const zunaDb = getFirestore(zunaApp);
+let zunaDb;
+try {
+  zunaDb = initializeFirestore(zunaApp, {
+    experimentalAutoDetectLongPolling: true
+  });
+} catch (e) {
+  zunaDb = getFirestore(zunaApp);
+}
+
+
+function formatTicketDate(val) {
+  if (!val) return 'Recently';
+  try {
+    let d;
+    if (typeof val?.toDate === 'function') {
+      d = val.toDate();
+    } else if (val?.seconds !== undefined) {
+      d = new Date(val.seconds * 1000 + (val.nanoseconds || 0) / 1e6);
+    } else if (typeof val === 'number' || typeof val === 'string') {
+      d = new Date(val);
+    } else {
+      d = new Date(val);
+    }
+    if (isNaN(d.getTime())) return 'Recently';
+    return d.toLocaleDateString('en-GB');
+  } catch (e) {
+    return 'Recently';
+  }
+}
+
+function getTimeMs(val) {
+  if (!val) return 0;
+  try {
+    if (typeof val?.toMillis === 'function') return val.toMillis();
+    if (typeof val?.toDate === 'function') return val.toDate().getTime();
+    if (val?.seconds !== undefined) return val.seconds * 1000 + (val.nanoseconds || 0) / 1e6;
+    const t = new Date(val).getTime();
+    return isNaN(t) ? 0 : t;
+  } catch (e) {
+    return 0;
+  }
+}
 
 export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School Administrator', schoolEmail = '' }) {
   const [activeTab, setActiveTab] = useState('raise'); // 'raise' | 'history'
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('medium');
+  const [productSystem, setProductSystem] = useState('School Management System');
+  const [productFilter, setProductFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -54,10 +97,14 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
         }
       });
       const combined = Array.from(ticketMap.values()).filter(t => {
-        const prod = (t.productName || t.productId || '').toLowerCase();
-        return prod.includes('school') || t.clientName === schoolName || t.school === schoolName;
+        if (!t || !t.id) return false;
+        if (productFilter !== 'all') {
+          const prod = (t.productName || t.productId || '').toLowerCase();
+          return prod.includes(productFilter.toLowerCase());
+        }
+        return true;
       });
-      combined.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+      combined.sort((a, b) => getTimeMs(b.createdAt) - getTimeMs(a.createdAt));
       setMyTickets(combined);
       
       // Update selected ticket if viewing thread
@@ -75,7 +122,7 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
         ...d.data()
       }));
       mergeAndEmit();
-    }, (err) => console.warn('Tickets snapshot warn:', err));
+    }, (err) => { console.warn('Tickets snapshot warn:', err); mergeAndEmit(); });
 
     const unsub2 = onSnapshot(collection(zunaDb, 'support_tickets'), (snapshot) => {
       supportList = snapshot.docs.map(d => ({
@@ -85,7 +132,7 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
         ...d.data()
       }));
       mergeAndEmit();
-    }, (err) => console.warn('Support tickets snapshot warn:', err));
+    }, (err) => { console.warn('Support tickets snapshot warn:', err); mergeAndEmit(); });
 
     return () => {
       unsub1();
@@ -355,7 +402,7 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
                     <span className="text-xs font-extrabold text-indigo-600">#{t.id}</span>
                     {getStatusBadge(t.status)}
                     <span className="text-xs text-slate-400 dark:text-slate-300 font-medium ml-auto">
-                      {t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-GB') : 'Recently'}
+                      {formatTicketDate(t.createdAt)}
                     </span>
                   </div>
                   <h4 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 transition-colors">{t.subject}</h4>
@@ -410,7 +457,7 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
                     }`}>
                       <div className="flex items-center justify-between gap-3 text-[10px] opacity-75 mb-1 font-bold">
                         <span>{isSuperAdmin ? '⚡ Zuna SuperAdmin Support' : msg.author || 'School Admin'}</span>
-                        <span>{msg.timestamp || 'Recently'}</span>
+                        <span>{formatTicketDate(msg.timestamp)}</span>
                       </div>
                       <p className="leading-relaxed">{msg.text}</p>
                     </div>

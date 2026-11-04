@@ -5,12 +5,14 @@ import {
   TenantAccessError,
   NotFoundError,
   ForbiddenError,
-  ValidationError
+  ValidationError,
+  ConflictError
 } from '../../utils/app-error.js';
 import {
   DAY_OF_WEEK_TO_NAME,
   normalizeDayOfWeek,
-  isEndTimeAfterStartTime
+  isEndTimeAfterStartTime,
+  areTimeIntervalsOverlapping
 } from './timetable.schemas.js';
 
 /**
@@ -302,6 +304,38 @@ export async function createTimetablePeriod(schoolId, data, actor = {}) {
     }
   }
 
+  // 5. Conflict Detection: Class period overlap
+  const existingClassPeriods = await timetableRepository.findTimetablePeriods(schoolId, {
+    classId: data.classId,
+    dayOfWeek: normalizedDay
+  });
+  for (const existing of existingClassPeriods) {
+    if (areTimeIntervalsOverlapping(data.startTime, data.endTime, existing.startTime, existing.endTime)) {
+      const dayName = DAY_OF_WEEK_TO_NAME[normalizedDay] || 'that day';
+      throw new ConflictError(
+        `Class schedule conflict: Class already has a period scheduled on ${dayName} from ${existing.startTime} to ${existing.endTime}. Periods within the same class cannot have overlapping time schedules.`
+      );
+    }
+  }
+
+  // 6. Conflict Detection: Teacher schedule overlap across all classes
+  if (data.teacherId) {
+    const existingTeacherPeriods = await timetableRepository.findTimetablePeriods(schoolId, {
+      teacherId: data.teacherId,
+      dayOfWeek: normalizedDay
+    });
+    for (const existing of existingTeacherPeriods) {
+      if (areTimeIntervalsOverlapping(data.startTime, data.endTime, existing.startTime, existing.endTime)) {
+        const teacherName = existing.teacher?.name || 'The teacher';
+        const conflictingClass = existing.class?.name || 'another class';
+        const dayName = DAY_OF_WEEK_TO_NAME[normalizedDay] || 'that day';
+        throw new ConflictError(
+          `Teacher schedule conflict: ${teacherName} is already assigned to ${conflictingClass} on ${dayName} from ${existing.startTime} to ${existing.endTime}. A teacher cannot be assigned to two different classes in the same time slot.`
+        );
+      }
+    }
+  }
+
   const created = await timetableRepository.createTimetablePeriod(schoolId, {
     ...data,
     dayOfWeek: normalizedDay
@@ -385,6 +419,41 @@ export async function updateTimetablePeriod(schoolId, id, data, actor = {}) {
   const effectiveEnd = data.endTime || existing.endTime;
   if (!isEndTimeAfterStartTime(effectiveStart, effectiveEnd)) {
     throw new ValidationError('endTime must be later than startTime');
+  }
+
+  const effectiveDay = data.dayOfWeek !== undefined ? (normalizeDayOfWeek(data.dayOfWeek) || existing.dayOfWeek) : existing.dayOfWeek;
+  const effectiveTeacherId = data.teacherId !== undefined ? data.teacherId : existing.teacherId;
+
+  // 6. Conflict Detection: Class period overlap (excluding current period)
+  const existingClassPeriods = await timetableRepository.findTimetablePeriods(schoolId, {
+    classId: effectiveClassId,
+    dayOfWeek: effectiveDay
+  });
+  for (const item of existingClassPeriods) {
+    if (item.id !== id && areTimeIntervalsOverlapping(effectiveStart, effectiveEnd, item.startTime, item.endTime)) {
+      const dayName = DAY_OF_WEEK_TO_NAME[effectiveDay] || 'that day';
+      throw new ConflictError(
+        `Class schedule conflict: Class already has a period scheduled on ${dayName} from ${item.startTime} to ${item.endTime}. Periods within the same class cannot have overlapping time schedules.`
+      );
+    }
+  }
+
+  // 7. Conflict Detection: Teacher schedule overlap across all classes (excluding current period)
+  if (effectiveTeacherId) {
+    const existingTeacherPeriods = await timetableRepository.findTimetablePeriods(schoolId, {
+      teacherId: effectiveTeacherId,
+      dayOfWeek: effectiveDay
+    });
+    for (const item of existingTeacherPeriods) {
+      if (item.id !== id && areTimeIntervalsOverlapping(effectiveStart, effectiveEnd, item.startTime, item.endTime)) {
+        const teacherName = item.teacher?.name || 'The teacher';
+        const conflictingClass = item.class?.name || 'another class';
+        const dayName = DAY_OF_WEEK_TO_NAME[effectiveDay] || 'that day';
+        throw new ConflictError(
+          `Teacher schedule conflict: ${teacherName} is already assigned to ${conflictingClass} on ${dayName} from ${item.startTime} to ${item.endTime}. A teacher cannot be assigned to two different classes in the same time slot.`
+        );
+      }
+    }
   }
 
   const updated = await timetableRepository.updateTimetablePeriod(schoolId, id, data);
@@ -547,6 +616,63 @@ export async function replaceClassTimetable(schoolId, classId, payload = {}, act
       endTime: slot.endTime,
       roomNumber: slot.roomNumber || null
     });
+  }
+
+  // 3a. Conflict Detection: Overlapping periods within the same class
+  for (let i = 0; i < validatedPeriods.length; i++) {
+    for (let j = i + 1; j < validatedPeriods.length; j++) {
+      const p1 = validatedPeriods[i];
+      const p2 = validatedPeriods[j];
+      if (p1.dayOfWeek === p2.dayOfWeek) {
+        if (areTimeIntervalsOverlapping(p1.startTime, p1.endTime, p2.startTime, p2.endTime)) {
+          const dayName = DAY_OF_WEEK_TO_NAME[p1.dayOfWeek] || 'that day';
+          throw new ConflictError(
+            `Class schedule conflict: Overlapping periods detected on ${dayName} (${p1.startTime}-${p1.endTime} and ${p2.startTime}-${p2.endTime}). Periods within the same class cannot have overlapping time schedules.`
+          );
+        }
+      }
+    }
+  }
+
+  // 3b. Conflict Detection: Overlapping periods for the same teacher within this schedule
+  for (let i = 0; i < validatedPeriods.length; i++) {
+    for (let j = i + 1; j < validatedPeriods.length; j++) {
+      const p1 = validatedPeriods[i];
+      const p2 = validatedPeriods[j];
+      if (p1.teacherId && p2.teacherId && p1.teacherId === p2.teacherId && p1.dayOfWeek === p2.dayOfWeek) {
+        if (areTimeIntervalsOverlapping(p1.startTime, p1.endTime, p2.startTime, p2.endTime)) {
+          const dayName = DAY_OF_WEEK_TO_NAME[p1.dayOfWeek] || 'that day';
+          throw new ConflictError(
+            `Teacher schedule conflict: Teacher is assigned to overlapping periods on ${dayName} (${p1.startTime}-${p1.endTime} and ${p2.startTime}-${p2.endTime}). A teacher cannot be assigned to overlapping time slots.`
+          );
+        }
+      }
+    }
+  }
+
+  // 3c. Conflict Detection: Teacher already assigned to another class in overlapping time slot
+  const teacherIds = Array.from(new Set(validatedPeriods.map(p => p.teacherId).filter(Boolean)));
+  if (teacherIds.length > 0) {
+    const existingTeacherPeriods = await timetableRepository.findTimetablePeriods(schoolId, {
+      teacherId: teacherIds,
+      excludeClassId: classId
+    });
+
+    for (const p of validatedPeriods) {
+      if (!p.teacherId) continue;
+      for (const existing of existingTeacherPeriods) {
+        if (existing.teacherId === p.teacherId && existing.dayOfWeek === p.dayOfWeek) {
+          if (areTimeIntervalsOverlapping(p.startTime, p.endTime, existing.startTime, existing.endTime)) {
+            const teacherName = existing.teacher?.name || 'The teacher';
+            const conflictingClass = existing.class?.name || 'another class';
+            const dayName = DAY_OF_WEEK_TO_NAME[p.dayOfWeek] || 'that day';
+            throw new ConflictError(
+              `Teacher schedule conflict: ${teacherName} is already assigned to ${conflictingClass} on ${dayName} from ${existing.startTime} to ${existing.endTime}. A teacher cannot be assigned to two different classes in the same time slot.`
+            );
+          }
+        }
+      }
+    }
   }
 
   // 4. Execute atomic replacement inside transaction

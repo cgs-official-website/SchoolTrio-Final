@@ -4,6 +4,27 @@ import { chatsApi } from '../../api/chats';
 import { LuMessageSquare as MessageSquare, LuFile as FileIcon, LuSearch as Search, LuShieldAlert as ShieldAlert, LuDownload as DownloadIcon, LuX as XIcon, LuBan as Ban } from 'react-icons/lu';
 import CustomAudioPlayer from '../../components/CustomAudioPlayer';
 import toast from 'react-hot-toast';
+import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+
+function areMessagesEqual(prev, next) {
+  if (prev === next) return true;
+  if (!prev || !next) return false;
+  if (prev.length !== next.length) return false;
+  for (let i = 0; i < prev.length; i++) {
+    const a = prev[i];
+    const b = next[i];
+    if (
+      a.id !== b.id ||
+      a.text !== b.text ||
+      a.mediaUrl !== b.mediaUrl ||
+      a.mediaType !== b.mediaType ||
+      a.isDeletedForEveryone !== b.isDeletedForEveryone
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export default function ChatMonitor() {
   const { userProfile } = useAuth();
@@ -126,6 +147,53 @@ export default function ChatMonitor() {
       setMessages([]);
     }
   }, [activeThread?.id, loadThreadMessages]);
+
+  // Auto-refresh via live data broadcast
+  useLiveDataRefresh(useCallback(() => {
+    fetchThreads(searchQuery);
+    if (activeThread?.id) {
+      chatsApi.listChatMessages(activeThread.id)
+        .then(res => {
+          if (!mountedRef.current) return;
+          const newMsgs = Array.isArray(res?.data) ? res.data : [];
+          setMessages(prev => areMessagesEqual(prev, newMsgs) ? prev : newMsgs);
+        })
+        .catch(() => {});
+    }
+  }, [fetchThreads, searchQuery, activeThread?.id]), [fetchThreads, searchQuery, activeThread?.id], ['chats', 'all']);
+
+  // Periodic message polling for active thread
+  useEffect(() => {
+    if (!activeThread?.id) return;
+
+    let isCancelled = false;
+    const pollThreadMessages = async () => {
+      if (document.visibilityState !== 'visible' || !mountedRef.current) return;
+      try {
+        const res = await chatsApi.listChatMessages(activeThread.id);
+        if (isCancelled || !mountedRef.current) return;
+        const newMsgs = Array.isArray(res?.data) ? res.data : [];
+        setMessages(prev => areMessagesEqual(prev, newMsgs) ? prev : newMsgs);
+      } catch (err) {}
+    };
+
+    const interval = setInterval(pollThreadMessages, 3000);
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeThread?.id]);
+
+  // Periodic polling for threads list
+  useEffect(() => {
+    if (!schoolId) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && mountedRef.current) {
+        fetchThreads(searchQuery);
+      }
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [schoolId, searchQuery, fetchThreads]);
 
   // Auto-scroll to bottom of messages
   useEffect(() => {

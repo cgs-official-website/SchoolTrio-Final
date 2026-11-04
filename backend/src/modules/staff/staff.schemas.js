@@ -378,6 +378,7 @@ export const updateStaffSelfSchema = {
       qualifications: z.record(z.unknown()).optional(),
       experience: z.record(z.unknown()).optional(),
       documents: z.record(z.unknown()).optional(),
+      financial: z.record(z.unknown()).optional(),
       customData: z.record(z.unknown()).optional()
     })
     .refine(
