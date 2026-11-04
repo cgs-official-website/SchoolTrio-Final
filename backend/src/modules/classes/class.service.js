@@ -236,10 +236,25 @@ export async function getMyTeacherClasses(schoolId, actor, query = {}) {
   const { staffProfile, classTeacherSectionIds } = assignments;
   let { wholeClassIds, sectionIds } = assignments;
 
+  // Check if teacher is a coordinator (coordinators manage all classes assigned under them)
+  const userRoleAssignments = prisma.userRoleAssignment?.findMany
+    ? await prisma.userRoleAssignment.findMany({
+        where: { schoolId, userId: actor.id },
+        include: { schoolRole: true }
+      })
+    : [];
+  const isCoordinator = userRoleAssignments.some(ra => {
+    const slug = ra.schoolRole?.slug?.toLowerCase() || '';
+    const name = ra.schoolRole?.name?.toLowerCase() || '';
+    return slug.includes('coordinator') || slug.includes('co-ordinator') ||
+           name.includes('coordinator') || name.includes('co-ordinator');
+  });
+
   // classTeacherOnly=true -> only the section(s) this teacher is CLASS TEACHER of
   // (Class Dashboard / Attendance / Grades). Falls back to the normal scope when the
   // teacher is not the class teacher of any section.
-  if (String(query.classTeacherOnly) === 'true' && classTeacherSectionIds.size > 0) {
+  // Exception: Grade Coordinators manage all classes assigned under them!
+  if (String(query.classTeacherOnly) === 'true' && classTeacherSectionIds.size > 0 && !isCoordinator) {
     wholeClassIds = new Set();
     sectionIds = new Set(classTeacherSectionIds);
   }

@@ -107,8 +107,12 @@ export async function verifyTeacherClassAuthorization(schoolId, classId, actor) 
     select: {
       id: true,
       assignedClassId: true,
+      customData: true,
       headedClasses: {
         select: { id: true }
+      },
+      headedSections: {
+        select: { id: true, classId: true }
       }
     }
   });
@@ -120,7 +124,8 @@ export async function verifyTeacherClassAuthorization(schoolId, classId, actor) 
     },
     select: {
       id: true,
-      classTeacherId: true
+      classTeacherId: true,
+      categoryId: true
     }
   });
 
@@ -129,16 +134,70 @@ export async function verifyTeacherClassAuthorization(schoolId, classId, actor) 
   }
 
   if (staffProfile) {
-    const isClassTeacher =
-      targetClass.classTeacherId === staffProfile.id ||
-      staffProfile.assignedClassId === classId ||
-      (Array.isArray(staffProfile.headedClasses) && staffProfile.headedClasses.some(c => c.id === classId));
+    const subjectClassIds = Array.isArray(staffProfile.customData?.assignments?.subjectClassIds)
+      ? staffProfile.customData.assignments.subjectClassIds.filter(Boolean)
+      : [];
 
-    if (isClassTeacher) {
+    const isDirectlyAssigned =
+      targetClass.classTeacherId === staffProfile.id ||
+      targetClass.classTeacherId === (actor.id || actor.userId) ||
+      staffProfile.assignedClassId === classId ||
+      (Array.isArray(staffProfile.headedClasses) && staffProfile.headedClasses.some(c => c.id === classId)) ||
+      (Array.isArray(staffProfile.headedSections) && staffProfile.headedSections.some(s => s.classId === classId)) ||
+      subjectClassIds.includes(classId);
+
+    if (isDirectlyAssigned) {
       return true;
     }
 
-    if (staffProfile.assignedClassId && staffProfile.assignedClassId !== classId) {
+    // Check if actor has Grade Coordinator role or RBAC permissions
+    const roleAssignments = prisma.userRoleAssignment?.findMany
+      ? await prisma.userRoleAssignment.findMany({
+          where: {
+            schoolId,
+            userId: actor.id || actor.userId
+          },
+          include: {
+            schoolRole: {
+              include: {
+                permissions: {
+                  where: { moduleKey: 'attendance' }
+                }
+              }
+            }
+          }
+        })
+      : [];
+
+    const isCoordinator = roleAssignments.some(ra => {
+      const slug = ra.schoolRole?.slug?.toLowerCase() || '';
+      const name = ra.schoolRole?.name?.toLowerCase() || '';
+      return slug.includes('coordinator') || slug.includes('co-ordinator') ||
+             name.includes('coordinator') || name.includes('co-ordinator');
+    });
+
+    const hasAttendanceRbacPermission = roleAssignments.some(ra => {
+      return ra.schoolRole?.permissions?.some(p => p.canCreate || p.canEdit);
+    });
+
+    if (isCoordinator || hasAttendanceRbacPermission) {
+      const allAssignedIds = [staffProfile.assignedClassId, ...subjectClassIds].filter(Boolean);
+      if (allAssignedIds.length > 0 && prisma.class?.findMany) {
+        const assignedClassRecords = await prisma.class.findMany({
+          where: {
+            schoolId,
+            id: { in: allAssignedIds }
+          },
+          select: { categoryId: true }
+        });
+        const coordinatedCategories = new Set(assignedClassRecords.map(c => c.categoryId).filter(Boolean));
+        if (targetClass.categoryId && coordinatedCategories.has(targetClass.categoryId)) {
+          return true;
+        }
+      }
+    }
+
+    if (staffProfile.assignedClassId && !isDirectlyAssigned) {
       throw new ForbiddenError('You are only authorized to mark attendance for your assigned class');
     }
   }

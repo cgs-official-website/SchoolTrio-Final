@@ -50,7 +50,7 @@ const calcPercentage = (stat) =>
 export default function Attendance() {
   // Class + SECTION the teacher is class teacher of (e.g. V - B). Students, sessions and saves
   // are all scoped to this section so V-A students never appear for the V-B teacher.
-  const { classId: scopedClassId, sectionId, label: scopeLabel, loading: scopeLoading } = useTeacherScope();
+  const { classId: scopedClassId, sectionId, label: scopeLabel, loading: scopeLoading, units, unit, setUnitKey } = useTeacherScope();
   const classId = scopeLoading ? null : scopedClassId;
 
   const today = new Date().toISOString().split('T')[0];
@@ -770,9 +770,24 @@ export default function Attendance() {
         <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-wider">
-                {scopeLabel || (classDetails ? `${classDetails.name || ''} ${classDetails.section || ''}`.trim() : 'Class Attendance')}
-              </span>
+              {units && units.length > 1 ? (
+                <select
+                  value={unit?.key || ''}
+                  onChange={(e) => setUnitKey(e.target.value)}
+                  className="px-3 py-1.5 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-wider text-white border border-white/30 cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/50 transition-colors"
+                  aria-label="Select Assigned Class"
+                >
+                  {units.map((u) => (
+                    <option key={u.key} value={u.key} className="text-slate-900 bg-white dark:bg-slate-800 dark:text-white">
+                      {u.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-wider">
+                  {scopeLabel || (classDetails ? `${classDetails.name || ''} ${classDetails.section || ''}`.trim() : 'Class Attendance')}
+                </span>
+              )}
               {viewMode === 'daily' && (
                 <>
                   {daySessionStatus.fn && daySessionStatus.an ? (
