@@ -23,6 +23,9 @@ export const NOTICE_AUDIENCES = [
  */
 export const NOTICE_PRIORITIES = ['normal', 'high'];
 
+/** Max files per notice (each file is uploaded by the client; only the URL is stored) */
+export const MAX_NOTICE_FILES = 5;
+
 /**
  * Single file attachment schema
  */
@@ -38,15 +41,23 @@ const attachmentFileSchema = z.object({
  */
 const attachmentsInputSchema = z
   .union([
-    z.array(attachmentFileSchema),
+    z.array(attachmentFileSchema).max(MAX_NOTICE_FILES, `You can attach at most ${MAX_NOTICE_FILES} files`),
     z.object({
-      files: z.array(attachmentFileSchema).optional(),
+      files: z.array(attachmentFileSchema).max(MAX_NOTICE_FILES, `You can attach at most ${MAX_NOTICE_FILES} files`).optional(),
       remarks: z.string().trim().max(2000).optional(),
       priority: z.enum(NOTICE_PRIORITIES).optional(),
       targetStudentIds: z.array(z.string().regex(REGEX.UUID, 'Invalid student ID format')).optional()
     })
   ])
   .nullable()
+  .optional();
+
+/**
+ * Optional category targeting (multi-select). Empty / omitted = all categories.
+ */
+const categoryIdsSchema = z
+  .array(z.string().regex(REGEX.UUID, 'Invalid category ID format'))
+  .max(50, 'Too many categories selected')
   .optional();
 
 // ============================================================
@@ -84,6 +95,7 @@ export const createNoticeSchema = {
         .array(z.string().regex(REGEX.UUID, 'Invalid target student ID format'))
         .optional(),
       sendWhatsApp: z.boolean().optional(),
+      categoryIds: categoryIdsSchema,
       attachments: attachmentsInputSchema
     })
     .refine((data) => Boolean(data.content || data.message), {
@@ -132,6 +144,7 @@ export const updateNoticeSchema = {
       targetStudentIds: z
         .array(z.string().regex(REGEX.UUID, 'Invalid target student ID format'))
         .optional(),
+      categoryIds: categoryIdsSchema,
       attachments: attachmentsInputSchema
     })
     .refine((data) => Object.keys(data).length > 0, {
@@ -147,6 +160,7 @@ export const listNoticesSchema = {
     type: z.enum(NOTICE_TYPES).optional(),
     audience: z.enum(NOTICE_AUDIENCES).optional(),
     classId: z.string().regex(REGEX.UUID, 'Invalid class ID format').optional(),
+    categoryId: z.string().regex(REGEX.UUID, 'Invalid category ID format').optional(),
     priority: z.enum(NOTICE_PRIORITIES).optional(),
     search: z.string().trim().max(100).optional(),
     page: z.coerce.number().int().min(1).default(1),

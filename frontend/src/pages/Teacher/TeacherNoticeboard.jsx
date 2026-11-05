@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { NoticeCategoryBadges, NoticeAttachments } from '../../components/NoticeMeta';
 import { useAuth } from '../../context/AuthContext';
 import { noticesApi } from '../../api/notices';
 import { listClasses } from '../../api/classes';
@@ -56,7 +57,7 @@ export default function TeacherNoticeboard() {
     noticesList.forEach((notice) => {
       const alreadyViewed = notice.viewedBy?.some((v) => v.uid === currentUserId || v.userId === currentUserId);
       if (!alreadyViewed && notice.id) {
-        noticesApi.markNoticeViewed(notice.id).catch(() => {});
+        noticesApi.markNoticeViewed(notice.id).catch(() => { });
       }
     });
   }, [currentUserId]);
@@ -315,6 +316,7 @@ export default function TeacherNoticeboard() {
                           <Users size={14} /> To: {notice.audience === 'specific_parents' ? `Selected Parents (${notice.targetStudentIds?.length || 0})` : (notice.audience || 'all').replace('_', ' & ')}
                           {activeTab === 'class' && notice.classId ? ` (Class: ${classesMap[notice.classId] || notice.className || notice.classId})` : ''}
                         </span>
+                        <NoticeCategoryBadges notice={notice} />
                         <span className="text-sm font-medium text-slate-400 dark:text-slate-300">
                           {notice.createdAt ? new Date(notice.createdAt).toLocaleString(undefined, {
                             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
@@ -336,6 +338,8 @@ export default function TeacherNoticeboard() {
                     <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap font-medium">
                       {notice.content || notice.message}
                     </div>
+
+                    <NoticeAttachments notice={notice} />
 
                     <div className="text-sm font-medium text-slate-400 dark:text-slate-300 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
                       <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center border border-slate-200 dark:border-slate-700">

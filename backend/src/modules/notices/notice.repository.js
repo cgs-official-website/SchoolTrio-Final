@@ -457,6 +457,9 @@ export async function findNoticesList(schoolId, options = {}, tx = prisma) {
   }
 
   // Class ID filter
+  if (options.categoryId) {
+    where.categoryIds = { has: options.categoryId };
+  }
   if (options.classId) {
     where.classId = options.classId;
   }
@@ -477,8 +480,8 @@ export async function findNoticesList(schoolId, options = {}, tx = prisma) {
   const sortField = options.sort === 'updatedAt'
     ? 'updatedAt'
     : options.sort === 'title'
-    ? 'title'
-    : 'createdAt';
+      ? 'title'
+      : 'createdAt';
   const sortOrder = options.order === 'asc' ? 'asc' : 'desc';
 
   const [total, notices] = await Promise.all([
@@ -520,7 +523,8 @@ export async function createNotice(schoolId, data, tx = prisma) {
       classId: data.classId || null,
       audience: data.audience || 'all',
       viewedBy: data.viewedBy || [],
-      attachments: data.attachments || null
+      attachments: data.attachments || null,
+      categoryIds: Array.isArray(data.categoryIds) ? data.categoryIds : []
     },
     include: {
       class: {
@@ -557,7 +561,8 @@ export async function updateNotice(schoolId, noticeId, data, tx = prisma) {
       ...(data.classId !== undefined && { classId: data.classId }),
       ...(data.audience !== undefined && { audience: data.audience }),
       ...(data.viewedBy !== undefined && { viewedBy: data.viewedBy }),
-      ...(data.attachments !== undefined && { attachments: data.attachments })
+      ...(data.attachments !== undefined && { attachments: data.attachments }),
+      ...(data.categoryIds !== undefined && { categoryIds: data.categoryIds })
     },
     include: {
       class: {
@@ -721,4 +726,40 @@ export async function recordNoticeView(schoolId, noticeId, viewerData, tx = pris
   }
 
   return executeOperation(prisma);
+}
+
+
+// ============================================================
+// CATEGORY TARGETING HELPERS
+// ============================================================
+
+/** All class categories of a tenant (id + name). */
+export async function findAllCategories(schoolId, tx = prisma) {
+  return tx.classCategory.findMany({
+    where: { schoolId },
+    select: { id: true, name: true },
+    orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }]
+  });
+}
+
+/** Returns only the category ids that really exist in this tenant. */
+export async function findCategoriesInTenant(schoolId, categoryIds, tx = prisma) {
+  if (!categoryIds || categoryIds.length === 0) return [];
+  return tx.classCategory.findMany({
+    where: { schoolId, id: { in: categoryIds } },
+    select: { id: true, name: true }
+  });
+}
+
+/** Distinct category ids of the given classes and of the classes that own the given sections. */
+export async function findCategoryIdsForClassesAndSections(schoolId, classIds = [], sectionIds = [], tx = prisma) {
+  const or = [];
+  if (classIds.length > 0) or.push({ id: { in: classIds } });
+  if (sectionIds.length > 0) or.push({ sections: { some: { id: { in: sectionIds } } } });
+  if (or.length === 0) return [];
+  const classes = await tx.class.findMany({
+    where: { schoolId, OR: or, categoryId: { not: null } },
+    select: { categoryId: true }
+  });
+  return Array.from(new Set(classes.map((c) => c.categoryId)));
 }

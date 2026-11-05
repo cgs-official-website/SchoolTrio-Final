@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { noticesApi } from '../../api/notices';
-import { listClasses } from '../../api/classes';
+import { listClasses, listClassCategories } from '../../api/classes';
+import CategoryMultiSelect from '../../components/CategoryMultiSelect';
+import NoticeAttachmentPicker from '../../components/NoticeAttachmentPicker';
+import { NoticeCategoryBadges, NoticeAttachments } from '../../components/NoticeMeta';
 import {
   LuBell as Bell,
   LuMegaphone as Megaphone,
@@ -50,15 +53,19 @@ export default function Noticeboard() {
     title: '',
     message: '',
     audience: 'all',
-    priority: 'normal'
+    priority: 'normal',
+    categoryIds: [],
+    attachments: []
   });
+  const [categories, setCategories] = useState([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
 
   const markUnreadAsViewed = useCallback((noticesList) => {
     if (!currentUserId || !noticesList || !Array.isArray(noticesList)) return;
     noticesList.forEach((notice) => {
       const alreadyViewed = notice.viewedBy?.some((v) => v.uid === currentUserId || v.userId === currentUserId);
       if (!alreadyViewed && notice.id) {
-        noticesApi.markNoticeViewed(notice.id).catch(() => {});
+        noticesApi.markNoticeViewed(notice.id).catch(() => { });
       }
     });
   }, [currentUserId]);
@@ -125,6 +132,18 @@ export default function Noticeboard() {
     };
   }, []);
 
+  // Load the categories created in Classes & Sections > Manage Categories
+  useEffect(() => {
+    let isMounted = true;
+    listClassCategories()
+      .then((res) => {
+        const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+        if (isMounted) setCategories(list.map((c) => ({ id: c.id, name: c.name })));
+      })
+      .catch((err) => console.error('Failed to load categories for notices:', err));
+    return () => { isMounted = false; };
+  }, []);
+
   // Fetch notices when active tab changes
   useEffect(() => {
     fetchNotices();
@@ -145,7 +164,9 @@ export default function Noticeboard() {
           title: newNotice.title,
           content: newNotice.message,
           audience: newNotice.audience,
-          priority: newNotice.priority
+          priority: newNotice.priority,
+          ...(editingNotice.type !== 'class' && { categoryIds: newNotice.categoryIds }),
+          attachments: newNotice.attachments
         });
         const updatedNotice = {
           ...editingNotice,
@@ -153,7 +174,10 @@ export default function Noticeboard() {
           content: newNotice.message,
           message: newNotice.message,
           audience: newNotice.audience,
-          priority: newNotice.priority
+          priority: newNotice.priority,
+          categoryIds: newNotice.categoryIds,
+          attachments: newNotice.attachments,
+          categories: categories.filter((c) => newNotice.categoryIds.includes(c.id))
         };
         setGlobalNotices(prev => prev.map(n => n.id === editingNotice.id ? updatedNotice : n));
         setClassNotices(prev => prev.map(n => n.id === editingNotice.id ? updatedNotice : n));
@@ -165,7 +189,9 @@ export default function Noticeboard() {
           content: newNotice.message,
           type: 'global',
           audience: newNotice.audience,
-          priority: newNotice.priority
+          priority: newNotice.priority,
+          categoryIds: newNotice.categoryIds,
+          attachments: newNotice.attachments
         };
         const res = await noticesApi.createNotice(noticePayload);
         const createdNotice = res?.data || { ...noticePayload, id: 'temp_' + Date.now(), createdAt: new Date().toISOString() };
@@ -180,13 +206,24 @@ export default function Noticeboard() {
 
         // Non-blocking WhatsApp side effect
         if (createdNotice?.id && schoolId) {
-          whatsappService.sendNoticeNotification(schoolId, createdNotice.id, noticePayload);
+          // When categories are chosen, restrict the WhatsApp broadcast to classes of those categories
+          const waData = { ...noticePayload };
+          if (newNotice.categoryIds.length > 0) {
+            listClasses({ limit: 100 })
+              .then((r) => {
+                const ids = (r?.data || []).filter((c) => newNotice.categoryIds.includes(c.categoryId || c.category?.id)).map((c) => c.id);
+                return whatsappService.sendNoticeNotification(schoolId, createdNotice.id, { ...waData, audience: 'Specific Class', targetClasses: ids });
+              })
+              .catch(() => { });
+          } else {
+            whatsappService.sendNoticeNotification(schoolId, createdNotice.id, waData);
+          }
         }
       }
 
       setShowCreateModal(false);
       setEditingNotice(null);
-      setNewNotice({ title: '', message: '', audience: 'all', priority: 'normal' });
+      setNewNotice({ title: '', message: '', audience: 'all', priority: 'normal', categoryIds: [], attachments: [] });
       fetchNotices({ silent: true });
     } catch (error) {
       console.error('Save notice error:', error);
@@ -202,7 +239,9 @@ export default function Noticeboard() {
       title: notice.title || '',
       message: notice.content || notice.message || '',
       audience: notice.audience || 'all',
-      priority: notice.priority || 'normal'
+      priority: notice.priority || 'normal',
+      categoryIds: Array.isArray(notice.categoryIds) ? notice.categoryIds : [],
+      attachments: Array.isArray(notice.attachments) ? notice.attachments : []
     });
     setShowCreateModal(true);
   };
@@ -247,7 +286,7 @@ export default function Noticeboard() {
           <button
             onClick={() => {
               setEditingNotice(null);
-              setNewNotice({ title: '', message: '', audience: 'all', priority: 'normal' });
+              setNewNotice({ title: '', message: '', audience: 'all', priority: 'normal', categoryIds: [], attachments: [] });
               setShowCreateModal(true);
             }}
             className="px-5 py-2.5 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 shadow-sm flex items-center gap-2 transition-colors"
@@ -307,15 +346,16 @@ export default function Noticeboard() {
                         <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider
                           ${notice.audience === 'all' ? 'bg-purple-100 text-purple-700' :
                             notice.audience === 'teachers' ? 'bg-blue-100 text-blue-700' :
-                            notice.audience === 'students' ? 'bg-orange-100 text-orange-700' :
-                            notice.audience === 'students_parents' ? 'bg-teal-100 text-teal-700' :
-                            'bg-green-100 text-green-700'}
+                              notice.audience === 'students' ? 'bg-orange-100 text-orange-700' :
+                                notice.audience === 'students_parents' ? 'bg-teal-100 text-teal-700' :
+                                  'bg-green-100 text-green-700'}
                         `}>
                           {(notice.audience === 'all' || notice.audience === 'parents' || notice.audience === 'students_parents' || notice.audience === 'students') && <Users size={14} />}
                           {notice.audience === 'teachers' && <GraduationCap size={14} />}
                           To: {(notice.audience || 'all').replace('_', ' & ')}
                           {activeTab === 'class' && notice.classId ? ` (Class: ${classesMap[notice.classId] || notice.className || notice.classId})` : ''}
                         </span>
+                        <NoticeCategoryBadges notice={notice} />
                         <span className="text-sm font-medium text-slate-400 dark:text-slate-300">
                           {notice.createdAt ? new Date(notice.createdAt).toLocaleString(undefined, {
                             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
@@ -335,6 +375,8 @@ export default function Noticeboard() {
                     <div className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap font-medium">
                       {notice.content || notice.message}
                     </div>
+
+                    <NoticeAttachments notice={notice} />
 
                     <div className="text-sm font-medium text-slate-400 dark:text-slate-300 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
                       <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center border border-slate-200 dark:border-slate-700">
@@ -435,13 +477,28 @@ export default function Noticeboard() {
                     </select>
                   </div>
                 </div>
+
+                {!(editingNotice && editingNotice.type === 'class') && (
+                  <CategoryMultiSelect
+                    categories={categories}
+                    value={newNotice.categoryIds}
+                    onChange={(ids) => setNewNotice({ ...newNotice, categoryIds: ids })}
+                  />
+                )}
+
+                <NoticeAttachmentPicker
+                  files={newNotice.attachments}
+                  schoolId={schoolId}
+                  onChange={(files) => setNewNotice((prev) => ({ ...prev, attachments: files }))}
+                  onBusyChange={setUploadingFiles}
+                />
               </div>
 
               <div className="p-6 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 shrink-0">
                 <button type="button" onClick={() => setShowCreateModal(false)} className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors">
                   Cancel
                 </button>
-                <button type="submit" disabled={creating} className="w-full sm:w-auto px-4 py-2 bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 rounded-xl shadow-sm flex justify-center items-center gap-2 transition-colors">
+                <button type="submit" disabled={creating || uploadingFiles} className="w-full sm:w-auto px-4 py-2 bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 rounded-xl shadow-sm flex justify-center items-center gap-2 transition-colors">
                   {creating ? 'Saving...' : <><Send size={18} /> {editingNotice ? 'Update' : 'Broadcast'}</>}
                 </button>
               </div>

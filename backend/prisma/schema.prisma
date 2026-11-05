@@ -1157,6 +1157,8 @@ model Notice {
   audience    String   @default("all") @db.VarChar(50)
   viewedBy    Json?    @map("viewed_by")
   attachments Json?
+  // Optional targeting: ClassCategory ids. Empty = every category (whole school for the chosen audience)
+  categoryIds String[] @default([]) @map("category_ids") @db.Uuid
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

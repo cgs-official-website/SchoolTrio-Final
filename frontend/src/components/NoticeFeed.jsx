@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { NoticeCategoryBadges, NoticeAttachments } from './NoticeMeta';
 import { useAuth } from '../context/AuthContext';
 import { noticesApi } from '../api/notices';
 import { LuBell as Bell, LuTriangleAlert as AlertTriangle, LuUsers as Users, LuGraduationCap as GraduationCap } from 'react-icons/lu';
@@ -66,8 +67,8 @@ export default function NoticeFeed({ audienceRole: _audienceRole }) {
           notices.map((notice) => {
             const isHighPriority = notice.priority === 'high';
             return (
-              <div 
-                key={notice.id} 
+              <div
+                key={notice.id}
                 className={`bg-white dark:bg-slate-900 rounded-3xl border p-6 flex flex-col gap-4 shadow-sm transition-all
                   ${isHighPriority ? 'border-red-200 bg-red-50/10' : 'border-slate-200 dark:border-slate-700'}
                 `}
@@ -79,6 +80,7 @@ export default function NoticeFeed({ audienceRole: _audienceRole }) {
                         <AlertTriangle size={14} /> High Priority
                       </span>
                     )}
+                    <NoticeCategoryBadges notice={notice} />
                     <span className="text-sm font-medium text-slate-400 dark:text-slate-300">
                       {new Date(notice.createdAt).toLocaleString(undefined, {
                         month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
@@ -87,11 +89,13 @@ export default function NoticeFeed({ audienceRole: _audienceRole }) {
                   </div>
                   <h3 className="text-xl font-bold text-slate-900 dark:text-white">{notice.title}</h3>
                 </div>
-                
+
                 <div className="text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap font-medium">
                   {notice.message}
                 </div>
-                
+
+                <NoticeAttachments notice={notice} />
+
                 <div className="text-sm font-medium text-slate-400 dark:text-slate-300 pt-2 border-t border-slate-100 dark:border-slate-800">
                   Posted by: {notice.authorName}
                 </div>

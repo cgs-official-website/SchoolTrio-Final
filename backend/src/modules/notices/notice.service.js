@@ -6,6 +6,7 @@ import {
   ValidationError
 } from '../../utils/app-error.js';
 import { SYSTEM_ROLES } from '../../config/constants.js';
+import { getTeacherAssignments } from '../classes/class.service.js';
 
 /**
  * Normalizes and formats a database Notice record for canonical API output.
@@ -49,6 +50,7 @@ export function formatNoticeResponse(notice) {
     targetStudentIds,
     viewedBy: Array.isArray(notice.viewedBy) ? notice.viewedBy : [],
     attachments: files,
+    categoryIds: Array.isArray(notice.categoryIds) ? notice.categoryIds : [],
     createdAt: notice.createdAt,
     updatedAt: notice.updatedAt
   };
@@ -344,6 +346,59 @@ export async function batchEnrichNoticeViewers(schoolId, notices) {
 }
 
 /**
+ * Adds `categories: [{ id, name }]` to formatted notices (one tenant-wide lookup, only when needed).
+ */
+async function decorateWithCategories(schoolId, formattedNotices) {
+  const list = Array.isArray(formattedNotices) ? formattedNotices : [formattedNotices];
+  const needsLookup = list.some((n) => n && n.categoryIds && n.categoryIds.length > 0);
+  let nameById = new Map();
+  if (needsLookup) {
+    const all = await noticeRepository.findAllCategories(schoolId);
+    nameById = new Map(all.map((c) => [c.id, c.name]));
+  }
+  const decorate = (n) => n && ({
+    ...n,
+    categories: (n.categoryIds || [])
+      .map((id) => ({ id, name: nameById.get(id) }))
+      .filter((c) => c.name)
+  });
+  return Array.isArray(formattedNotices) ? list.map(decorate) : decorate(list[0]);
+}
+
+/**
+ * Prisma clause: notice is for everyone (no categories) OR targets at least one of the viewer's categories.
+ */
+function buildCategoryVisibilityClause(viewerCategoryIds = []) {
+  const or = [{ categoryIds: { isEmpty: true } }];
+  if (viewerCategoryIds.length > 0) {
+    or.push({ categoryIds: { hasSome: viewerCategoryIds } });
+  }
+  return { OR: or };
+}
+
+/** Does a notice's category targeting include this viewer? (empty targeting = everyone) */
+function noticeMatchesCategories(notice, viewerCategoryIds = []) {
+  const targets = Array.isArray(notice.categoryIds) ? notice.categoryIds : [];
+  if (targets.length === 0) return true;
+  return targets.some((id) => viewerCategoryIds.includes(id));
+}
+
+/** Categories of every class a teacher is responsible for (class teacher, section teacher, subject classes). */
+async function getTeacherCategoryIds(schoolId, userId, staffProfile) {
+  const headed = (staffProfile?.headedClasses || []).map((c) => c.id);
+  const classIds = new Set([staffProfile?.assignedClassId, ...headed].filter(Boolean));
+  const sectionIds = new Set();
+  try {
+    const assignments = await getTeacherAssignments(schoolId, userId);
+    assignments.wholeClassIds.forEach((id) => classIds.add(id));
+    assignments.sectionIds.forEach((id) => sectionIds.add(id));
+  } catch {
+    // fall back to the basic assignment above
+  }
+  return noticeRepository.findCategoryIdsForClassesAndSections(schoolId, Array.from(classIds), Array.from(sectionIds));
+}
+
+/**
  * Lists notices for the authenticated user, applying strict tenant isolation and role-specific visibility rules.
  *
  * @param {string} schoolId - Tenant UUID
@@ -367,7 +422,7 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
     const enrichedNotices = await batchEnrichNoticeViewers(schoolId, notices);
 
     return {
-      notices: enrichedNotices.map(formatNoticeResponse),
+      notices: await decorateWithCategories(schoolId, enrichedNotices.map(formatNoticeResponse)),
       pagination: {
         page,
         limit,
@@ -391,6 +446,7 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
     const assignedClassId = staffProfile?.assignedClassId || null;
     const headedClassIds = staffProfile?.headedClasses?.map((c) => c.id) || [];
     const teacherClassIds = [assignedClassId, ...headedClassIds].filter(Boolean);
+    const teacherCategoryIds = await getTeacherCategoryIds(schoolId, userId, staffProfile);
 
     // Build teacher visibility conditions
     const teacherConditions = [
@@ -418,7 +474,8 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
 
     // Combine with requested query filters
     const customWhere = {
-      OR: teacherConditions
+      OR: teacherConditions,
+      AND: [buildCategoryVisibilityClause(teacherCategoryIds)]
     };
 
     const { notices, total } = await noticeRepository.findNoticesList(schoolId, {
@@ -431,7 +488,7 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
     const enrichedNotices = await batchEnrichNoticeViewers(schoolId, notices);
 
     return {
-      notices: enrichedNotices.map(formatNoticeResponse),
+      notices: await decorateWithCategories(schoolId, enrichedNotices.map(formatNoticeResponse)),
       pagination: {
         page,
         limit,
@@ -459,10 +516,13 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
       });
     }
 
+    const parentCategoryIds = await noticeRepository.findCategoryIdsForClassesAndSections(schoolId, classIds, []);
+
     const { notices: rawNotices, total } = await noticeRepository.findNoticesList(schoolId, {
       ...query,
       customWhere: {
-        OR: parentConditions
+        OR: parentConditions,
+        AND: [buildCategoryVisibilityClause(parentCategoryIds)]
       }
     });
 
@@ -480,7 +540,7 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
     const enrichedNotices = await batchEnrichNoticeViewers(schoolId, filteredNotices);
 
     return {
-      notices: enrichedNotices.map(formatNoticeResponse),
+      notices: await decorateWithCategories(schoolId, enrichedNotices.map(formatNoticeResponse)),
       pagination: {
         page,
         limit,
@@ -510,10 +570,13 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
       });
     }
 
+    const studentCategoryIds = await noticeRepository.findCategoryIdsForClassesAndSections(schoolId, studentClassId ? [studentClassId] : [], []);
+
     const { notices, total } = await noticeRepository.findNoticesList(schoolId, {
       ...query,
       customWhere: {
-        OR: studentConditions
+        OR: studentConditions,
+        AND: [buildCategoryVisibilityClause(studentCategoryIds)]
       }
     });
 
@@ -522,7 +585,7 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
     const enrichedNotices = await batchEnrichNoticeViewers(schoolId, notices);
 
     return {
-      notices: enrichedNotices.map(formatNoticeResponse),
+      notices: await decorateWithCategories(schoolId, enrichedNotices.map(formatNoticeResponse)),
       pagination: {
         page,
         limit,
@@ -537,7 +600,8 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
     ...query,
     customWhere: {
       type: 'global',
-      audience: { in: ['all', 'teachers'] }
+      audience: { in: ['all', 'teachers'] },
+      AND: [buildCategoryVisibilityClause([])]
     }
   });
 
@@ -546,7 +610,7 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
   const enrichedNotices = await batchEnrichNoticeViewers(schoolId, notices);
 
   return {
-    notices: enrichedNotices.map(formatNoticeResponse),
+    notices: await decorateWithCategories(schoolId, enrichedNotices.map(formatNoticeResponse)),
     pagination: {
       page,
       limit,
@@ -586,7 +650,13 @@ export async function verifyNoticeVisibility(schoolId, notice, actor = {}) {
   // 2. Teacher Visibility
   if (systemRole === SYSTEM_ROLES.TEACHER || actor.roles?.includes(SYSTEM_ROLES.TEACHER)) {
     if (notice.type === 'global') {
-      return ['all', 'teachers'].includes(notice.audience);
+      if (!['all', 'teachers'].includes(notice.audience)) return false;
+      if (Array.isArray(notice.categoryIds) && notice.categoryIds.length > 0) {
+        const staff = await noticeRepository.findStaffProfileByUserId(schoolId, userId);
+        const teacherCategoryIds = await getTeacherCategoryIds(schoolId, userId, staff);
+        return noticeMatchesCategories(notice, teacherCategoryIds);
+      }
+      return true;
     }
     if (notice.type === 'class') {
       const staffProfile = await noticeRepository.findStaffProfileByUserId(schoolId, userId);
@@ -601,6 +671,10 @@ export async function verifyNoticeVisibility(schoolId, notice, actor = {}) {
   // 3. Parent Visibility
   if (systemRole === SYSTEM_ROLES.PARENT || actor.roles?.includes(SYSTEM_ROLES.PARENT)) {
     const { studentIds, classIds } = await noticeRepository.findParentStudentsAndClasses(schoolId, userId);
+    if (Array.isArray(notice.categoryIds) && notice.categoryIds.length > 0) {
+      const parentCategoryIds = await noticeRepository.findCategoryIdsForClassesAndSections(schoolId, classIds, []);
+      if (!noticeMatchesCategories(notice, parentCategoryIds)) return false;
+    }
     if (notice.type === 'global') {
       if (!['all', 'parents', 'students_parents', 'specific_parents'].includes(notice.audience)) {
         return false;
@@ -628,6 +702,10 @@ export async function verifyNoticeVisibility(schoolId, notice, actor = {}) {
   if (systemRole === SYSTEM_ROLES.STUDENT || actor.roles?.includes(SYSTEM_ROLES.STUDENT)) {
     const student = await noticeRepository.findStudentByUserId(schoolId, userId);
     const studentClassId = student?.classId || null;
+    if (Array.isArray(notice.categoryIds) && notice.categoryIds.length > 0) {
+      const studentCategoryIds = await noticeRepository.findCategoryIdsForClassesAndSections(schoolId, studentClassId ? [studentClassId] : [], []);
+      if (!noticeMatchesCategories(notice, studentCategoryIds)) return false;
+    }
     if (notice.type === 'global') {
       return ['all', 'students', 'students_parents'].includes(notice.audience);
     }
@@ -639,6 +717,7 @@ export async function verifyNoticeVisibility(schoolId, notice, actor = {}) {
 
   // Fallback for staff
   if (notice.type === 'global') {
+    if (Array.isArray(notice.categoryIds) && notice.categoryIds.length > 0) return false;
     return ['all', 'teachers'].includes(notice.audience);
   }
 
@@ -666,7 +745,7 @@ export async function getNoticeById(schoolId, noticeId, actor = {}) {
   }
 
   const [enriched] = await batchEnrichNoticeViewers(schoolId, [notice]);
-  return formatNoticeResponse(enriched || notice);
+  return decorateWithCategories(schoolId, formatNoticeResponse(enriched || notice));
 }
 
 /**
@@ -739,6 +818,17 @@ export async function createNotice(schoolId, payload, actor = {}) {
     }
   }
 
+  // Validate category targeting (global notices only; empty = all categories)
+  let categoryIds = [];
+  if (type === 'global' && Array.isArray(payload.categoryIds) && payload.categoryIds.length > 0) {
+    const uniqueIds = Array.from(new Set(payload.categoryIds));
+    const found = await noticeRepository.findCategoriesInTenant(schoolId, uniqueIds);
+    if (found.length !== uniqueIds.length) {
+      throw new ValidationError('One or more selected categories do not exist');
+    }
+    categoryIds = uniqueIds;
+  }
+
   // Resolve author identity
   const { authorId, authorName } = await resolveActorIdentity(schoolId, actor);
 
@@ -760,7 +850,8 @@ export async function createNotice(schoolId, payload, actor = {}) {
     classId,
     audience: payload.audience || 'all',
     viewedBy: [],
-    attachments: attachmentsData
+    attachments: attachmentsData,
+    categoryIds
   });
 
   // Non-blocking audit log
@@ -779,7 +870,7 @@ export async function createNotice(schoolId, payload, actor = {}) {
     }
   });
 
-  return formatNoticeResponse(createdNotice);
+  return decorateWithCategories(schoolId, formatNoticeResponse(createdNotice));
 }
 
 /**
@@ -857,6 +948,23 @@ export async function updateNotice(schoolId, noticeId, payload, actor = {}) {
     }
   }
 
+  // Category targeting: undefined = keep, [] = all categories, [ids] = those categories (global notices only)
+  let categoryIds;
+  if (payload.categoryIds !== undefined) {
+    if (type !== 'global') {
+      categoryIds = [];
+    } else {
+      const uniqueIds = Array.from(new Set(payload.categoryIds));
+      if (uniqueIds.length > 0) {
+        const found = await noticeRepository.findCategoriesInTenant(schoolId, uniqueIds);
+        if (found.length !== uniqueIds.length) {
+          throw new ValidationError('One or more selected categories do not exist');
+        }
+      }
+      categoryIds = uniqueIds;
+    }
+  }
+
   // Update attachments metadata preserving author details
   const updatedAttachments = {
     priority: payload.priority || currentAttachments.priority || 'normal',
@@ -874,7 +982,8 @@ export async function updateNotice(schoolId, noticeId, payload, actor = {}) {
     type,
     classId,
     audience: payload.audience || existingNotice.audience,
-    attachments: updatedAttachments
+    attachments: updatedAttachments,
+    ...(categoryIds !== undefined && { categoryIds })
   });
 
   // Non-blocking audit log
@@ -888,7 +997,7 @@ export async function updateNotice(schoolId, noticeId, payload, actor = {}) {
     modifiedFields: payload
   });
 
-  return formatNoticeResponse(updatedNotice);
+  return decorateWithCategories(schoolId, formatNoticeResponse(updatedNotice));
 }
 
 /**
