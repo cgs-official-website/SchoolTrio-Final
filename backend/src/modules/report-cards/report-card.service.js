@@ -65,15 +65,15 @@ export function serializeReportCard(reportCard) {
     updatedAt: reportCard.updatedAt,
     student: reportCard.student
       ? {
-          id: reportCard.student.id,
-          firstName: reportCard.student.firstName,
-          lastName: reportCard.student.lastName || null,
-          admissionNumber: reportCard.student.admissionNumber,
-          rollNumber: reportCard.student.rollNumber || null,
-          classId: reportCard.student.classId,
-          className: reportCard.student.class?.name || null,
-          sectionName: reportCard.student.section?.name || null
-        }
+        id: reportCard.student.id,
+        firstName: reportCard.student.firstName,
+        lastName: reportCard.student.lastName || null,
+        admissionNumber: reportCard.student.admissionNumber,
+        rollNumber: reportCard.student.rollNumber || null,
+        classId: reportCard.student.classId,
+        className: reportCard.student.class?.name || null,
+        sectionName: reportCard.student.section?.name || null
+      }
       : undefined
   };
 }
@@ -250,10 +250,10 @@ async function aggregateReportCardData(schoolId, classId, examId = null, targetS
   const attendanceEndDate = exam?.endDate || todayDate;
 
   // 6. Fetch Enrolled Students (scoped to section if provided)
-  const allStudents = await findStudents(schoolId, { 
-    classId, 
-    ...(sectionId ? { sectionId } : {}), 
-    take: 500 
+  const allStudents = await findStudents(schoolId, {
+    classId,
+    ...(sectionId ? { sectionId } : {}),
+    take: 500
   });
   let studentsToProcess = allStudents;
 
@@ -272,11 +272,11 @@ async function aggregateReportCardData(schoolId, classId, examId = null, targetS
   const assessmentIds = examAssessments.map(a => a.id);
   const gradesRecords = assessmentIds.length > 0
     ? await prisma.assessmentGrade.findMany({
-        where: {
-          schoolId,
-          assessmentId: { in: assessmentIds }
-        }
-      })
+      where: {
+        schoolId,
+        assessmentId: { in: assessmentIds }
+      }
+    })
     : [];
 
   // Group grades by studentId -> assessmentId -> gradeRecord
@@ -319,7 +319,34 @@ async function aggregateReportCardData(schoolId, classId, examId = null, targetS
         }
       }
 
-      if (gradeRecord && gradeRecord.marksObtained !== null && gradeRecord.marksObtained !== undefined) {
+      if (gradeRecord?.isAbsent) {
+        // Absent: shows "AB" on the report card, contributes 0 marks but the subject's max still counts
+        totalMax += maxMarks;
+        subjectGrades[assessment.id] = 'AB';
+        marksBreakdown[assessment.id] = {
+          title: assessment.title,
+          subjectId: assessment.subjectId || null,
+          obtained: 'AB',
+          max: maxMarks,
+          grade: 'AB',
+          isAbsent: true,
+          componentMarks: null,
+          remarks: noteRemarks
+        };
+      } else if (gradeRecord?.isExempt) {
+        // Exempt: excluded from both obtained and max totals
+        subjectGrades[assessment.id] = 'EX';
+        marksBreakdown[assessment.id] = {
+          title: assessment.title,
+          subjectId: assessment.subjectId || null,
+          obtained: 'EX',
+          max: maxMarks,
+          grade: 'EX',
+          isExempt: true,
+          componentMarks: null,
+          remarks: noteRemarks
+        };
+      } else if (gradeRecord && gradeRecord.marksObtained !== null && gradeRecord.marksObtained !== undefined) {
         const obtained = Number(gradeRecord.marksObtained);
         totalObtained += obtained;
         totalMax += maxMarks;
@@ -502,7 +529,7 @@ export async function publishReportCards(schoolId, input = {}, actor = null) {
   // Structural validation: template must have valid columns/assessment components
   const config = template?.config;
   const hasColumns = (Array.isArray(config?.assessmentComponents) && config.assessmentComponents.length > 0) ||
-                     (Array.isArray(config?.grading?.columns) && config.grading.columns.length > 0);
+    (Array.isArray(config?.grading?.columns) && config.grading.columns.length > 0);
   if (!hasColumns) {
     throw new ValidationError('Template structural validation failed: The report card template must contain valid columns or assessment components before publication');
   }
@@ -697,13 +724,13 @@ export async function listStudentReportCards(schoolId, studentId, query = {}, ac
     const examIds = result.items.map(r => r.examId).filter(Boolean);
     const publishedExams = examIds.length > 0
       ? await prisma.examination.findMany({
-          where: {
-            id: { in: examIds },
-            schoolId,
-            status: { in: ['PUBLISHED', 'FINALIZED'] }
-          },
-          select: { id: true }
-        })
+        where: {
+          id: { in: examIds },
+          schoolId,
+          status: { in: ['PUBLISHED', 'FINALIZED'] }
+        },
+        select: { id: true }
+      })
       : [];
     const publishedExamIdSet = new Set(publishedExams.map(e => e.id));
     filteredItems = result.items.filter(r => r.examId && publishedExamIdSet.has(r.examId));

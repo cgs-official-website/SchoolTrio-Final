@@ -8,6 +8,7 @@ import {
   TenantAccessError,
   ValidationError
 } from '../../utils/app-error.js';
+import { isTeacherActor } from '../../utils/teacher-scope.js';
 import { parsePagination, buildPaginationMetadata } from '../../utils/pagination.js';
 import { logger } from '../../utils/logger.js';
 
@@ -23,7 +24,7 @@ import { logger } from '../../utils/logger.js';
  * @param {Object} query - Query parameters (search, term, academicYear, startDate, endDate, page, limit, sort, order)
  * @returns {Promise<{ exams: Array<Object>, pagination: Object }>}
  */
-export async function listExams(schoolId, query = {}) {
+export async function listExams(schoolId, query = {}, actor = null) {
   if (!schoolId) {
     throw new TenantAccessError('Tenant context required to list examinations');
   }
@@ -38,7 +39,9 @@ export async function listExams(schoolId, query = {}) {
     term: query.term ? query.term.trim() : undefined,
     academicYear: query.academicYear ? query.academicYear.trim() : undefined,
     startDate: query.startDate,
-    endDate: query.endDate
+    endDate: query.endDate,
+    // Teachers/staff must not see DRAFT exams until admin publishes them for staff entry
+    publishedOnly: isTeacherActor(actor)
   };
 
   const paginationOptions = {
@@ -65,13 +68,17 @@ export async function listExams(schoolId, query = {}) {
  * @param {string} id - Examination UUID
  * @returns {Promise<Object>}
  */
-export async function getExamById(schoolId, id) {
+export async function getExamById(schoolId, id, actor = null) {
   if (!schoolId) {
     throw new TenantAccessError('Tenant context required to get examination');
   }
 
   const exam = await examRepository.findExamById(schoolId, id);
   if (!exam) {
+    throw new NotFoundError(`Examination with ID '${id}' not found`);
+  }
+
+  if (isTeacherActor(actor) && exam.status === 'DRAFT') {
     throw new NotFoundError(`Examination with ID '${id}' not found`);
   }
 
@@ -90,7 +97,80 @@ export async function createExam(schoolId, data, userId = null) {
   if (!schoolId) {
     throw new TenantAccessError('Tenant context required to create examination');
   }
+  // Normalise input into a list of { classId, sectionId } targets
+  let requested = [];
+  if (Array.isArray(data.targets) && data.targets.length > 0) {
+    requested = data.targets.map((t) => ({ classId: t.classId, sectionId: t.sectionId || null }));
+  } else if (data.classId) {
+    const ids = [...new Set([
+      ...(Array.isArray(data.sectionIds) ? data.sectionIds : []),
+      ...(data.sectionId ? [data.sectionId] : [])
+    ])];
+    requested = ids.length > 0
+      ? ids.map((sectionId) => ({ classId: data.classId, sectionId }))
+      : [{ classId: data.classId, sectionId: null }];
+  }
+  if (requested.length === 0) {
+    throw new ValidationError('Select at least one target class');
+  }
 
+  // Validate every class and section against the tenant's real data
+  const classIds = [...new Set(requested.map((t) => t.classId))];
+  const sectionRows = await prisma.section.findMany({
+    where: { schoolId, classId: { in: classIds } },
+    select: { id: true, classId: true }
+  });
+  const classRows = await prisma.class.findMany({
+    where: { schoolId, id: { in: classIds } },
+    select: { id: true, name: true }
+  });
+  if (classRows.length !== classIds.length) {
+    throw new ValidationError('One or more selected classes were not found');
+  }
+  const sectionsByClass = new Map(classIds.map((id) => [id, new Set()]));
+  sectionRows.forEach((r) => sectionsByClass.get(r.classId)?.add(r.id));
+
+  const seen = new Set();
+  const targets = [];
+  for (const t of requested) {
+    const className = classRows.find((c) => c.id === t.classId)?.name || 'class';
+    const valid = sectionsByClass.get(t.classId);
+    if (valid.size > 0) {
+      if (!t.sectionId) {
+        throw new ValidationError(`Select at least one section for class ${className}`);
+      }
+      if (!valid.has(t.sectionId)) {
+        throw new ValidationError(`Selected section does not belong to class ${className}`);
+      }
+    } else if (t.sectionId) {
+      throw new ValidationError(`Class ${className} has no such section`);
+    }
+    const key = `${t.classId}:${t.sectionId || ''}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      targets.push(t);
+    }
+  }
+
+  // Reject the whole request up-front if any section already has this exam
+  const academicYear = await resolveAcademicYear(schoolId, data.academicYear, data.startDate);
+  for (const { classId, sectionId } of targets) {
+    const dup = await examRepository.findDuplicateExam(schoolId, academicYear, data.name.trim(), classId, sectionId);
+    if (dup) {
+      throw new ConflictError(
+        `An exam with name '${data.name.trim()}' already exists for this class/section in academic year '${academicYear}'`
+      );
+    }
+  }
+
+  const created = [];
+  for (const { classId, sectionId } of targets) {
+    created.push(await createSingleExam(schoolId, { ...data, classId, sectionId, sectionIds: undefined, targets: undefined }, userId));
+  }
+  return created.length === 1 ? created[0] : created;
+}
+
+async function createSingleExam(schoolId, data, userId = null) {
   // 1. Resolve Academic Year (Explicit -> SchoolSetting -> Date-derived fallback)
   const academicYear = await resolveAcademicYear(schoolId, data.academicYear, data.startDate);
 
@@ -99,7 +179,7 @@ export async function createExam(schoolId, data, userId = null) {
 
   // 3. Duplicate exam validation
   // Prevent duplicate exam with same name + academicYear (+ classId & sectionId if provided)
-  const existingDuplicate = examRepository.findDuplicateExam 
+  const existingDuplicate = examRepository.findDuplicateExam
     ? await examRepository.findDuplicateExam(schoolId, academicYear, data.name.trim(), data.classId || null, data.sectionId || null)
     : null;
 
@@ -172,6 +252,72 @@ export async function createExam(schoolId, data, userId = null) {
   return exam;
 }
 
+const EXAM_CONTENT_FIELDS = [
+  'name', 'term', 'academicYear', 'examType', 'classId', 'sectionId',
+  'subjectsConfig', 'startDate', 'endDate'
+];
+
+const assessmentStatusForExam = (status) =>
+  status === 'FINALIZED' ? 'LOCKED' : (status === 'PUBLISHED' ? 'IN_PROGRESS' : 'PENDING');
+
+/**
+ * Keeps the Assessment rows (the columns teachers see) in sync with an exam's
+ * class / section / subjectsConfig after the admin edits the exam.
+ * Validation runs before any write, so a rejected edit changes nothing.
+ */
+async function syncExamAssessments(schoolId, examId, next, assessmentStatus) {
+  await runWithTenantContext({ schoolId }, async () => {
+    const current = await prisma.assessment.findMany({
+      where: { schoolId, examId },
+      include: { _count: { select: { assessmentGrades: true } } }
+    });
+
+    const configs = next.classId && Array.isArray(next.subjectsConfig) ? next.subjectsConfig : [];
+    const wantedSubjects = new Set(configs.map((c) => c.subjectId));
+
+    for (const a of current) {
+      const removed = !wantedSubjects.has(a.subjectId);
+      const classChanged = a.classId !== next.classId;
+      if ((removed || classChanged) && a._count.assessmentGrades > 0) {
+        throw new ConflictError(
+          classChanged && !removed
+            ? 'Cannot change the class of this exam: teachers have already entered marks.'
+            : `Cannot remove subject from this exam: marks have already been entered for '${a.title}'.`
+        );
+      }
+    }
+
+    const bySubject = new Map(current.map((a) => [a.subjectId, a]));
+
+    // Remove assessments of subjects dropped from the exam (no marks entered, verified above)
+    const removeIds = current.filter((a) => !wantedSubjects.has(a.subjectId)).map((a) => a.id);
+    if (removeIds.length > 0) {
+      await prisma.assessment.deleteMany({ where: { schoolId, id: { in: removeIds } } });
+    }
+
+    for (const sub of configs) {
+      const fields = {
+        classId: next.classId,
+        sectionId: next.sectionId || null,
+        title: `${next.name} - ${sub.subjectName || 'Subject'}`,
+        totalMarks: sub.maxMarks,
+        passingMarks: sub.passMarks !== undefined ? sub.passMarks : null,
+        weightage: sub.weightage !== undefined ? sub.weightage : 100,
+        date: sub.examDate || next.startDate || null,
+        status: assessmentStatus
+      };
+      const found = bySubject.get(sub.subjectId);
+      if (found) {
+        await prisma.assessment.update({ where: { id: found.id }, data: fields });
+      } else {
+        await prisma.assessment.create({
+          data: { schoolId, examId, subjectId: sub.subjectId, ...fields }
+        });
+      }
+    }
+  });
+}
+
 /**
  * Updates an existing examination record.
  *
@@ -198,6 +344,12 @@ export async function updateExam(schoolId, id, data, userId = null) {
     throw new ConflictError('Start date cannot be after end date');
   }
 
+  const contentChanged = EXAM_CONTENT_FIELDS.some((f) => data[f] !== undefined);
+
+  if (existing.status === 'FINALIZED' && contentChanged && data.status === undefined) {
+    throw new ConflictError('This exam is finalized and locked. Unlock it before editing.');
+  }
+
   const updatePayload = {};
   if (data.name !== undefined) updatePayload.name = data.name.trim();
   if (data.term !== undefined) updatePayload.term = data.term.trim();
@@ -210,7 +362,54 @@ export async function updateExam(schoolId, id, data, userId = null) {
   if (data.startDate !== undefined) updatePayload.startDate = data.startDate;
   if (data.endDate !== undefined) updatePayload.endDate = data.endDate;
 
+  // Editing a published exam sends it back to DRAFT: the admin must press
+  // "Publish for Staff Entry" again before teachers see the edited version.
+  if (contentChanged && data.status === undefined && existing.status !== 'DRAFT') {
+    updatePayload.status = 'DRAFT';
+  }
+
+  // Duplicate name check when name / class / section / year changed
+  if (data.name !== undefined || data.classId !== undefined || data.sectionId !== undefined || data.academicYear !== undefined) {
+    const dup = await examRepository.findDuplicateExam(
+      schoolId,
+      updatePayload.academicYear ?? existing.academicYear,
+      (updatePayload.name ?? existing.name).trim(),
+      data.classId !== undefined ? data.classId : existing.classId,
+      data.sectionId !== undefined ? data.sectionId : existing.sectionId
+    );
+    if (dup && dup.id !== id) {
+      throw new ConflictError(`An exam named '${updatePayload.name ?? existing.name}' already exists for this class/section in this academic year`);
+    }
+  }
+
+  // Sync teacher-facing assessment columns BEFORE saving the exam so a rejected edit changes nothing
+  const syncFields = ['name', 'classId', 'sectionId', 'subjectsConfig', 'startDate'];
+  if (syncFields.some((f) => data[f] !== undefined)) {
+    await syncExamAssessments(
+      schoolId,
+      id,
+      {
+        name: updatePayload.name ?? existing.name,
+        classId: data.classId !== undefined ? data.classId : existing.classId,
+        sectionId: data.sectionId !== undefined ? data.sectionId : existing.sectionId,
+        subjectsConfig: data.subjectsConfig !== undefined ? data.subjectsConfig : existing.subjectsConfig,
+        startDate: data.startDate !== undefined ? data.startDate : existing.startDate
+      },
+      assessmentStatusForExam(updatePayload.status ?? existing.status)
+    );
+  }
+
   const updatedExam = await examRepository.updateExam(schoolId, id, updatePayload);
+
+  // If the edit sent the exam back to DRAFT, hide every assessment from teachers again
+  if (updatePayload.status && updatePayload.status !== existing.status) {
+    await runWithTenantContext({ schoolId }, async () => {
+      await prisma.assessment.updateMany({
+        where: { schoolId, examId: id },
+        data: { status: assessmentStatusForExam(updatePayload.status) }
+      });
+    });
+  }
 
   // Non-blocking Audit Logging
   try {

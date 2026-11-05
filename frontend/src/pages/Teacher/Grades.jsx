@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { listStudents } from '../../api/students';
-import { 
+import {
   listAssessments,
   createAssessment,
-  getAssessmentGrades, 
-  bulkUpsertAssessmentGrades, 
+  getAssessmentGrades,
+  bulkUpsertAssessmentGrades,
   deleteAssessmentGrade,
   getMyAssessmentScope
 } from '../../api/assessments';
@@ -206,7 +206,7 @@ export default function Grades() {
     return () => {
       mountedRef.current = false;
     };
-}, [schoolId, selectedUnitId, classId, sectionId, fetchExams, fetchAssessments]);
+  }, [schoolId, selectedUnitId, classId, sectionId, fetchExams, fetchAssessments]);
 
   // Derive active assessment components from assessment or template config (only manual mark entry components)
   const activeComponents = useMemo(() => {
@@ -233,8 +233,10 @@ export default function Grades() {
     }
 
     // Exclude any columns that are Total, Grade, Percentage, Rank, Remarks, or Calculated
-    return list.filter(comp => {
+    const filtered = list.filter(comp => {
       if (comp.isCalculated) return false;
+      // "Max Marks" is informational only (shown in the header) - teachers never enter it
+      if (comp.type === 'max' || (comp.key || '').toLowerCase() === 'maxmarks' || /^max(imum)?[\s_]*marks?$/i.test((comp.label || comp.name || '').trim())) return false;
       if (comp.type === 'calculated_total' || comp.type === 'grade' || comp.type === 'remarks') return false;
       const lower = (comp.label || comp.name || comp.key || '').toLowerCase();
       if (lower.startsWith('total') || lower === 'total' || lower.includes('total/') || lower.includes('total_') || lower.includes('aggregate')) return false;
@@ -242,6 +244,22 @@ export default function Grades() {
       if (lower.includes('percentage') || lower.includes('percent') || lower.includes('rank') || lower.includes('remark')) return false;
       return true;
     });
+
+    // The admin's Max Marks for this exam subject is the source of truth - never the template default.
+    const assessmentTotal = Number(activeAssessment?.totalMarks);
+    if (filtered.length > 0 && assessmentTotal > 0) {
+      const templateSum = filtered.reduce((acc, c) => acc + (Number(c.maxMarks) || 0), 0);
+      if (filtered.length === 1) {
+        return [{ ...filtered[0], maxMarks: assessmentTotal }];
+      }
+      if (templateSum > 0 && templateSum !== assessmentTotal) {
+        return filtered.map(c => ({
+          ...c,
+          maxMarks: Math.round(((Number(c.maxMarks) || 0) / templateSum) * assessmentTotal * 100) / 100
+        }));
+      }
+    }
+    return filtered;
   }, [activeAssessment, reportTemplate]);
 
   // Handle auto-selecting the first assessment when data is ready
@@ -279,7 +297,7 @@ export default function Grades() {
     setLoadingGrades(true);
     try {
       const res = await getAssessmentGrades(assessment.id);
-      
+
       // Guard against stale out-of-order responses
       if (selectedAssessmentIdRef.current !== assessment.id) {
         return;
@@ -290,7 +308,7 @@ export default function Grades() {
       const loadedAbsent = { ...defaultAbsent };
       const loadedExempt = { ...defaultExempt };
       const loadedComponentGrades = { ...defaultComponentMap };
-      
+
       gradesList.forEach(item => {
         if (item.studentId) {
           if (item.isAbsent) {
@@ -366,14 +384,14 @@ export default function Grades() {
       }
 
       const withAccess = { ...createdAssessment, access: { canEdit: true, isClassTeacher, canView: true } };
-      
+
       setAssessments(prev => [withAccess, ...prev]);
       setShowCreateModal(false);
       setNewAssessment({ title: '', date: new Date().toISOString().split('T')[0], totalMarks: 100, examId: '', subjectId: '' });
       toast.success("Assessment created successfully!");
       notifyDataChanged('exams');
       notifyDataChanged('marks');
-      
+
       // Auto-select the newly created assessment
       handleSelectAssessment(withAccess);
     } catch (error) {
@@ -387,25 +405,25 @@ export default function Grades() {
   const handleExamLinkChange = (e) => {
     const selectedExamId = e.target.value;
     const selectedExam = exams.find(ex => ex.id === selectedExamId);
-    
+
     if (selectedExam && selectedExam.maxMarks) {
-       setNewAssessment(prev => ({
-         ...prev,
-         examId: selectedExamId,
-         totalMarks: selectedExam.maxMarks
-       }));
+      setNewAssessment(prev => ({
+        ...prev,
+        examId: selectedExamId,
+        totalMarks: selectedExam.maxMarks
+      }));
     } else {
-       setNewAssessment(prev => ({
-         ...prev,
-         examId: selectedExamId
-       }));
+      setNewAssessment(prev => ({
+        ...prev,
+        examId: selectedExamId
+      }));
     }
   };
 
   const handleGradeChange = (studentId, value) => {
     // Only allow numbers
     if (value !== '' && isNaN(Number(value))) return;
-    
+
     // Prevent entering more than max marks
     if (value !== '' && Number(value) > activeAssessment.totalMarks) {
       value = activeAssessment.totalMarks;
@@ -418,7 +436,7 @@ export default function Grades() {
     // Only allow numbers
     if (value !== '' && isNaN(Number(value))) return;
     if (value !== '' && Number(value) < 0) return;
-    
+
     // Prevent entering more than component max marks
     if (value !== '' && compMaxMarks && Number(value) > compMaxMarks) {
       value = compMaxMarks;
@@ -426,7 +444,7 @@ export default function Grades() {
 
     setComponentGrades(prev => {
       const studentComps = { ...(prev[studentId] || {}), [compKey]: value === '' ? '' : Number(value) };
-      
+
       // Auto-compute student total marks from ONLY activeComponents
       let sum = 0;
       let hasAnyValue = false;
@@ -502,7 +520,7 @@ export default function Grades() {
           gradesToUpsert.push({
             studentId: sId,
             marksObtained: 0,
-            componentMarks: formattedCompMarks,
+            componentMarks: undefined,
             isAbsent,
             isExempt
           });
@@ -520,9 +538,9 @@ export default function Grades() {
 
       // Execute bulk upsert if any grades exist
       if (gradesToUpsert.length > 0) {
-        await bulkUpsertAssessmentGrades(activeAssessment.id, { 
+        await bulkUpsertAssessmentGrades(activeAssessment.id, {
           grades: gradesToUpsert,
-          isDraft 
+          isDraft
         });
       }
 
@@ -533,7 +551,7 @@ export default function Grades() {
       notifyDataChanged('exams');
       notifyDataChanged('marks');
       setTimeout(() => setSuccessMsg(''), 4000);
-      
+
       // Update active assessment status locally
       setActiveAssessment(prev => prev ? { ...prev, status: isDraft ? 'IN_PROGRESS' : 'SUBMITTED' } : null);
     } catch (error) {
@@ -552,15 +570,15 @@ export default function Grades() {
       return;
     }
     const doc = new jsPDF();
-    
+
     students.forEach((student, index) => {
       if (index > 0) doc.addPage();
-      
+
       // School & Student Info Header
       doc.setFontSize(24);
       doc.setTextColor(15, 23, 42);
       doc.text("Student Progress Report", 105, 20, { align: "center" });
-      
+
       doc.setFontSize(14);
       doc.text(`Student: ${student.firstName} ${student.lastName}`, 14, 40);
       doc.text(`Admission No: ${student.admissionNumber}`, 14, 50);
@@ -574,7 +592,7 @@ export default function Grades() {
       assessments.forEach(assessment => {
         const isCurrentActive = activeAssessment && activeAssessment.id === assessment.id;
         const val = isCurrentActive ? grades[student.id] : assessment.grades?.[student.id];
-        
+
         if (val !== undefined && val !== '' && val !== null) {
           const numVal = Number(val);
           totalAchieved += numVal;
@@ -607,7 +625,7 @@ export default function Grades() {
       });
 
       const finalY = doc.lastAutoTable.finalY + 20;
-      
+
       doc.setFontSize(16);
       if (totalPossible > 0) {
         const overallPercentage = ((totalAchieved / totalPossible) * 100).toFixed(1);
@@ -615,13 +633,13 @@ export default function Grades() {
       } else {
         doc.text(`Overall Performance: N/A`, 14, finalY);
       }
-      
+
       // Signatures
       doc.setFontSize(12);
       doc.setTextColor(100, 116, 139);
       doc.text("_______________________", 14, finalY + 40);
       doc.text("Class Teacher Signature", 14, finalY + 48);
-      
+
       doc.text("_______________________", 140, finalY + 40);
       doc.text("Principal Signature", 140, finalY + 48);
     });
@@ -634,10 +652,10 @@ export default function Grades() {
       toast.error("Need students and assessments to publish report cards.");
       return;
     }
-    
+
     setPublishing(true);
     const loadingToast = toast.loading("Publishing report cards to parent portal...");
-    
+
     try {
       await publishReportCards({ classId });
       toast.dismiss(loadingToast);
@@ -679,7 +697,7 @@ export default function Grades() {
         <div className="min-w-0">
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white truncate">Grades & Assessments</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1">
-            {isClassTeacher 
+            {isClassTeacher
               ? 'Class Teacher View: Full class progress overview & subject mark entry.'
               : 'Subject Teacher View: Log student performance for your assigned subject.'}
           </p>
@@ -704,7 +722,7 @@ export default function Grades() {
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
           {isClassTeacher && (
-            <button 
+            <button
               onClick={generateReportCards}
               className="w-full sm:w-auto flex justify-center items-center gap-2 px-4 py-2 bg-primary-50 text-primary-700 rounded-xl text-sm font-semibold hover:bg-primary-100 dark:hover:bg-slate-700 shadow-sm transition-colors border border-primary-200"
             >
@@ -712,14 +730,14 @@ export default function Grades() {
             </button>
           )}
           {canEnterMarksInClass && (
-            <button 
-            onClick={() => setShowCreateModal(true)}
-            className="w-full sm:w-auto justify-center px-4 py-2 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 shadow-sm flex items-center gap-2 transition-colors"
-          >
-            <Plus size={18} /> New Assessment
-          </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="w-full sm:w-auto justify-center px-4 py-2 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 shadow-sm flex items-center gap-2 transition-colors"
+            >
+              <Plus size={18} /> New Assessment
+            </button>
           )}
-          
+
         </div>
       </div>
 
@@ -731,11 +749,11 @@ export default function Grades() {
       )}
 
       <div className="flex flex-col lg:flex-row gap-8 flex-1 min-h-0">
-        
+
         {/* Sidebar - Assessment List */}
         <div className="w-full lg:w-80 flex flex-col gap-4 shrink-0 overflow-y-auto">
           <h2 className="text-sm font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider pl-2">Assessments</h2>
-          
+
           {assessments.length === 0 ? (
             <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 text-center text-slate-500 dark:text-slate-400">
               <FileText size={32} className="mx-auto mb-3 text-slate-300" />
@@ -760,11 +778,10 @@ export default function Grades() {
                   <button
                     key={assessment.id}
                     onClick={() => handleSelectAssessment(assessment)}
-                    className={`w-full text-left p-4 rounded-2xl border transition-all ${
-                      isActive 
-                        ? 'bg-white dark:bg-slate-900 border-primary-500 shadow-md ring-1 ring-primary-500' 
+                    className={`w-full text-left p-4 rounded-2xl border transition-all ${isActive
+                        ? 'bg-white dark:bg-slate-900 border-primary-500 shadow-md ring-1 ring-primary-500'
                         : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-slate-700 shadow-sm opacity-80 hover:opacity-100'
-                    }`}
+                      }`}
                   >
                     <div className="font-bold text-slate-900 dark:text-white truncate">{assessment.title}</div>
                     <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex justify-between">
@@ -776,7 +793,7 @@ export default function Grades() {
                         {assessment.subject.name}
                       </div>
                     )}
-                    
+
                     <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
                       <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Progress</span>
                       <span className={`text-xs font-bold ${isComplete ? 'text-green-600' : 'text-primary-600'}`}>
@@ -825,26 +842,27 @@ export default function Grades() {
                             <BookOpen size={20} className="text-primary-600" />
                             {activeAssessment.title}
                           </h2>
-                          <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                            isLocked 
-                              ? 'bg-red-500/10 text-red-600 border border-red-500/20' 
+                          <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${isLocked
+                              ? 'bg-red-500/10 text-red-600 border border-red-500/20'
                               : activeAssessment.status === 'SUBMITTED'
                                 ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20'
                                 : 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
-                          }`}>
+                            }`}>
                             {isLocked ? 'Locked' : activeAssessment.status || 'Draft'}
                           </span>
                         </div>
                         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                           Grading out of <span className="font-bold text-slate-700 dark:text-slate-200">{activeAssessment.totalMarks}</span> total marks
+                          {activeAssessment.passingMarks !== null && activeAssessment.passingMarks !== undefined && ` • Pass marks: ${Number(activeAssessment.passingMarks)}`}
+                          {activeAssessment.weightage !== null && activeAssessment.weightage !== undefined && ` • Weightage: ${Number(activeAssessment.weightage)}%`}
                           {linkedExam && ` • Linked to ${linkedExam.name}`}
                           {activeAssessment.subject && ` • Subject: ${activeAssessment.subject.name}`}
                         </p>
                       </div>
-                      
+
                       {!isLocked && canEditMarks ? (
                         <div className="flex items-center gap-2">
-                          <button 
+                          <button
                             onClick={() => handleSaveGrades(true)}
                             disabled={savingGrades || submittingMarks || loadingGrades || students.length === 0}
                             className="flex justify-center items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 shadow-sm disabled:opacity-50 transition-colors"
@@ -852,7 +870,7 @@ export default function Grades() {
                             {savingGrades ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-transparent"></div> : <Save size={16} />}
                             {savingGrades ? 'Saving...' : 'Save Draft'}
                           </button>
-                          <button 
+                          <button
                             onClick={() => handleSaveGrades(false)}
                             disabled={savingGrades || submittingMarks || loadingGrades || students.length === 0}
                             className="flex justify-center items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 shadow-sm disabled:opacity-50 transition-colors"
@@ -916,8 +934,8 @@ export default function Grades() {
                                 const isAbsent = !!absentMap[student.id];
                                 const isExempt = !!exemptMap[student.id];
                                 const val = grades[student.id];
-                                const percentage = (!isAbsent && !isExempt && val !== '' && val !== undefined && val !== null) 
-                                  ? ((Number(val) / activeAssessment.totalMarks) * 100).toFixed(0) 
+                                const percentage = (!isAbsent && !isExempt && val !== '' && val !== undefined && val !== null)
+                                  ? ((Number(val) / activeAssessment.totalMarks) * 100).toFixed(0)
                                   : null;
                                 const studentGrade = (!isAbsent && !isExempt && val !== '' && val !== undefined && val !== null)
                                   ? calculateGrade(val, activeAssessment.totalMarks)
@@ -939,7 +957,7 @@ export default function Grades() {
                                       {student.admissionNumber}
                                     </td>
                                     <td className="p-4 text-center">
-                                      <input 
+                                      <input
                                         type="checkbox"
                                         disabled={isLocked || !canEditMarks}
                                         checked={isAbsent}
@@ -955,7 +973,7 @@ export default function Grades() {
                                       />
                                     </td>
                                     <td className="p-4 text-center">
-                                      <input 
+                                      <input
                                         type="checkbox"
                                         disabled={isLocked || !canEditMarks}
                                         checked={isExempt}
@@ -984,7 +1002,7 @@ export default function Grades() {
                                               ) : isExempt ? (
                                                 <span className="text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded">EXM</span>
                                               ) : (
-                                                <input 
+                                                <input
                                                   type="number"
                                                   min="0"
                                                   max={comp.maxMarks}
@@ -992,11 +1010,10 @@ export default function Grades() {
                                                   value={hasVal ? compVal : ''}
                                                   onChange={(e) => handleComponentGradeChange(student.id, comp.key, e.target.value, comp.maxMarks)}
                                                   placeholder="--"
-                                                  className={`w-20 px-2 py-1.5 text-center rounded-lg border font-mono font-bold focus:ring-2 focus:ring-primary-500 transition-colors disabled:opacity-60 disabled:bg-slate-100 ${
-                                                    hasVal
-                                                      ? 'border-green-300 bg-green-50 text-green-900 dark:bg-green-950/30 dark:text-green-200' 
+                                                  className={`w-20 px-2 py-1.5 text-center rounded-lg border font-mono font-bold focus:ring-2 focus:ring-primary-500 transition-colors disabled:opacity-60 disabled:bg-slate-100 ${hasVal
+                                                      ? 'border-green-300 bg-green-50 text-green-900 dark:bg-green-950/30 dark:text-green-200'
                                                       : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
-                                                  }`}
+                                                    }`}
                                                 />
                                               )}
                                             </td>
@@ -1015,11 +1032,10 @@ export default function Grades() {
                                             </span>
                                           ) : (
                                             <div className="flex items-center justify-center">
-                                              <span className={`px-2.5 py-1 rounded-lg font-mono font-black text-sm ${
-                                                val !== '' && val !== undefined
+                                              <span className={`px-2.5 py-1 rounded-lg font-mono font-black text-sm ${val !== '' && val !== undefined
                                                   ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300 border border-primary-200 dark:border-primary-800'
                                                   : 'text-slate-400'
-                                              }`}>
+                                                }`}>
                                                 {val !== '' && val !== undefined ? val : '--'}
                                               </span>
                                             </div>
@@ -1029,15 +1045,21 @@ export default function Grades() {
                                         {/* Grade Column */}
                                         <td className="p-4 pr-6 text-center">
                                           {!isAbsent && !isExempt && studentGrade ? (
-                                            <span className={`text-xs font-black px-2 py-0.5 rounded ${
-                                              ['A1', 'A2', 'B1'].includes(studentGrade)
-                                                ? 'bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300'
-                                                : ['B2', 'C1', 'C2'].includes(studentGrade)
-                                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300'
-                                                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
-                                            }`}>
-                                              {studentGrade} {percentage ? `(${percentage}%)` : ''}
-                                            </span>
+                                            <>
+                                              <span className={`text-xs font-black px-2 py-0.5 rounded ${['A1', 'A2', 'B1'].includes(studentGrade)
+                                                  ? 'bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300'
+                                                  : ['B2', 'C1', 'C2'].includes(studentGrade)
+                                                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300'
+                                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
+                                                }`}>
+                                                {studentGrade} {percentage ? `(${percentage}%)` : ''}
+                                              </span>
+                                              {activeAssessment.passingMarks !== null && activeAssessment.passingMarks !== undefined && val !== '' && val !== undefined && (
+                                                <span className={`ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded ${Number(val) >= Number(activeAssessment.passingMarks) ? 'bg-green-50 text-green-700' : 'bg-rose-50 text-rose-700'}`}>
+                                                  {Number(val) >= Number(activeAssessment.passingMarks) ? 'Pass' : 'Fail'}
+                                                </span>
+                                              )}
+                                            </>
                                           ) : (
                                             <span className="text-slate-400 text-xs">--</span>
                                           )}
@@ -1063,7 +1085,7 @@ export default function Grades() {
                                                 </span>
                                               )}
                                               <div className="relative">
-                                                <input 
+                                                <input
                                                   type="number"
                                                   min="0"
                                                   disabled={isLocked || !canEditMarks}
@@ -1071,11 +1093,10 @@ export default function Grades() {
                                                   value={grades[student.id] === undefined || grades[student.id] === '' ? '' : grades[student.id]}
                                                   onChange={(e) => handleGradeChange(student.id, e.target.value)}
                                                   placeholder="--"
-                                                  className={`w-24 px-3 py-2 text-right rounded-lg border font-mono font-bold focus:ring-2 focus:ring-primary-500 transition-colors disabled:opacity-60 disabled:bg-slate-100 ${
-                                                    grades[student.id] !== '' && grades[student.id] !== undefined 
-                                                      ? 'border-green-300 bg-green-50 text-green-900' 
+                                                  className={`w-24 px-3 py-2 text-right rounded-lg border font-mono font-bold focus:ring-2 focus:ring-primary-500 transition-colors disabled:opacity-60 disabled:bg-slate-100 ${grades[student.id] !== '' && grades[student.id] !== undefined
+                                                      ? 'border-green-300 bg-green-50 text-green-900'
                                                       : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
-                                                  }`}
+                                                    }`}
                                                 />
                                               </div>
                                             </>
@@ -1121,31 +1142,31 @@ export default function Grades() {
               <div className="p-6 space-y-6 flex-1">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Assessment Title</label>
-                  <input 
+                  <input
                     type="text" required
                     value={newAssessment.title}
-                    onChange={(e) => setNewAssessment({...newAssessment, title: e.target.value})}
+                    onChange={(e) => setNewAssessment({ ...newAssessment, title: e.target.value })}
                     placeholder="e.g. Chapter 3 Quiz"
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                   />
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Date</label>
-                    <input 
+                    <input
                       type="date" required
                       value={newAssessment.date}
-                      onChange={(e) => setNewAssessment({...newAssessment, date: e.target.value})}
+                      onChange={(e) => setNewAssessment({ ...newAssessment, date: e.target.value })}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Total Marks</label>
-                    <input 
+                    <input
                       type="number" min="1" required
                       value={newAssessment.totalMarks}
-                      onChange={(e) => setNewAssessment({...newAssessment, totalMarks: e.target.value})}
+                      onChange={(e) => setNewAssessment({ ...newAssessment, totalMarks: e.target.value })}
                       disabled={!!newAssessment.examId}
                       className={`w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900 ${newAssessment.examId ? 'opacity-50 cursor-not-allowed bg-slate-50 dark:bg-slate-800' : ''}`}
                     />
@@ -1154,7 +1175,7 @@ export default function Grades() {
 
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Subject</label>
-                  <select 
+                  <select
                     value={newAssessment.subjectId || ''}
                     onChange={(e) => setNewAssessment(prev => ({ ...prev, subjectId: e.target.value }))}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
@@ -1170,7 +1191,7 @@ export default function Grades() {
 
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Link to Formal Exam (Optional)</label>
-                  <select 
+                  <select
                     value={newAssessment.examId || ''}
                     onChange={handleExamLinkChange}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
@@ -1178,7 +1199,7 @@ export default function Grades() {
                     <option value="">-- No Exam Link --</option>
                     {examsForSelectedClass.map(exam => (
                       <option key={exam.id} value={exam.id}>
-                        {exam.name} {exam.term ? `(${exam.term})` : ''} 
+                        {exam.name} {exam.term ? `(${exam.term})` : ''}
                       </option>
                     ))}
                   </select>
@@ -1187,14 +1208,14 @@ export default function Grades() {
               </div>
 
               <div className="p-6 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 shrink-0">
-                <button 
+                <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
                   className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   type="submit"
                   disabled={creating}
                   className="w-full sm:w-auto px-4 py-2 bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 rounded-xl shadow-sm disabled:opacity-50 transition-colors"

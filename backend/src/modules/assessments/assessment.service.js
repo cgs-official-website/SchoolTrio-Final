@@ -173,7 +173,8 @@ export async function listAssessments(schoolId, query = {}, actor = null) {
     subjectId: effectiveSubjectId,
     search: query.search ? query.search.trim() : undefined,
     date: query.date,
-    publishedExamsOnly: isStudentOrParent,
+    // Students, parents AND teachers only see assessments of exams the admin has published
+    publishedExamsOnly: isStudentOrParent || isTeacherActor(actor),
     scopeFilter
   };
 

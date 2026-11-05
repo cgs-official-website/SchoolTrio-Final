@@ -80,16 +80,26 @@ export const createExamSchema = {
         .trim()
         .max(20, 'Academic year must not exceed 20 characters')
         .optional(),
+      // Single class (legacy) ...
       classId: z
         .string()
         .regex(REGEX.UUID, 'Invalid class ID format')
-        .optional()
-        .nullable(),
+        .optional(),
       sectionId: z
         .string()
         .regex(REGEX.UUID, 'Invalid section ID format')
         .optional()
         .nullable(),
+      sectionIds: z
+        .array(z.string().regex(REGEX.UUID, 'Invalid section ID format'))
+        .optional(),
+      // ... or any number of class + section targets. One exam is created per target.
+      targets: z
+        .array(z.object({
+          classId: z.string().regex(REGEX.UUID, 'Invalid class ID format'),
+          sectionId: z.string().regex(REGEX.UUID, 'Invalid section ID format').optional().nullable()
+        }))
+        .optional(),
       subjectsConfig: z
         .array(subjectConfigItemSchema)
         .optional()
@@ -118,6 +128,10 @@ export const createExamSchema = {
       }
     )
     .refine(examDatesWithinWindow, EXAM_DATE_WINDOW_ERROR)
+    .refine(
+      (data) => !!data.classId || (Array.isArray(data.targets) && data.targets.length > 0),
+      { message: 'Select at least one target class', path: ['targets'] }
+    )
 };
 
 export const updateExamSchema = {

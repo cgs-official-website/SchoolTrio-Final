@@ -13,7 +13,7 @@ import { HTTP_STATUS } from '../../config/constants.js';
 export async function listExams(req, res, next) {
   try {
     const schoolId = req.tenant.schoolId;
-    const { exams, pagination } = await examService.listExams(schoolId, req.query);
+    const { exams, pagination } = await examService.listExams(schoolId, req.query, req.user || req.auth);
     return ApiResponse.paginated(res, exams, pagination, 'Examinations retrieved successfully');
   } catch (error) {
     return next(error);
@@ -27,7 +27,7 @@ export async function listExams(req, res, next) {
 export async function getExam(req, res, next) {
   try {
     const schoolId = req.tenant.schoolId;
-    const exam = await examService.getExamById(schoolId, req.params.id);
+    const exam = await examService.getExamById(schoolId, req.params.id, req.user || req.auth);
     return ApiResponse.success(res, exam, 'Examination retrieved successfully');
   } catch (error) {
     return next(error);

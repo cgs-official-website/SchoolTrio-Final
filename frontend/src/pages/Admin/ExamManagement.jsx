@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from 'react-router-dom';
-import { listExams, createExam, updateExamStatus, getExamProgress } from '../../api/exams';
+import { listExams, createExam, updateExam, updateExamStatus, getExamProgress } from '../../api/exams';
 import { previewReportCards, publishReportCards } from '../../api/reportCards';
 import { listClasses, listSections } from '../../api/classes';
 import { listSubjects } from '../../api/subjects';
@@ -11,6 +11,7 @@ import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { notifyDataChanged } from '../../utils/liveData';
 import {
   LuFileText as FileText,
+  LuUsers as Users,
   LuPlus as Plus,
   LuX as X,
   LuGraduationCap as GraduationCap,
@@ -32,6 +33,90 @@ import ReportTemplateBuilder from './ReportTemplateBuilder';
 import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
 import { sortClassesAscending, formatClassSection, flattenClassesWithSections } from '../../utils/classSorting';
 
+/**
+ * Dropdown with checkboxes so several options can be ticked at once.
+ * options: [{ value, label, group? }]
+ */
+function MultiSelectDropdown({ options, value, onChange, placeholder, disabled = false, selectAllLabel = 'Select all' }) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const selected = options.filter(o => value.includes(o.value));
+  const allSelected = options.length > 0 && selected.length === options.length;
+  const summary = selected.length === 0
+    ? placeholder
+    : selected.length <= 2
+      ? selected.map(o => o.label).join(', ')
+      : `${selected.length} selected`;
+
+  const toggle = (v) => onChange(value.includes(v) ? value.filter(x => x !== v) : [...value, v]);
+
+  let lastGroup = null;
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen(o => !o)}
+        className={`w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-left flex items-center justify-between gap-2 disabled:opacity-50 ${selected.length === 0 ? 'text-slate-400' : 'text-slate-900 dark:text-white'}`}
+      >
+        <span className="truncate">{summary}</span>
+        <span className="text-slate-400 text-xs">▾</span>
+      </button>
+      {open && !disabled && (
+        <div className="absolute z-30 mt-1 w-full max-h-64 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg p-2">
+          {options.length === 0 ? (
+            <div className="px-2 py-2 text-sm text-slate-400">No options</div>
+          ) : (
+            <>
+              <label className="flex items-center gap-2 px-2 py-1.5 text-sm font-semibold border-b border-slate-100 dark:border-slate-800 mb-1 cursor-pointer">
+                <input type="checkbox" checked={allSelected} onChange={() => onChange(allSelected ? [] : options.map(o => o.value))} className="h-4 w-4" />
+                {selectAllLabel}
+              </label>
+              {options.map(o => {
+                const showGroup = o.group && o.group !== lastGroup;
+                lastGroup = o.group || lastGroup;
+                return (
+                  <React.Fragment key={o.value}>
+                    {showGroup && <div className="px-2 pt-2 pb-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">{o.group}</div>}
+                    <label className="flex items-center gap-2 px-2 py-1.5 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
+                      <input type="checkbox" checked={value.includes(o.value)} onChange={() => toggle(o.value)} className="h-4 w-4" />
+                      {o.label}
+                    </label>
+                  </React.Fragment>
+                );
+              })}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Builds the "Class - Section" label for an exam card from the exam's saved
+ * classId/sectionId and the tenant's classes (no hard-coded values).
+ */
+const getExamClassSectionLabel = (exam, classes = []) => {
+  if (!exam?.classId) return 'All Classes';
+  const cls = classes.find((c) => c.id === exam.classId);
+  const className = (cls?.name || cls?.className || '').toString().trim() || 'Class';
+  if (!exam.sectionId) return `${className} - All Sections`;
+  const sec = Array.isArray(cls?.sections)
+    ? cls.sections.find((s) => s && typeof s === 'object' && s.id === exam.sectionId)
+    : null;
+  const secName = (sec?.name || sec?.code || '').toString().trim();
+  return secName ? formatClassSection({ name: className, section: secName }) : className;
+};
+
 export default function ExamManagement() {
   const { userProfile } = useAuth();
   const schoolId = userProfile?.schoolId;
@@ -46,8 +131,8 @@ export default function ExamManagement() {
   // Manage Exams State
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [editingExamId, setEditingExamId] = useState(null);
   const [allSubjects, setAllSubjects] = useState([]);
-  const [selectedClassSections, setSelectedClassSections] = useState([]);
   const [examProgress, setExamProgress] = useState(null);
   const [viewingProgressExam, setViewingProgressExam] = useState(null);
   const [loadingProgress, setLoadingProgress] = useState(false);
@@ -71,14 +156,16 @@ export default function ExamManagement() {
     endDate: '',
     examType: 'Final',
     term: '',
-    classId: '',
-    sectionId: '',
+    classIds: [],
+    units: [], // "classId:sectionId" (sectionId empty for classes without sections)
     subjectsConfig: []
   });
+  const [sectionsByClass, setSectionsByClass] = useState({});
+  const [editingOriginalUnit, setEditingOriginalUnit] = useState('');
 
   const fetchExams = useCallback(async () => {
     try {
-      const res = await listExams({ limit: 100 });
+      const res = await listExams();
       setExams(res?.data || []);
     } catch (error) {
       console.error("Error fetching exams:", error);
@@ -152,35 +239,58 @@ export default function ExamManagement() {
     }
   };
 
-  // When class changes in Create Exam modal, load its sections and auto-populate subjects
-  const handleCreateClassChange = async (classId) => {
-    setNewExam(prev => ({ ...prev, classId, sectionId: '', subjectsConfig: [] }));
-    if (!classId) {
-      setSelectedClassSections([]);
-      return;
-    }
-
-    try {
-      const res = await listSections(classId);
-      setSelectedClassSections(res?.data || []);
-    } catch (err) {
-      console.error("Error loading sections:", err);
-      setSelectedClassSections([]);
-    }
-
-    // Default populate all subjects
-    if (allSubjects.length > 0) {
-      const defaultConfigs = allSubjects.map(s => ({
-        subjectId: s.id,
-        subjectName: s.name,
-        maxMarks: 100,
-        passMarks: 40,
-        weightage: 100,
-        examDate: ''
-      }));
-      setNewExam(prev => ({ ...prev, subjectsConfig: defaultConfigs }));
-    }
+  // Loads (and caches) the sections of every class in ids
+  const loadSectionsFor = async (ids) => {
+    const merged = { ...sectionsByClass };
+    await Promise.all(ids.filter(id => !merged[id]).map(async (id) => {
+      try {
+        const res = await listSections(id);
+        merged[id] = res?.data || [];
+      } catch (err) {
+        console.error("Error loading sections:", err);
+        merged[id] = [];
+      }
+    }));
+    setSectionsByClass(merged);
+    return merged;
   };
+
+  // Target Class multi-select: load sections of the chosen classes, drop sections of unticked classes
+  const handleClassesChange = async (ids) => {
+    const merged = await loadSectionsFor(ids);
+    setNewExam(prev => {
+      const units = prev.units.filter(u => ids.includes(u.split(':')[0]));
+      ids.forEach(id => {
+        // A class without sections is targeted as a whole
+        if ((merged[id] || []).length === 0 && !units.includes(`${id}:`)) units.push(`${id}:`);
+      });
+      const needDefaults = prev.subjectsConfig.length === 0 && !editingExamId && allSubjects.length > 0 && ids.length > 0;
+      const subjectsConfig = needDefaults
+        ? allSubjects.map(sub => ({ subjectId: sub.id, subjectName: sub.name, maxMarks: 100, passMarks: 40, weightage: 100, examDate: '' }))
+        : prev.subjectsConfig;
+      return { ...prev, classIds: ids, units, subjectsConfig };
+    });
+  };
+
+  const classOptions = useMemo(
+    () => classes.map(c => ({ value: c.id, label: c.name })),
+    [classes]
+  );
+
+  const sectionOptions = useMemo(() => {
+    const opts = [];
+    newExam.classIds.forEach(cid => {
+      const cls = classes.find(c => c.id === cid);
+      const name = cls?.name || 'Class';
+      const secs = sectionsByClass[cid] || [];
+      if (secs.length === 0) {
+        opts.push({ value: `${cid}:`, label: `${name} (no sections - whole class)`, group: name });
+      } else {
+        secs.forEach(sec => opts.push({ value: `${cid}:${sec.id}`, label: `${name} - Section ${sec.name}`, group: name }));
+      }
+    });
+    return opts;
+  }, [newExam.classIds, classes, sectionsByClass]);
 
   const handleSubjectConfigChange = (index, field, value) => {
     setNewExam(prev => {
@@ -281,6 +391,51 @@ export default function ExamManagement() {
     return dup;
   }, [newExam.subjectsConfig]);
 
+  const emptyExamForm = {
+    name: '',
+    startDate: '',
+    endDate: '',
+    examType: 'Final',
+    term: '',
+    classIds: [],
+    units: [],
+    subjectsConfig: []
+  };
+
+  const openCreateModal = () => {
+    setEditingExamId(null);
+    setEditingOriginalUnit('');
+    setNewExam(emptyExamForm);
+    setShowCreateModal(true);
+  };
+
+  // Opens the same modal pre-filled with the saved exam so the admin can edit it
+  const openEditModal = async (exam) => {
+    setEditingExamId(exam.id);
+    setNewExam({
+      name: exam.name || '',
+      startDate: exam.startDate || '',
+      endDate: exam.endDate || '',
+      examType: exam.examType || 'Final',
+      term: exam.term || '',
+      classIds: exam.classId ? [exam.classId] : [],
+      units: exam.classId ? [`${exam.classId}:${exam.sectionId || ''}`] : [],
+      subjectsConfig: Array.isArray(exam.subjectsConfig)
+        ? exam.subjectsConfig.map(sc => ({
+          subjectId: sc.subjectId,
+          subjectName: sc.subjectName,
+          maxMarks: sc.maxMarks,
+          passMarks: sc.passMarks,
+          weightage: sc.weightage ?? 100,
+          examDate: sc.examDate || ''
+        }))
+        : []
+    });
+    setEditingOriginalUnit(exam.classId ? `${exam.classId}:${exam.sectionId || ''}` : '');
+    setShowCreateModal(true);
+    if (exam.classId) await loadSectionsFor([exam.classId]);
+  };
+
   const handleCreateExam = async (e) => {
     e.preventDefault();
     if (!newExam.name || !newExam.name.trim()) {
@@ -304,6 +459,18 @@ export default function ExamManagement() {
         return;
       }
     }
+    if (newExam.classIds.length === 0) {
+      toast.error("Select at least one target class");
+      return;
+    }
+    for (const cid of newExam.classIds) {
+      const hasSections = (sectionsByClass[cid] || []).length > 0;
+      if (hasSections && !newExam.units.some(u => u.startsWith(`${cid}:`) && u !== `${cid}:`)) {
+        const cname = classes.find(c => c.id === cid)?.name || 'class';
+        toast.error(`Select at least one section for ${cname}`);
+        return;
+      }
+    }
     setCreating(true);
     try {
       const payload = {
@@ -316,12 +483,6 @@ export default function ExamManagement() {
       if (newExam.term && newExam.term.trim()) {
         payload.term = newExam.term.trim();
       }
-      if (newExam.classId) {
-        payload.classId = newExam.classId;
-      }
-      if (newExam.sectionId) {
-        payload.sectionId = newExam.sectionId;
-      }
       if (newExam.subjectsConfig && newExam.subjectsConfig.length > 0) {
         payload.subjectsConfig = newExam.subjectsConfig.map(s => ({
           subjectId: s.subjectId,
@@ -333,21 +494,48 @@ export default function ExamManagement() {
         }));
       }
 
-      await createExam(payload);
+      const parseUnit = (u) => {
+        const [classId, sectionId] = u.split(':');
+        return { classId, sectionId: sectionId || null };
+      };
+
+      if (editingExamId) {
+        // The exam being edited stays on its own class/section when still ticked, otherwise it moves
+        // to the first ticked target. Every other ticked target gets its own new exam.
+        const primaryUnit = newExam.units.includes(editingOriginalUnit) ? editingOriginalUnit : newExam.units[0];
+        const primary = parseUnit(primaryUnit);
+        await updateExam(editingExamId, {
+          ...payload,
+          classId: primary.classId,
+          sectionId: primary.sectionId,
+          subjectsConfig: payload.subjectsConfig || []
+        });
+        const extra = newExam.units.filter(u => u !== primaryUnit).map(parseUnit);
+        if (extra.length > 0) {
+          try {
+            await createExam({ ...payload, targets: extra });
+          } catch (extraErr) {
+            await fetchExams();
+            toast.error(`Exam updated, but the extra classes/sections were not added: ${extraErr?.message || 'error'}`);
+            setCreating(false);
+            return;
+          }
+        }
+        toast.success(extra.length > 0
+          ? `Exam updated and added to ${extra.length} more section(s). Click 'Publish for Staff Entry' on each card.`
+          : "Exam updated. Click 'Publish for Staff Entry' to share the changes with teachers.");
+      } else {
+        await createExam({ ...payload, targets: newExam.units.map(parseUnit) });
+        toast.success(newExam.units.length > 1
+          ? `Exam created for ${newExam.units.length} class/sections!`
+          : "Exam created with automated subject assessments!");
+      }
       await fetchExams();
-      toast.success("Exam created with automated subject assessments!");
       notifyDataChanged('exams');
       setShowCreateModal(false);
-      setNewExam({
-        name: '',
-        startDate: '',
-        endDate: '',
-        examType: 'Final',
-        term: '',
-        classId: '',
-        sectionId: '',
-        subjectsConfig: []
-      });
+      setEditingExamId(null);
+      setEditingOriginalUnit('');
+      setNewExam(emptyExamForm);
     } catch (error) {
       console.error("Error creating exam:", error);
       toast.error(error?.message || "Failed to create exam");
@@ -475,26 +663,6 @@ export default function ExamManagement() {
     return selectableReportClassOptions.find(u => u.id === selectedReportUnitId) || null;
   }, [selectableReportClassOptions, selectedReportUnitId]);
 
-  const examsForSelectedUnit = useMemo(() => {
-  if (!selectedReportUnit) return [];
-  const { classId, sectionId } = selectedReportUnit;
-  const norm = (s) => (s || '').trim().toLowerCase();
-  const rank = (e) => (e.sectionId ? 3 : e.classId ? 2 : 1); // section > class > all-classes
-
-  const matches = exams.filter(e =>
-    (!e.classId || e.classId === classId) &&
-    (!e.sectionId || e.sectionId === sectionId)
-  );
-
-  const byKey = new Map();
-    matches.forEach(e => {
-      const key = `${norm(e.name)}|${e.academicYear || ''}|${norm(e.term)}`;
-      const current = byKey.get(key);
-      if (!current || rank(e) > rank(current)) byKey.set(key, e);
-    });
-    return [...byKey.values()];
-  }, [exams, selectedReportUnit]);
-
   const generateReportCard = async () => {
     const classId = selectedReportUnit?.classId || selectedClassId;
     const sectionId = selectedReportUnit?.sectionId || null;
@@ -601,7 +769,7 @@ export default function ExamManagement() {
         </div>
         {activeTab === 'manage' && (
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={openCreateModal}
             className="px-4 py-2 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 shadow-sm flex items-center gap-2 transition-colors w-full sm:w-auto justify-center"
           >
             <Plus size={18} /> Create Exam
@@ -651,30 +819,37 @@ export default function ExamManagement() {
                             <FileText size={24} />
                           </div>
                           <div className="flex items-center gap-1.5">
+                            {!isFinalized && (
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(exam)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-primary-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                title="Edit exam"
+                              >
+                                <Edit3 size={16} />
+                              </button>
+                            )}
                             <span className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${isFinalized
-                                ? 'bg-purple-100 text-purple-800'
-                                : isPublished
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : 'bg-amber-100 text-amber-800'
+                              ? 'bg-purple-100 text-purple-800'
+                              : isPublished
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
                               }`}>
                               {currentStatus}
                             </span>
                           </div>
                         </div>
 
-                        <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-1">{exam.name}</h3>
-                          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
-                            {exam.classId
-                              ? (selectableReportClassOptions.find(u =>
-                                  u.classId === exam.classId && (u.sectionId || null) === (exam.sectionId || null)
-                                )?.label || classes.find(c => c.id === exam.classId)?.name || 'Class')
-                              : 'All Classes'}
-                          </p>
+                        <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-2">{exam.name}</h3>
 
                         <div className="flex flex-col gap-2 text-sm text-slate-500 dark:text-slate-400 mb-4">
                           <div className="flex items-center gap-2 font-medium text-slate-600 dark:text-slate-300">
                             <FileText size={16} className="text-primary-500" />
                             {exam.term ? `Term: ${exam.term}` : (exam.academicYear ? `Academic Year: ${exam.academicYear}` : (exam.examType || 'Standard Exam'))}
+                          </div>
+                          <div className="flex items-center gap-2 font-medium text-slate-600 dark:text-slate-300">
+                            <Users size={16} className="text-primary-500" />
+                            {getExamClassSectionLabel(exam, classes)}
                           </div>
                           {(exam.startDate || exam.endDate) && (
                             <div className="flex items-center gap-2">
@@ -760,51 +935,41 @@ export default function ExamManagement() {
           ) : (
             <div className="flex flex-col h-full">
               <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row gap-4 items-end bg-slate-50/50 dark:bg-slate-800/50">
-              <div className="flex-1 w-full">
-                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Class</label>
-                <select
-                  value={selectedReportUnitId}
-                  onChange={(e) => {
-                    const newUnitId = e.target.value;
-                    setSelectedReportUnitId(newUnitId);
-                    const unit = selectableReportClassOptions.find(u => u.id === newUnitId);
-                    setSelectedClassId(unit?.classId || '');
-                    setSelectedExamId('');   
-                    setReportData(null);
-                  }}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200! bg-white! text-black! focus:ring-2 focus:ring-primary-500"
-                >
-                  <option value="" className="text-black bg-white dark:bg-slate-900">-- Choose Class --</option>
-                  {selectableReportClassOptions.map(opt => (
-                    <option key={opt.id} value={opt.id} className="text-black bg-white dark:bg-slate-900">
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex-1 w-full">
-                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Exam</label>
-                <select
-                  value={selectedExamId}
-                  disabled={!selectedReportUnitId}
-                  onChange={(e) => {
-                    setSelectedExamId(e.target.value);
-                    setReportData(null);
-                  }}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200! bg-white! text-black! focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
-                >
-                  <option value="" className="text-black bg-white dark:bg-slate-900">
-                    {selectedReportUnitId ? '-- Choose Exam --' : 'Select a class first'}
-                  </option>
-                  {examsForSelectedUnit.map(e => (
-                    <option key={e.id} value={e.id} className="text-black bg-white dark:bg-slate-900">
-                      {e.name}{e.term ? ` · ${e.term}` : ''}{e.academicYear ? ` (${e.academicYear})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-                
+                <div className="flex-1 w-full">
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Exam</label>
+                  <select
+                    value={selectedExamId}
+                    onChange={(e) => {
+                      setSelectedExamId(e.target.value);
+                      setReportData(null);
+                    }}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200! bg-white! text-black! focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="" className="text-black bg-white dark:bg-slate-900">-- Choose Exam --</option>
+                    {exams.map(e => <option key={e.id} value={e.id} className="text-black bg-white dark:bg-slate-900">{e.name}</option>)}
+                  </select>
+                </div>
+                <div className="flex-1 w-full">
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Class</label>
+                  <select
+                    value={selectedReportUnitId}
+                    onChange={(e) => {
+                      const newUnitId = e.target.value;
+                      setSelectedReportUnitId(newUnitId);
+                      const unit = selectableReportClassOptions.find(u => u.id === newUnitId);
+                      setSelectedClassId(unit?.classId || '');
+                      setReportData(null);
+                    }}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200! bg-white! text-black! focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="" className="text-black bg-white dark:bg-slate-900">-- Choose Class --</option>
+                    {selectableReportClassOptions.map(opt => (
+                      <option key={opt.id} value={opt.id} className="text-black bg-white dark:bg-slate-900">
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <button
                   onClick={generateReportCard}
                   disabled={!selectedExamId || (!selectedReportUnitId && !selectedClassId) || generatingReport}
@@ -972,7 +1137,9 @@ export default function ExamManagement() {
                                     </thead>
                                     <tbody>
                                       {reportData.assessments.map((a, i) => {
-                                        const markObj = row.marks?.[a.id];
+                                        const rawMarkObj = row.marks?.[a.id];
+                                        // Absent / exempt rows must ignore any stale component marks
+                                        const markObj = (rawMarkObj?.isAbsent || rawMarkObj?.isExempt) ? { ...rawMarkObj, componentMarks: null } : rawMarkObj;
                                         const mark = markObj?.obtained !== undefined ? markObj.obtained : '-';
                                         const grade = markObj?.grade || '-';
                                         const cols = reportTemplate.grading?.columns && reportTemplate.grading.columns.length > 0
@@ -991,7 +1158,7 @@ export default function ExamManagement() {
                                                   return <td key={cIdx} className="border border-slate-400 p-2 text-center">{a.totalMarks}</td>;
                                                 }
                                                 if (lower.includes('grade')) {
-                                                  return <td key={cIdx} className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">{grade}</td>;
+                                                  return <td key={cIdx} className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100"><span className={grade === 'AB' ? 'text-red-600 font-black' : ''}>{grade}</span></td>;
                                                 }
                                                 // Total column check
                                                 const isTotalCol = lower.startsWith('total') || lower === 'total' || lower.includes('total/') || lower.includes('/total') || lower.includes('aggregate');
@@ -1041,14 +1208,14 @@ export default function ExamManagement() {
                                                 return (
                                                   <td key={cIdx} className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">
                                                     <div className="flex items-center justify-center gap-1.5 group">
-                                                      <span>{displayMark}</span>
+                                                      <span className={displayMark === 'AB' ? 'text-red-600 font-black' : ''}>{displayMark}</span>
                                                       <button
                                                         onClick={() => setOverrideModal({
                                                           isOpen: true,
                                                           student: row.student,
                                                           assessment: a,
-                                                          currentMarks: displayMark === '-' ? '' : displayMark,
-                                                          newMarks: displayMark === '-' ? '' : displayMark,
+                                                          currentMarks: isNaN(Number(displayMark)) ? '' : displayMark,
+                                                          newMarks: isNaN(Number(displayMark)) ? '' : displayMark,
                                                           reason: ''
                                                         })}
                                                         className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-primary-600 transition-all text-xs print:hidden"
@@ -1067,14 +1234,14 @@ export default function ExamManagement() {
                                                 {['marks', 'marks_and_grades'].includes(reportTemplate.grading.style) && (
                                                   <td className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">
                                                     <div className="flex items-center justify-center gap-1.5 group">
-                                                      <span>{mark}</span>
+                                                      <span className={mark === 'AB' ? 'text-red-600 font-black' : ''}>{mark}</span>
                                                       <button
                                                         onClick={() => setOverrideModal({
                                                           isOpen: true,
                                                           student: row.student,
                                                           assessment: a,
-                                                          currentMarks: mark === '-' ? '' : mark,
-                                                          newMarks: mark === '-' ? '' : mark,
+                                                          currentMarks: isNaN(Number(mark)) ? '' : mark,
+                                                          newMarks: isNaN(Number(mark)) ? '' : mark,
                                                           reason: ''
                                                         })}
                                                         className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-primary-600 transition-all text-xs print:hidden"
@@ -1085,7 +1252,7 @@ export default function ExamManagement() {
                                                     </div>
                                                   </td>
                                                 )}
-                                                {['grades', 'marks_and_grades'].includes(reportTemplate.grading.style) && <td className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100">{grade}</td>}
+                                                {['grades', 'marks_and_grades'].includes(reportTemplate.grading.style) && <td className="border border-slate-400 p-2 text-center font-bold text-slate-800 dark:text-slate-100"><span className={grade === 'AB' ? 'text-red-600 font-black' : ''}>{grade}</span></td>}
                                               </>
                                             )}
                                           </tr>
@@ -1106,6 +1273,7 @@ export default function ExamManagement() {
                                               if (lower.includes('max')) {
                                                 let maxColSum = 0;
                                                 reportData.assessments.forEach(a => {
+                                                  if (row.marks?.[a.id]?.isExempt) return;
                                                   if (a.totalMarks !== undefined && !isNaN(Number(a.totalMarks))) {
                                                     maxColSum += Number(a.totalMarks);
                                                   }
@@ -1127,7 +1295,8 @@ export default function ExamManagement() {
                                               const cleanKey = lower.split('/')[0].trim().replace(/[^a-z0-9]/g, '_');
 
                                               reportData.assessments.forEach(a => {
-                                                const markObj = row.marks?.[a.id];
+                                                const rawMarkObj = row.marks?.[a.id];
+                                                const markObj = (rawMarkObj?.isAbsent || rawMarkObj?.isExempt) ? { ...rawMarkObj, componentMarks: null } : rawMarkObj;
                                                 const rawMark = markObj?.obtained !== undefined ? markObj.obtained : '-';
                                                 let cellVal = rawMark;
                                                 if (isTotalCol) {
@@ -1274,10 +1443,10 @@ export default function ExamManagement() {
                     {viewingProgressExam.name} — Live Marks Monitoring
                   </h2>
                   <span className={`px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${viewingProgressExam.status === 'FINALIZED'
-                      ? 'bg-purple-100 text-purple-800'
-                      : viewingProgressExam.status === 'PUBLISHED'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-amber-100 text-amber-800'
+                    ? 'bg-purple-100 text-purple-800'
+                    : viewingProgressExam.status === 'PUBLISHED'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-amber-100 text-amber-800'
                     }`}>
                     {viewingProgressExam.status || 'DRAFT'}
                   </span>
@@ -1348,12 +1517,12 @@ export default function ExamManagement() {
                             </td>
                             <td className="p-3.5 text-center">
                               <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${row.status === 'LOCKED'
-                                  ? 'bg-purple-100 text-purple-800'
-                                  : row.status === 'SUBMITTED'
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : row.status === 'IN_PROGRESS'
-                                      ? 'bg-blue-100 text-blue-800'
-                                      : 'bg-slate-100 text-slate-700'
+                                ? 'bg-purple-100 text-purple-800'
+                                : row.status === 'SUBMITTED'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : row.status === 'IN_PROGRESS'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : 'bg-slate-100 text-slate-700'
                                 }`}>
                                 {row.status}
                               </span>
@@ -1486,9 +1655,9 @@ export default function ExamManagement() {
           <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-3xl shadow-2xl overflow-hidden animate-fade-in-up flex flex-col max-h-[92vh]">
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800 shrink-0">
               <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <FileText className="text-primary-600" /> Create Exam & Configure Subjects
+                <FileText className="text-primary-600" /> {editingExamId ? 'Edit Exam & Subjects' : 'Create Exam & Configure Subjects'}
               </h2>
-              <button onClick={() => setShowCreateModal(false)} className="p-2 text-slate-400 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full transition-colors">
+              <button onClick={() => { setShowCreateModal(false); setEditingExamId(null); }} className="p-2 text-slate-400 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full transition-colors">
                 <X size={20} />
               </button>
             </div>
@@ -1536,31 +1705,25 @@ export default function ExamManagement() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Target Class</label>
-                    <select
-                      value={newExam.classId}
-                      onChange={(e) => handleCreateClassChange(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
-                    >
-                      <option value="">-- All Classes / Unassigned --</option>
-                      {classes.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Target Class(es) *</label>
+                    <MultiSelectDropdown
+                      options={classOptions}
+                      value={newExam.classIds}
+                      onChange={handleClassesChange}
+                      placeholder="-- Select Class(es) --"
+                      selectAllLabel="Select all classes"
+                    />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Target Section (Optional)</label>
-                    <select
-                      value={newExam.sectionId}
-                      onChange={(e) => setNewExam({ ...newExam, sectionId: e.target.value })}
-                      disabled={!newExam.classId}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 disabled:opacity-50"
-                    >
-                      <option value="">-- All Sections --</option>
-                      {selectedClassSections.map(sec => (
-                        <option key={sec.id} value={sec.id}>Section {sec.name}</option>
-                      ))}
-                    </select>
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Target Section(s) *</label>
+                    <MultiSelectDropdown
+                      options={sectionOptions}
+                      value={newExam.units}
+                      onChange={(units) => setNewExam(prev => ({ ...prev, units }))}
+                      placeholder={newExam.classIds.length === 0 ? 'Select a class first' : '-- Select Section(s) --'}
+                      disabled={newExam.classIds.length === 0}
+                      selectAllLabel="Select all sections"
+                    />
                   </div>
                 </div>
 
@@ -1701,11 +1864,11 @@ export default function ExamManagement() {
               </div>
 
               <div className="p-6 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 shrink-0">
-                <button type="button" onClick={() => setShowCreateModal(false)} className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors">
+                <button type="button" onClick={() => { setShowCreateModal(false); setEditingExamId(null); }} className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors">
                   Cancel
                 </button>
                 <button type="submit" disabled={creating} className="w-full sm:w-auto flex justify-center items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 rounded-xl shadow-sm transition-colors">
-                  {creating ? 'Saving...' : 'Create Exam'}
+                  {creating ? 'Saving...' : (editingExamId ? 'Save Changes' : 'Create Exam')}
                 </button>
               </div>
             </form>

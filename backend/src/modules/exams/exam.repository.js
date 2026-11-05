@@ -36,6 +36,10 @@ export async function findExams(schoolId, query = {}, pagination = {}) {
     where.academicYear = query.academicYear;
   }
 
+  if (query.publishedOnly) {
+    where.status = { in: ['PUBLISHED', 'FINALIZED'] };
+  }
+
   if (query.startDate) {
     where.startDate = {
       gte: query.startDate

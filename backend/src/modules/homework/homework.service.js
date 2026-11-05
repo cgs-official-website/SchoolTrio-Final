@@ -607,6 +607,11 @@ export async function updateStaffSubmission(schoolId, homeworkId, studentId, dat
     throw new NotFoundError('Homework assignment');
   }
 
+  const role = (actor?.systemRole || actor?.role || '').toUpperCase();
+  if (data.status !== undefined && (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER')) {
+    throw new ForbiddenError('Teachers are not authorized to manually change student homework status');
+  }
+
   await authorizeTeacherHomework(schoolId, assignment, actor, 'edit');
 
   const student = await homeworkRepository.findStudentInTenant(schoolId, studentId);
@@ -616,11 +621,6 @@ export async function updateStaffSubmission(schoolId, homeworkId, studentId, dat
     (assignment.sectionId && student.sectionId !== assignment.sectionId)
   ) {
     throw new NotFoundError('Student in assignment class');
-  }
-
-  const role = (actor?.systemRole || actor?.role || '').toUpperCase();
-  if (data.status !== undefined && (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER')) {
-    throw new ForbiddenError('Teachers are not authorized to manually change student homework status');
   }
 
   const submissionPayload = {};
@@ -693,6 +693,11 @@ export async function bulkUpdateStaffSubmissions(schoolId, homeworkId, submissio
     throw new NotFoundError('Homework assignment');
   }
 
+  const role = (actor?.systemRole || actor?.role || '').toUpperCase();
+  if ((role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') && submissions.some((s) => s.status !== undefined)) {
+    throw new ForbiddenError('Teachers are not authorized to manually change student homework status');
+  }
+
   await authorizeTeacherHomework(schoolId, assignment, actor, 'edit');
 
   const studentIds = submissions.map(s => s.studentId);
@@ -706,11 +711,6 @@ export async function bulkUpdateStaffSubmissions(schoolId, homeworkId, submissio
     if (!validStudentIdSet.has(sub.studentId)) {
       throw new ValidationError(`Student ${sub.studentId} does not belong to the assigned class or tenant`);
     }
-  }
-
-  const role = (actor?.systemRole || actor?.role || '').toUpperCase();
-  if ((role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') && submissions.some((s) => s.status !== undefined)) {
-    throw new ForbiddenError('Teachers are not authorized to manually change student homework status');
   }
 
   const results = await prisma.$transaction(async (tx) => {

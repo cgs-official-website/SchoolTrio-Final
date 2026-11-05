@@ -6,9 +6,38 @@ import { SYSTEM_ROLES } from '../../config/constants.js';
 import { ForbiddenError, NotFoundError, TenantAccessError } from '../../utils/app-error.js';
 
 vi.mock('./homework.repository.js');
+let teacherAssignedClassId = '22222222-2222-2222-2222-222222222222';
+
 vi.mock('../../database/prisma.client.js', () => ({
   prisma: {
-    $transaction: vi.fn(async (cb) => cb(prisma))
+    $transaction: vi.fn(async (cb) => cb(prisma)),
+    staffProfile: {
+      findFirst: vi.fn(async () => ({
+        id: 'staff-profile-1',
+        schoolId: '11111111-1111-1111-1111-111111111111',
+        userId: '77777777-7777-7777-7777-777777777777',
+        assignedClassId: teacherAssignedClassId,
+        headedClasses: [],
+        customData: {
+          assignments: {
+            assignedClassId: teacherAssignedClassId,
+            subjectClassIds: [teacherAssignedClassId]
+          }
+        }
+      }))
+    },
+    section: {
+      findMany: vi.fn(async () => [])
+    },
+    timetablePeriod: {
+      findMany: vi.fn(async () => [])
+    },
+    class: {
+      findMany: vi.fn(async ({ where }) => {
+        const ids = where?.id?.in || [];
+        return ids.map(id => ({ id }));
+      })
+    }
   }
 }));
 vi.mock('../audit/audit.repository.js', () => ({
@@ -78,6 +107,7 @@ describe('BUG-001: Homework Status Authorization & Management (Service Tests)', 
   };
 
   beforeEach(() => {
+    teacherAssignedClassId = classId;
     vi.clearAllMocks();
 
     homeworkRepository.findHomeworkById.mockResolvedValue(mockAssignment);
@@ -385,6 +415,7 @@ describe('BUG-001: Homework Status Authorization & Management (Service Tests)', 
     });
 
     it('rejects teachers attempting to evaluate homework for a class they are not assigned to', async () => {
+      teacherAssignedClassId = otherClassId;
       homeworkRepository.findStaffProfileByUserId.mockResolvedValue({
         id: 'staff-profile-other',
         userId: teacherUserId,
@@ -411,7 +442,7 @@ describe('BUG-001: Homework Status Authorization & Management (Service Tests)', 
           { grade: 'A' },
           teacherActor
         )
-      ).rejects.toThrow('Teachers are only authorized to manage homework for their assigned class');
+      ).rejects.toThrow(/You can only manage homework|Teachers are only authorized to manage homework/);
     });
 
     it('rejects student status update if homework assignment is not for student class', async () => {
