@@ -78,7 +78,7 @@ export default function ExamManagement() {
 
   const fetchExams = useCallback(async () => {
     try {
-      const res = await listExams();
+      const res = await listExams({ limit: 100 });
       setExams(res?.data || []);
     } catch (error) {
       console.error("Error fetching exams:", error);
@@ -475,6 +475,26 @@ export default function ExamManagement() {
     return selectableReportClassOptions.find(u => u.id === selectedReportUnitId) || null;
   }, [selectableReportClassOptions, selectedReportUnitId]);
 
+  const examsForSelectedUnit = useMemo(() => {
+  if (!selectedReportUnit) return [];
+  const { classId, sectionId } = selectedReportUnit;
+  const norm = (s) => (s || '').trim().toLowerCase();
+  const rank = (e) => (e.sectionId ? 3 : e.classId ? 2 : 1); // section > class > all-classes
+
+  const matches = exams.filter(e =>
+    (!e.classId || e.classId === classId) &&
+    (!e.sectionId || e.sectionId === sectionId)
+  );
+
+  const byKey = new Map();
+    matches.forEach(e => {
+      const key = `${norm(e.name)}|${e.academicYear || ''}|${norm(e.term)}`;
+      const current = byKey.get(key);
+      if (!current || rank(e) > rank(current)) byKey.set(key, e);
+    });
+    return [...byKey.values()];
+  }, [exams, selectedReportUnit]);
+
   const generateReportCard = async () => {
     const classId = selectedReportUnit?.classId || selectedClassId;
     const sectionId = selectedReportUnit?.sectionId || null;
@@ -642,7 +662,14 @@ export default function ExamManagement() {
                           </div>
                         </div>
 
-                        <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-2">{exam.name}</h3>
+                        <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-1">{exam.name}</h3>
+                          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
+                            {exam.classId
+                              ? (selectableReportClassOptions.find(u =>
+                                  u.classId === exam.classId && (u.sectionId || null) === (exam.sectionId || null)
+                                )?.label || classes.find(c => c.id === exam.classId)?.name || 'Class')
+                              : 'All Classes'}
+                          </p>
 
                         <div className="flex flex-col gap-2 text-sm text-slate-500 dark:text-slate-400 mb-4">
                           <div className="flex items-center gap-2 font-medium text-slate-600 dark:text-slate-300">
@@ -733,41 +760,51 @@ export default function ExamManagement() {
           ) : (
             <div className="flex flex-col h-full">
               <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row gap-4 items-end bg-slate-50/50 dark:bg-slate-800/50">
-                <div className="flex-1 w-full">
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Exam</label>
-                  <select
-                    value={selectedExamId}
-                    onChange={(e) => {
-                      setSelectedExamId(e.target.value);
-                      setReportData(null);
-                    }}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200! bg-white! text-black! focus:ring-2 focus:ring-primary-500"
-                  >
-                    <option value="" className="text-black bg-white dark:bg-slate-900">-- Choose Exam --</option>
-                    {exams.map(e => <option key={e.id} value={e.id} className="text-black bg-white dark:bg-slate-900">{e.name}</option>)}
-                  </select>
-                </div>
-                <div className="flex-1 w-full">
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Class</label>
-                  <select
-                    value={selectedReportUnitId}
-                    onChange={(e) => {
-                      const newUnitId = e.target.value;
-                      setSelectedReportUnitId(newUnitId);
-                      const unit = selectableReportClassOptions.find(u => u.id === newUnitId);
-                      setSelectedClassId(unit?.classId || '');
-                      setReportData(null);
-                    }}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200! bg-white! text-black! focus:ring-2 focus:ring-primary-500"
-                  >
-                    <option value="" className="text-black bg-white dark:bg-slate-900">-- Choose Class --</option>
-                    {selectableReportClassOptions.map(opt => (
-                      <option key={opt.id} value={opt.id} className="text-black bg-white dark:bg-slate-900">
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div className="flex-1 w-full">
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Class</label>
+                <select
+                  value={selectedReportUnitId}
+                  onChange={(e) => {
+                    const newUnitId = e.target.value;
+                    setSelectedReportUnitId(newUnitId);
+                    const unit = selectableReportClassOptions.find(u => u.id === newUnitId);
+                    setSelectedClassId(unit?.classId || '');
+                    setSelectedExamId('');   
+                    setReportData(null);
+                  }}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200! bg-white! text-black! focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="" className="text-black bg-white dark:bg-slate-900">-- Choose Class --</option>
+                  {selectableReportClassOptions.map(opt => (
+                    <option key={opt.id} value={opt.id} className="text-black bg-white dark:bg-slate-900">
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex-1 w-full">
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Exam</label>
+                <select
+                  value={selectedExamId}
+                  disabled={!selectedReportUnitId}
+                  onChange={(e) => {
+                    setSelectedExamId(e.target.value);
+                    setReportData(null);
+                  }}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200! bg-white! text-black! focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+                >
+                  <option value="" className="text-black bg-white dark:bg-slate-900">
+                    {selectedReportUnitId ? '-- Choose Exam --' : 'Select a class first'}
+                  </option>
+                  {examsForSelectedUnit.map(e => (
+                    <option key={e.id} value={e.id} className="text-black bg-white dark:bg-slate-900">
+                      {e.name}{e.term ? ` · ${e.term}` : ''}{e.academicYear ? ` (${e.academicYear})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+                
                 <button
                   onClick={generateReportCard}
                   disabled={!selectedExamId || (!selectedReportUnitId && !selectedClassId) || generatingReport}

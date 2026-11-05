@@ -5,7 +5,8 @@ import { resolveAcademicYear } from '../attendance/attendance.service.js';
 import {
   NotFoundError,
   ConflictError,
-  TenantAccessError
+  TenantAccessError,
+  ValidationError
 } from '../../utils/app-error.js';
 import { parsePagination, buildPaginationMetadata } from '../../utils/pagination.js';
 import { logger } from '../../utils/logger.js';
