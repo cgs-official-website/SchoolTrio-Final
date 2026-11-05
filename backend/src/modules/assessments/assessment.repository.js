@@ -18,9 +18,16 @@ export async function findAssessments(schoolId, query = {}, pagination = {}) {
     schoolId
   };
 
-  if (query.classId) {
-    where.classId = query.classId;
-  }
+if (query.classId) {
+  where.classId = query.classId;
+}
+
+if (query.sectionId) {
+  where.AND = [
+    ...(where.AND || []),
+    { OR: [{ sectionId: null }, { sectionId: query.sectionId }] }
+  ];
+}
 
   if (query.examId) {
     where.examId = query.examId;
@@ -139,6 +146,7 @@ export async function createAssessment(schoolId, data, tx = prisma) {
       schoolId,
       title: data.title,
       classId: data.classId,
+      sectionId: data.sectionId || null,
       subjectId: data.subjectId || null,
       examId: data.examId || null,
       totalMarks: data.totalMarks,
@@ -244,7 +252,7 @@ export async function verifyClassExists(schoolId, classId, tx = prisma) {
       id: classId,
       schoolId
     },
-    select: { id: true, name: true }
+  select: { id: true, name: true }
   });
 }
 
@@ -262,7 +270,7 @@ export async function verifyExamExists(schoolId, examId, tx = prisma) {
       id: examId,
       schoolId
     },
-    select: { id: true, name: true }
+  select: { id: true, name: true, classId: true, sectionId: true }
   });
 }
 
@@ -280,7 +288,7 @@ export async function verifySubjectExists(schoolId, subjectId, tx = prisma) {
       id: subjectId,
       schoolId
     },
-    select: { id: true, name: true }
+  select: { id: true, name: true }
   });
 }
 
@@ -304,5 +312,12 @@ export async function findStaffProfileByUserId(schoolId, userId, tx = prisma) {
       assignedClassId: true,
       customData: true
     }
+  });
+}
+
+export async function verifySectionExists(schoolId, classId, sectionId, tx = prisma) {
+  return tx.section.findFirst({
+    where: { id: sectionId, classId, schoolId },
+    select: { id: true, name: true }
   });
 }

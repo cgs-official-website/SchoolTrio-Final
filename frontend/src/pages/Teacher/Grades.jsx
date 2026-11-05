@@ -57,9 +57,13 @@ export default function Grades() {
   const [assessments, setAssessments] = useState([]);
   const [exams, setExams] = useState([]);
   const examsForSelectedClass = useMemo(
-    () => exams.filter((e) => !e.classId || e.classId === classId),
-    [exams, classId]
-  );
+  () => exams.filter((e) =>
+    (!e.classId || e.classId === classId) &&
+    (!e.sectionId || e.sectionId === sectionId) &&
+    e.status !== 'FINALIZED'
+  ),
+  [exams, classId, sectionId]
+);
   const [loading, setLoading] = useState(true);
 
   // Active Assessment State
@@ -94,7 +98,7 @@ export default function Grades() {
   const fetchMetadata = useCallback(async () => {
     try {
       const [examsRes, scopeRes, subjectsRes, templateRes] = await Promise.all([
-        listExams(),
+        listExams({ limit: 100 }),
         getMyAssessmentScope(),
         listSubjects({ limit: 100 }),
         getReportCardTemplate('report_card').catch(() => null)
@@ -121,7 +125,7 @@ export default function Grades() {
 
   const fetchExams = useCallback(async () => {
     try {
-      const res = await listExams();
+      const res = await listExams({limit: 100});
       if (mountedRef.current) {
         setExams(res?.data || []);
       }
@@ -132,8 +136,8 @@ export default function Grades() {
 
   const fetchAssessments = useCallback(async (targetClassId) => {
     try {
-      const res = await listAssessments({ classId: targetClassId, limit: 100 });
       const sec = currentSectionIdRef.current;
+      const res = await listAssessments({ classId: targetClassId, ...(sec ? { sectionId: sec } : {}), limit: 100 });
       const items = (res?.data || []).filter((a) => !sec || !a.sectionId || a.sectionId === sec);
       if (mountedRef.current && currentClassIdRef.current === targetClassId) {
         setAssessments(items);
@@ -372,6 +376,7 @@ export default function Grades() {
       const payload = {
         title: newAssessment.title.trim(),
         classId,
+        ...(sectionId ? { sectionId } : {}),
         totalMarks: Number(newAssessment.totalMarks),
         date: newAssessment.date || null,
         examId: newAssessment.examId ? newAssessment.examId : null,
@@ -396,7 +401,7 @@ export default function Grades() {
       handleSelectAssessment(withAccess);
     } catch (error) {
       console.error("Error creating assessment:", error);
-      toast.error("Failed to create assessment.");
+      toast.error(error?.message || "Failed to create assessment.");
     } finally {
       setCreating(false);
     }
@@ -1132,7 +1137,12 @@ export default function Grades() {
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6">
           <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-fade-in-up flex flex-col max-h-[90vh]">
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800 shrink-0">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">New Assessment</h2>
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">New Assessment</h2>
+                <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                  For: {selectedUnit?.className}{selectedUnit?.sectionName ? ` - ${selectedUnit.sectionName}` : ''}
+                </p>
+              </div>
               <button onClick={() => setShowCreateModal(false)} className="p-2 text-slate-400 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full transition-colors">
                 <X size={20} />
               </button>

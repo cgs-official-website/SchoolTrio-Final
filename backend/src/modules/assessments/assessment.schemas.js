@@ -8,6 +8,7 @@ import { REGEX } from '../../config/constants.js';
 export const listAssessmentsSchema = {
   query: z.object({
     classId: z.string().regex(REGEX.UUID, 'Invalid class ID format').optional(),
+    sectionId: z.string().regex(REGEX.UUID, 'Invalid section ID format').optional(),
     examId: z.string().regex(REGEX.UUID, 'Invalid exam ID format').optional(),
     subjectId: z.string().regex(REGEX.UUID, 'Invalid subject ID format').optional(),
     search: z.string().trim().max(100).optional(),
@@ -38,6 +39,11 @@ export const createAssessmentSchema = {
       classId: z
         .string({ required_error: 'Class ID is required' })
         .regex(REGEX.UUID, 'Invalid class ID format'),
+      sectionId: z
+        .string()
+        .regex(REGEX.UUID, 'Invalid section ID format')
+        .optional()
+        .nullable(),
       totalMarks: z.coerce
         .number({ required_error: 'Total marks is required', invalid_type_error: 'Total marks must be a numeric value' })
         .positive('Total marks must be greater than 0')

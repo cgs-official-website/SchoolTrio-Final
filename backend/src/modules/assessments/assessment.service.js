@@ -169,6 +169,7 @@ export async function listAssessments(schoolId, query = {}, actor = null) {
 
   const filterOptions = {
     classId: effectiveClassId,
+    sectionId: query.sectionId,
     examId: query.examId,
     subjectId: effectiveSubjectId,
     search: query.search ? query.search.trim() : undefined,
@@ -254,20 +255,37 @@ export async function createAssessment(schoolId, data, actor = null) {
   }
 
   // 1. Authorize class access for teachers
-  await authorizeTeacherEdit(schoolId, { classId: data.classId, subjectId: data.subjectId || null }, actor);
+  await authorizeTeacherEdit(
+  schoolId,
+  { classId: data.classId, sectionId: data.sectionId || null, subjectId: data.subjectId || null },
+  actor
+);
   // 2. Verify Class exists and belongs to school
   const classObj = await assessmentRepository.verifyClassExists(schoolId, data.classId);
   if (!classObj) {
     throw new NotFoundError(`Class with ID '${data.classId}' not found`);
   }
 
+  if (data.sectionId) {
+  const sectionObj = await assessmentRepository.verifySectionExists(schoolId, data.classId, data.sectionId);
+  if (!sectionObj) {
+    throw new NotFoundError(`Section with ID '${data.sectionId}' not found in this class`);
+  }
+}
+
   // 3. Verify Examination exists if examId is supplied
   if (data.examId) {
-    const examObj = await assessmentRepository.verifyExamExists(schoolId, data.examId);
-    if (!examObj) {
-      throw new NotFoundError(`Examination with ID '${data.examId}' not found`);
-    }
+  const examObj = await assessmentRepository.verifyExamExists(schoolId, data.examId);
+  if (!examObj) {
+    throw new NotFoundError(`Examination with ID '${data.examId}' not found`);
   }
+  if (examObj.classId && examObj.classId !== data.classId) {
+    throw new ConflictError('This exam belongs to a different class');
+  }
+  if (examObj.sectionId && examObj.sectionId !== (data.sectionId || null)) {
+    throw new ConflictError('This exam belongs to a different section');
+  }
+}
 
   // 4. Verify Subject exists if subjectId is supplied
   if (data.subjectId) {
@@ -281,6 +299,7 @@ export async function createAssessment(schoolId, data, actor = null) {
   const assessment = await assessmentRepository.createAssessment(schoolId, {
     title: data.title.trim(),
     classId: data.classId,
+    sectionId: data.sectionId || null,
     totalMarks: data.totalMarks,
     passingMarks: data.passingMarks !== undefined ? data.passingMarks : null,
     date: data.date || null,
