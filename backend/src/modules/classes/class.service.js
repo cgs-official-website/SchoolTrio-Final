@@ -502,7 +502,7 @@ export async function createClass(schoolId, data, actor = null) {
     }
 
     return classRepository.findClassById(schoolId, createdClass.id, tx);
-  });
+  }, { maxWait: 15000, timeout: 30000 });
 
   // 5. Canonical AuditLog integration (non-blocking, post-transaction)
   await createAuditLog({
@@ -666,7 +666,7 @@ export async function updateClass(schoolId, classId, data, actor = null) {
     await classRepository.updateClass(schoolId, classId, updatePayload, tx);
 
     return classRepository.findClassById(schoolId, classId, tx);
-  });
+  }, { maxWait: 15000, timeout: 30000 });
 
   // 6. Canonical AuditLog integration (non-blocking, post-transaction)
   if (Object.keys(modifiedFields).length > 0) {
@@ -814,7 +814,7 @@ export async function deleteClass(schoolId, classId, actor = null) {
 
       // 8. Delete the class
       await classRepository.deleteClass(schoolId, classId, tx);
-    });
+    }, { maxWait: 15000, timeout: 30000 });
   } catch (error) {
     if (error.code === 'P2003') {
       throw new ConflictError('Cannot delete class because related records depend on it');
@@ -1050,7 +1050,7 @@ export async function deleteSection(schoolId, classId, sectionId, actor = null) 
 
       // 6. Delete the section
       await classRepository.deleteSection(schoolId, sectionId, tx);
-    });
+    }, { maxWait: 15000, timeout: 30000 });
   } catch (error) {
     if (error.code === 'P2003') {
       throw new ConflictError('Cannot delete section because related records depend on it');

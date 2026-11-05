@@ -6,13 +6,13 @@ import { getStudentAttendance } from '../../api/attendance';
 import { admissionsApi } from '../../api/admissions';
 import { useAuth } from '../../context/AuthContext';
 import { uploadFileToCloudinaryOrFirebase, uploadCustomDataFiles } from '../../utils/cloudinary';
-import { 
-  LuSearch as Search, LuFilter as Filter, LuUserPlus as UserPlus, LuCircleCheck as CheckCircle2, 
-  LuGraduationCap as GraduationCap, LuCloudUpload as UploadCloud, LuFileText as FileText, 
-  LuExternalLink as ExternalLink, LuX as X, LuEye as Eye, LuTrash2 as Trash, LuDownload as Download, 
-  LuFileDown as FileDown, LuLink as LinkIcon, LuShare2 as Share2, LuCheck as Check, LuClock as Clock, 
-  LuTriangleAlert as AlertTriangle, LuSparkles as Sparkles, LuCopy as Copy, LuMail as Mail, 
-  LuUserCheck as UserCheck, LuBookOpen as BookOpen, LuPhone as Phone, LuMapPin as MapPin, 
+import {
+  LuSearch as Search, LuFilter as Filter, LuUserPlus as UserPlus, LuCircleCheck as CheckCircle2,
+  LuGraduationCap as GraduationCap, LuCloudUpload as UploadCloud, LuFileText as FileText,
+  LuExternalLink as ExternalLink, LuX as X, LuEye as Eye, LuTrash2 as Trash, LuDownload as Download,
+  LuFileDown as FileDown, LuLink as LinkIcon, LuShare2 as Share2, LuCheck as Check, LuClock as Clock,
+  LuTriangleAlert as AlertTriangle, LuSparkles as Sparkles, LuCopy as Copy, LuMail as Mail,
+  LuUserCheck as UserCheck, LuBookOpen as BookOpen, LuPhone as Phone, LuMapPin as MapPin,
   LuCalendar as Calendar, LuArrowRight as ArrowRight
 } from 'react-icons/lu';
 import { TableSkeleton } from '../../components/Skeleton';
@@ -97,7 +97,7 @@ export default function StudentManagement() {
   const [customData, setCustomData] = useState({});
   const [formSchema, setFormSchema] = useState([]);
   const [photoFile, setPhotoFile] = useState(null);
-  
+
   // Crop state
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const [tempImageFile, setTempImageFile] = useState(null);
@@ -293,8 +293,8 @@ export default function StudentManagement() {
       const normalizedStudents = rawStudents.map(s => {
         const cd = (s && typeof s.customData === 'object' && s.customData !== null) ? s.customData : {};
 
-        let age = (s.age !== undefined && s.age !== null && String(s.age).trim() !== '') 
-          ? String(s.age).trim() 
+        let age = (s.age !== undefined && s.age !== null && String(s.age).trim() !== '')
+          ? String(s.age).trim()
           : (cd.age !== undefined && cd.age !== null && String(cd.age).trim() !== '' ? String(cd.age).trim() : '');
         if (!age && s.dob) {
           const birthDate = new Date(s.dob);
@@ -426,13 +426,13 @@ export default function StudentManagement() {
   const handleOpenReviewModal = (app) => {
     setSelectedAppForReview(app);
     setAssigningAppClassId(app.targetClassId || (classes[0]?.id || ''));
-    
+
     // Auto-generate a clean admission number if one isn't already assigned
     const year = new Date().getFullYear();
     const existingNums = students.map(s => parseInt((s.admissionNumber || '').replace(/\D/g, ''))).filter(n => !isNaN(n));
     const maxNum = existingNums.length > 0 ? Math.max(...existingNums) : students.length;
     const nextSeq = (maxNum + 1).toString().padStart(3, '0');
-    
+
     setAssigningAppAdmissionNumber(app.assignedAdmissionNumber || `ADM-${year}-${nextSeq}`);
     setReviewAppModalOpen(true);
   };
@@ -546,7 +546,7 @@ export default function StudentManagement() {
     if (formData.rollNumber?.trim() && cId) {
       const isRollDuplicate = students.some(
         s => s.classId === cId &&
-             s.rollNumber?.toLowerCase() === formData.rollNumber.trim().toLowerCase()
+          s.rollNumber?.toLowerCase() === formData.rollNumber.trim().toLowerCase()
       );
       if (isRollDuplicate) {
         rollNumberError = "Roll Number already exists in this class";
@@ -929,7 +929,7 @@ export default function StudentManagement() {
             const wsname = wb.SheetNames[0];
             const ws = wb.Sheets[wsname];
             const rawData = XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' });
-            
+
             // Normalize keys
             const data = rawData.map(row => {
               const normalized = {};
@@ -971,7 +971,7 @@ export default function StudentManagement() {
               const nameParts = fullNameStr.split(' ');
               const firstName = nameParts[0];
               const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
-              
+
               const classNameRaw = row['class'] || row['grade'] || row['class name'] || row['grade/class'] || '';
               const sectionRaw = row['section'] || row['group'] || row['sec'] || '';
               const matchedClass = findMatchingClass(classNameRaw, sectionRaw, classes);
@@ -1118,7 +1118,7 @@ export default function StudentManagement() {
       const safeFileName = uploadFile.name.replace(/[^a-z0-9.]/gi, '_');
 
       const storagePath = `${safeSchoolName}/Students/${safeStudentName}/${safeFileName}`;
-      
+
       const downloadUrl = await uploadFileToCloudinaryOrFirebase(uploadFile, schoolId, storagePath);
 
       const existingCustom = selectedStudentForUpload.customData || {};
@@ -1211,6 +1211,7 @@ export default function StudentManagement() {
       'previousSchool', 'identificationMarks', 'medicalInfo', 'transportDetails', 'hostelDetails',
       'tuitionFee', 'hostelFee', 'bookFee', 'otherFee', 'totalFee'
     ];
+    if ((selectedStudentToView.sectionId || '') !== (editStudentData.sectionId || '')) return true;
     for (const f of fieldsToCompare) {
       const v1 = (selectedStudentToView[f] || '').toString().trim();
       const v2 = (editStudentData[f] || '').toString().trim();
@@ -1253,7 +1254,7 @@ export default function StudentManagement() {
   }, [viewStudentModalOpen, isEditMode, editStudentData, editCustomData, selectedStudentToView]);
 
   // Log audit helper
-  
+
   // Validate fields in edit student form
   const validateEditStudent = () => {
     const errors = {};
@@ -1262,7 +1263,7 @@ export default function StudentManagement() {
 
     const lastNameError = validateName(editStudentData.lastName, 'Last name');
     if (lastNameError) errors.lastName = lastNameError;
-    
+
     if (!editStudentData.admissionNumber?.trim()) {
       errors.admissionNumber = "Admission number is required";
     } else {
@@ -1319,8 +1320,8 @@ export default function StudentManagement() {
     if (editStudentData.rollNumber?.trim() && editStudentData.classId) {
       const isRollDuplicate = students.some(
         s => s.id !== selectedStudentToView.id &&
-             s.classId === editStudentData.classId &&
-             s.rollNumber?.toLowerCase() === editStudentData.rollNumber.trim().toLowerCase()
+          s.classId === editStudentData.classId &&
+          s.rollNumber?.toLowerCase() === editStudentData.rollNumber.trim().toLowerCase()
       );
       if (isRollDuplicate) {
         errors.rollNumber = "Roll Number already exists in this class";
@@ -1361,6 +1362,16 @@ export default function StudentManagement() {
         cleanedData.bloodGroup = cleanedData.bloodGroup.toUpperCase();
       }
 
+      // The edit form only binds the primary fields. Alias fields (fatherName, relationship, ...)
+      // still hold the OLD values, and the payload below prefers the alias, so edits were silently
+      // reverted. Keep every alias in sync with the field the user actually edited.
+      cleanedData.fatherName = cleanedData.parentName;
+      cleanedData.fatherOccupation = cleanedData.parentOccupation;
+      cleanedData.relationship = cleanedData.guardianRelationship;
+      cleanedData.studentMail = cleanedData.studentEmail;
+      cleanedData.homeAddress = cleanedData.addressLine1;
+      cleanedData.busRoute = cleanedData.transportDetails;
+
       if (cleanedData.dob) {
         const birthDate = new Date(cleanedData.dob);
         const today = new Date();
@@ -1386,6 +1397,9 @@ export default function StudentManagement() {
       const existingCustom = selectedStudentToView.customData || {};
       const customDataPayload = {
         ...existingCustom,
+        // Spread uploaded/custom-form data FIRST: it is a full copy of the OLD customData,
+        // so putting it last overwrote every edited field with its previous value.
+        ...(uploadedCustomData || {}),
         age: cleanedData.age || '',
         parentName: cleanedData.parentName || cleanedData.fatherName || '',
         fatherName: cleanedData.fatherName || cleanedData.parentName || '',
@@ -1431,8 +1445,7 @@ export default function StudentManagement() {
         totalFee: cleanedData.totalFee || '',
         nationality: cleanedData.nationality || '',
         religion: cleanedData.religion || '',
-        motherTongue: cleanedData.motherTongue || '',
-        ...(uploadedCustomData || {})
+        motherTongue: cleanedData.motherTongue || ''
       };
 
       const updatePayload = {
@@ -1445,6 +1458,7 @@ export default function StudentManagement() {
         aadhaarNumber: cleanedData.aadharNumber || null,
         rollNumber: cleanedData.rollNumber || null,
         classId: cleanedData.classId || null,
+        sectionId: cleanedData.classId ? (editStudentData.sectionId || null) : null,
         status: cleanedData.status || 'Active',
         photoUrl: newPhotoUrl || null,
         customData: customDataPayload
@@ -1462,7 +1476,7 @@ export default function StudentManagement() {
       }
 
       toast.success("Student details updated successfully.");
-      
+
       const updatedStudentObj = {
         ...selectedStudentToView,
         ...(updatedRes?.data || updatePayload),
@@ -1477,7 +1491,10 @@ export default function StudentManagement() {
       fetchData({ silent: true });
     } catch (e) {
       console.error(e);
-      toast.error(e.response?.data?.message || "Failed to save changes.");
+      const detailMsg = Array.isArray(e.details) && e.details.length
+        ? e.details.map(d => d.message).join(', ')
+        : '';
+      toast.error(detailMsg || e.message || e.response?.data?.message || "Failed to save changes.");
     } finally {
       setSaving(false);
     }
@@ -1485,7 +1502,7 @@ export default function StudentManagement() {
 
   const filteredStudents = students.filter(student => {
     const q = searchQuery.trim().toLowerCase();
-    
+
     const matchesClass = classFilter === 'all' || (() => {
       const [fClassId, fSecId] = classFilter.split(':');
       if (fSecId) {
@@ -1510,9 +1527,9 @@ export default function StudentManagement() {
 
     // Direct substring matches
     if (
-      fullName.includes(q) || 
-      reverseFullName.includes(q) || 
-      directName.includes(q) || 
+      fullName.includes(q) ||
+      reverseFullName.includes(q) ||
+      directName.includes(q) ||
       admissionNumber.includes(q) ||
       firstName.includes(q) ||
       lastName.includes(q)
@@ -1522,7 +1539,7 @@ export default function StudentManagement() {
 
     // Multi-term matching (e.g. searching "John Doe" or "John 1001")
     const searchTerms = q.split(/\s+/).filter(Boolean);
-    const matchesAllTerms = searchTerms.every(term => 
+    const matchesAllTerms = searchTerms.every(term =>
       firstName.includes(term) ||
       lastName.includes(term) ||
       fullName.includes(term) ||
@@ -1583,8 +1600,8 @@ export default function StudentManagement() {
   }, [searchQuery, classFilter, genderFilter, rowsPerPage]);
 
   const getClassName = (classId, student = null) => {
-    const studentObj = (typeof student === 'object' && student !== null) 
-      ? student 
+    const studentObj = (typeof student === 'object' && student !== null)
+      ? student
       : (typeof classId === 'object' && classId !== null ? classId : null);
 
     const targetClassId = studentObj?.classId || (typeof classId === 'string' ? classId : null);
@@ -1592,10 +1609,10 @@ export default function StudentManagement() {
 
     const classNameStr = (studentObj?.class?.name || classes.find(c => c.id === targetClassId)?.name || '').trim();
     const sectionNameStr = (
-      studentObj?.section?.name || 
-      studentObj?.class?.section || 
-      (targetClassId && targetSecId ? classes.find(c => c.id === targetClassId)?.sections?.find(s => s.id === targetSecId)?.name : '') || 
-      (targetClassId ? classes.find(c => c.id === targetClassId)?.section : '') || 
+      studentObj?.section?.name ||
+      studentObj?.class?.section ||
+      (targetClassId && targetSecId ? classes.find(c => c.id === targetClassId)?.sections?.find(s => s.id === targetSecId)?.name : '') ||
+      (targetClassId ? classes.find(c => c.id === targetClassId)?.section : '') ||
       ''
     ).trim();
 
@@ -1685,20 +1702,19 @@ export default function StudentManagement() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Student Directory & Admissions</h1>
-            <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${
-              isSeatLimitReached 
-                ? 'bg-red-100 text-red-700 border-red-200' 
-                : isSeatLimitWarning 
-                ? 'bg-amber-100 text-amber-700 border-amber-200' 
-                : 'bg-primary-50 text-primary-700 border-primary-200'
-            }`}>
+            <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${isSeatLimitReached
+                ? 'bg-red-100 text-red-700 border-red-200'
+                : isSeatLimitWarning
+                  ? 'bg-amber-100 text-amber-700 border-amber-200'
+                  : 'bg-primary-50 text-primary-700 border-primary-200'
+              }`}>
               Seats: {totalStudents} / {effectiveSeatLimit}
             </span>
           </div>
           <p className="text-slate-500 dark:text-slate-400 mt-1">Review public admission applications, admit verified students, and manage enrollment directory.</p>
         </div>
         <div className="flex flex-wrap gap-2.5">
-          <button 
+          <button
             onClick={() => {
               if (filteredStudents.length === 0) {
                 toast.error("No student data available to export.");
@@ -1712,7 +1728,7 @@ export default function StudentManagement() {
             <FileDown size={18} /> Export
           </button>
           {hasCreatePermission && (
-            <button 
+            <button
               onClick={() => {
                 setUploadFile(null);
                 setSelectedStudentForUpload(null);
@@ -1725,7 +1741,7 @@ export default function StudentManagement() {
           )}
           {hasCreatePermission && (
             showForm ? (
-              <button 
+              <button
                 onClick={() => setShowForm(false)}
                 className="px-4 py-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-xl text-sm font-semibold shadow-sm flex items-center gap-2 transition-colors border border-red-200"
               >
@@ -1776,36 +1792,32 @@ export default function StudentManagement() {
         <div className="flex items-center gap-3 mb-6 border-b border-slate-200 dark:border-slate-700 pb-3">
           <button
             onClick={() => setActiveDirectoryTab('enrolled')}
-            className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${
-              activeDirectoryTab === 'enrolled'
+            className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${activeDirectoryTab === 'enrolled'
                 ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-            }`}
+              }`}
           >
             <GraduationCap size={18} />
             <span>Enrolled Students</span>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
-              activeDirectoryTab === 'enrolled' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
-            }`}>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${activeDirectoryTab === 'enrolled' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+              }`}>
               {totalStudents}
             </span>
           </button>
 
           <button
             onClick={() => setActiveDirectoryTab('applications')}
-            className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm transition-all relative ${
-              activeDirectoryTab === 'applications'
+            className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm transition-all relative ${activeDirectoryTab === 'applications'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-            }`}
+              }`}
           >
             <UserCheck size={18} />
             <span>Admission Applications</span>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
-              activeDirectoryTab === 'applications'
+            <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${activeDirectoryTab === 'applications'
                 ? 'bg-white/20 text-white'
                 : pendingAppsCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
-            }`}>
+              }`}>
               {admissionApplications.length}
             </span>
             {pendingAppsCount > 0 && activeDirectoryTab !== 'applications' && (
@@ -1860,12 +1872,12 @@ export default function StudentManagement() {
                 </div>
                 <div>
                   <label htmlFor="add-student-firstName" className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">First Name *</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     id="add-student-firstName"
                     name="firstName"
-                    required 
-                    value={formData.firstName} 
+                    required
+                    value={formData.firstName}
                     onChange={(e) => {
                       setFormData(prev => ({ ...prev, firstName: e.target.value }));
                       if (addErrors.firstName) {
@@ -1875,8 +1887,8 @@ export default function StudentManagement() {
                           return updated;
                         });
                       }
-                    }} 
-                    className={`w-full px-4 py-2.5 rounded-xl border bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 ${addErrors.firstName ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 dark:border-slate-700'}`} 
+                    }}
+                    className={`w-full px-4 py-2.5 rounded-xl border bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 ${addErrors.firstName ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 dark:border-slate-700'}`}
                   />
                   {addErrors.firstName && (
                     <span className="text-red-500 text-xs mt-1 block font-medium" data-testid="error-firstName">
@@ -1886,12 +1898,12 @@ export default function StudentManagement() {
                 </div>
                 <div>
                   <label htmlFor="add-student-lastName" className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Last Name *</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     id="add-student-lastName"
                     name="lastName"
-                    required 
-                    value={formData.lastName} 
+                    required
+                    value={formData.lastName}
                     onChange={(e) => {
                       setFormData(prev => ({ ...prev, lastName: e.target.value }));
                       if (addErrors.lastName) {
@@ -1901,8 +1913,8 @@ export default function StudentManagement() {
                           return updated;
                         });
                       }
-                    }} 
-                    className={`w-full px-4 py-2.5 rounded-xl border bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 ${addErrors.lastName ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 dark:border-slate-700'}`} 
+                    }}
+                    className={`w-full px-4 py-2.5 rounded-xl border bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 ${addErrors.lastName ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 dark:border-slate-700'}`}
                   />
                   {addErrors.lastName && (
                     <span className="text-red-500 text-xs mt-1 block font-medium" data-testid="error-lastName">
@@ -1912,13 +1924,13 @@ export default function StudentManagement() {
                 </div>
                 <div>
                   <label htmlFor="add-student-dob" className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Date of Birth *</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     id="add-student-dob"
                     name="dob"
                     max={getTodayDateString()}
-                    required 
-                    value={formData.dob} 
+                    required
+                    value={formData.dob}
                     onChange={(e) => {
                       setFormData(prev => ({ ...prev, dob: e.target.value }));
                       if (addErrors.dob) {
@@ -1928,8 +1940,8 @@ export default function StudentManagement() {
                           return updated;
                         });
                       }
-                    }} 
-                    className={`w-full px-4 py-2.5 rounded-xl border bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 ${addErrors.dob ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 dark:border-slate-700'}`} 
+                    }}
+                    className={`w-full px-4 py-2.5 rounded-xl border bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 ${addErrors.dob ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 dark:border-slate-700'}`}
                   />
                   {addErrors.dob && (
                     <span className="text-red-500 text-xs mt-1 block font-medium" data-testid="error-dob">
@@ -1939,11 +1951,11 @@ export default function StudentManagement() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Age</label>
-                  <input type="number" value={formData.age} onChange={(e) => setFormData({...formData, age: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <input type="number" value={formData.age} onChange={(e) => setFormData({ ...formData, age: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Gender *</label>
-                  <select value={normalizeGender(formData.gender, 'Male')} onChange={(e) => setFormData({...formData, gender: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900">
+                  <select value={normalizeGender(formData.gender, 'Male')} onChange={(e) => setFormData({ ...formData, gender: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900">
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
                     <option value="Other">Other</option>
@@ -1956,7 +1968,7 @@ export default function StudentManagement() {
                     id="add-student-bloodGroup"
                     value={formData.bloodGroup}
                     onChange={(e) => {
-                      setFormData({...formData, bloodGroup: e.target.value});
+                      setFormData({ ...formData, bloodGroup: e.target.value });
                       if (addErrors.bloodGroup) {
                         setAddErrors(prev => {
                           const updated = { ...prev };
@@ -1976,23 +1988,23 @@ export default function StudentManagement() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Nationality</label>
-                  <input type="text" value={formData.nationality} onChange={(e) => setFormData({...formData, nationality: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <input type="text" value={formData.nationality} onChange={(e) => setFormData({ ...formData, nationality: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Religion</label>
-                  <input type="text" value={formData.religion} onChange={(e) => setFormData({...formData, religion: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <input type="text" value={formData.religion} onChange={(e) => setFormData({ ...formData, religion: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Mother Tongue</label>
-                  <input type="text" value={formData.motherTongue} onChange={(e) => setFormData({...formData, motherTongue: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. English, Hindi, Tamil" />
+                  <input type="text" value={formData.motherTongue} onChange={(e) => setFormData({ ...formData, motherTongue: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. English, Hindi, Tamil" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Student Tongue</label>
-                  <input type="text" value={formData.studentTongue} onChange={(e) => setFormData({...formData, studentTongue: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. English" />
+                  <input type="text" value={formData.studentTongue} onChange={(e) => setFormData({ ...formData, studentTongue: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. English" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Student Mail / Email</label>
-                  <input type="email" value={formData.studentEmail} onChange={(e) => setFormData({...formData, studentEmail: e.target.value, studentMail: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="student@example.com" />
+                  <input type="email" value={formData.studentEmail} onChange={(e) => setFormData({ ...formData, studentEmail: e.target.value, studentMail: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="student@example.com" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Aadhar Number</label>
@@ -2001,7 +2013,7 @@ export default function StudentManagement() {
                     id="add-student-aadhaar"
                     value={formData.aadharNumber}
                     onChange={(e) => {
-                      setFormData({...formData, aadharNumber: e.target.value});
+                      setFormData({ ...formData, aadharNumber: e.target.value });
                       if (addErrors.aadharNumber) {
                         setAddErrors(prev => {
                           const updated = { ...prev };
@@ -2027,7 +2039,7 @@ export default function StudentManagement() {
               <div className="grid md:grid-cols-3 gap-6">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Father's / Parent Name</label>
-                  <input type="text" value={formData.parentName} onChange={(e) => setFormData({...formData, parentName: e.target.value, fatherName: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Father or Primary Parent Name" />
+                  <input type="text" value={formData.parentName} onChange={(e) => setFormData({ ...formData, parentName: e.target.value, fatherName: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Father or Primary Parent Name" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">
@@ -2040,7 +2052,7 @@ export default function StudentManagement() {
                     id="add-student-parentPhone"
                     value={formData.parentPhone}
                     onChange={(e) => {
-                      setFormData({...formData, parentPhone: e.target.value});
+                      setFormData({ ...formData, parentPhone: e.target.value });
                       if (addErrors.parentPhone) {
                         setAddErrors(prev => {
                           const updated = { ...prev };
@@ -2065,7 +2077,7 @@ export default function StudentManagement() {
                     required
                     value={formData.parentEmail}
                     onChange={(e) => {
-                      setFormData({...formData, parentEmail: e.target.value});
+                      setFormData({ ...formData, parentEmail: e.target.value });
                       if (addErrors.parentEmail) {
                         setAddErrors(prev => {
                           const updated = { ...prev };
@@ -2084,31 +2096,31 @@ export default function StudentManagement() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Father's / Parent Occupation</label>
-                  <input type="text" value={formData.parentOccupation} onChange={(e) => setFormData({...formData, parentOccupation: e.target.value, fatherOccupation: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Engineer, Business" />
+                  <input type="text" value={formData.parentOccupation} onChange={(e) => setFormData({ ...formData, parentOccupation: e.target.value, fatherOccupation: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Engineer, Business" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Guardian Name</label>
-                  <input type="text" value={formData.guardianName} onChange={(e) => setFormData({...formData, guardianName: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Guardian Name (if applicable)" />
+                  <input type="text" value={formData.guardianName} onChange={(e) => setFormData({ ...formData, guardianName: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Guardian Name (if applicable)" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Guardian Phone</label>
-                  <input type="text" value={formData.guardianPhone} onChange={(e) => setFormData({...formData, guardianPhone: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="10-digit mobile number" />
+                  <input type="text" value={formData.guardianPhone} onChange={(e) => setFormData({ ...formData, guardianPhone: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="10-digit mobile number" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Guardian Relationship</label>
-                  <input type="text" value={formData.guardianRelationship} onChange={(e) => setFormData({...formData, guardianRelationship: e.target.value, relationship: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Uncle, Aunt, Grandparent" />
+                  <input type="text" value={formData.guardianRelationship} onChange={(e) => setFormData({ ...formData, guardianRelationship: e.target.value, relationship: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Uncle, Aunt, Grandparent" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Emergency Contact Number</label>
-                  <input type="text" value={formData.emergencyContact} onChange={(e) => setFormData({...formData, emergencyContact: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <input type="text" value={formData.emergencyContact} onChange={(e) => setFormData({ ...formData, emergencyContact: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Annual Income</label>
-                  <input type="text" value={formData.annualIncome} onChange={(e) => setFormData({...formData, annualIncome: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <input type="text" value={formData.annualIncome} onChange={(e) => setFormData({ ...formData, annualIncome: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Sibling Name (Same School)</label>
-                  <input type="text" value={formData.siblingName} onChange={(e) => setFormData({...formData, siblingName: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <input type="text" value={formData.siblingName} onChange={(e) => setFormData({ ...formData, siblingName: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
 
                 <div className="md:col-span-3 pt-3 border-t border-slate-200 dark:border-slate-700">
@@ -2116,27 +2128,27 @@ export default function StudentManagement() {
                   <div className="grid md:grid-cols-3 gap-4">
                     <div className="md:col-span-3">
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">Address / Street Line 1</label>
-                      <input type="text" value={formData.homeAddress} onChange={(e) => setFormData({...formData, homeAddress: e.target.value, addressLine1: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="House/Flat No, Street, Locality" />
+                      <input type="text" value={formData.homeAddress} onChange={(e) => setFormData({ ...formData, homeAddress: e.target.value, addressLine1: e.target.value })} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="House/Flat No, Street, Locality" />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">City</label>
-                      <input type="text" value={formData.city} onChange={(e) => setFormData({...formData, city: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                      <input type="text" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">District</label>
-                      <input type="text" value={formData.district} onChange={(e) => setFormData({...formData, district: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                      <input type="text" value={formData.district} onChange={(e) => setFormData({ ...formData, district: e.target.value })} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">State</label>
-                      <input type="text" value={formData.state} onChange={(e) => setFormData({...formData, state: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                      <input type="text" value={formData.state} onChange={(e) => setFormData({ ...formData, state: e.target.value })} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">Country</label>
-                      <input type="text" value={formData.country} onChange={(e) => setFormData({...formData, country: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                      <input type="text" value={formData.country} onChange={(e) => setFormData({ ...formData, country: e.target.value })} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">Pincode</label>
-                      <input type="text" value={formData.pincode} onChange={(e) => setFormData({...formData, pincode: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                      <input type="text" value={formData.pincode} onChange={(e) => setFormData({ ...formData, pincode: e.target.value })} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                     </div>
                   </div>
                 </div>
@@ -2174,7 +2186,7 @@ export default function StudentManagement() {
                     required
                     value={formData.admissionNumber}
                     onChange={(e) => {
-                      setFormData({...formData, admissionNumber: e.target.value});
+                      setFormData({ ...formData, admissionNumber: e.target.value });
                       if (addErrors.admissionNumber) {
                         setAddErrors(prev => {
                           const updated = { ...prev };
@@ -2199,7 +2211,7 @@ export default function StudentManagement() {
                     id="add-student-rollNumber"
                     value={formData.rollNumber || ''}
                     onChange={(e) => {
-                      setFormData({...formData, rollNumber: e.target.value});
+                      setFormData({ ...formData, rollNumber: e.target.value });
                       if (addErrors.rollNumber) {
                         setAddErrors(prev => {
                           const updated = { ...prev };
@@ -2219,19 +2231,19 @@ export default function StudentManagement() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Admission Date</label>
-                  <input type="date" value={formData.admissionDate} onChange={(e) => setFormData({...formData, admissionDate: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <input type="date" value={formData.admissionDate} onChange={(e) => setFormData({ ...formData, admissionDate: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Previous School Name</label>
-                  <input type="text" value={formData.previousSchool} onChange={(e) => setFormData({...formData, previousSchool: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <input type="text" value={formData.previousSchool} onChange={(e) => setFormData({ ...formData, previousSchool: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Previous Records (Link/Note)</label>
-                  <input type="text" value={formData.previousRecords} onChange={(e) => setFormData({...formData, previousRecords: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <input type="text" value={formData.previousRecords} onChange={(e) => setFormData({ ...formData, previousRecords: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Subjects Chosen (Higher Ed)</label>
-                  <input type="text" value={formData.subjectsChosen} onChange={(e) => setFormData({...formData, subjectsChosen: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <input type="text" value={formData.subjectsChosen} onChange={(e) => setFormData({ ...formData, subjectsChosen: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
               </div>
             </div>
@@ -2241,23 +2253,23 @@ export default function StudentManagement() {
               <div className="grid md:grid-cols-3 gap-6">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">School Bus Route/Stop</label>
-                  <input type="text" value={formData.busRoute} onChange={(e) => setFormData({...formData, busRoute: e.target.value, transportDetails: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Route 4 - Main Street" />
+                  <input type="text" value={formData.busRoute} onChange={(e) => setFormData({ ...formData, busRoute: e.target.value, transportDetails: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Route 4 - Main Street" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Hostel Details</label>
-                  <input type="text" value={formData.hostelDetails} onChange={(e) => setFormData({...formData, hostelDetails: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Hostel room / block" />
+                  <input type="text" value={formData.hostelDetails} onChange={(e) => setFormData({ ...formData, hostelDetails: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Hostel room / block" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Identification Marks</label>
-                  <input type="text" value={formData.identificationMarks} onChange={(e) => setFormData({...formData, identificationMarks: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Mole on right forearm" />
+                  <input type="text" value={formData.identificationMarks} onChange={(e) => setFormData({ ...formData, identificationMarks: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Mole on right forearm" />
                 </div>
                 <div className="md:col-span-3">
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Medical Information</label>
-                  <textarea value={formData.medicalInfo} onChange={(e) => setFormData({...formData, medicalInfo: e.target.value})} rows="2" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Allergies, chronic conditions, medication, notes"></textarea>
+                  <textarea value={formData.medicalInfo} onChange={(e) => setFormData({ ...formData, medicalInfo: e.target.value })} rows="2" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Allergies, chronic conditions, medication, notes"></textarea>
                 </div>
                 <div className="md:col-span-3">
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Other Details</label>
-                  <textarea value={formData.otherDetails} onChange={(e) => setFormData({...formData, otherDetails: e.target.value})} rows="2" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Special requirements, achievements, or additional remarks"></textarea>
+                  <textarea value={formData.otherDetails} onChange={(e) => setFormData({ ...formData, otherDetails: e.target.value })} rows="2" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Special requirements, achievements, or additional remarks"></textarea>
                 </div>
               </div>
             </div>
@@ -2267,23 +2279,23 @@ export default function StudentManagement() {
               <div className="grid md:grid-cols-4 gap-6">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Tuition Fee</label>
-                  <input type="number" value={formData.tuitionFee} onChange={(e) => setFormData({...formData, tuitionFee: e.target.value, totalFee: (Number(e.target.value || 0) + Number(formData.hostelFee || 0) + Number(formData.bookFee || 0) + Number(formData.otherFee || 0)).toString()})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <input type="number" value={formData.tuitionFee} onChange={(e) => setFormData({ ...formData, tuitionFee: e.target.value, totalFee: (Number(e.target.value || 0) + Number(formData.hostelFee || 0) + Number(formData.bookFee || 0) + Number(formData.otherFee || 0)).toString() })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Hostel Fee (If Req)</label>
-                  <input type="number" value={formData.hostelFee} onChange={(e) => setFormData({...formData, hostelFee: e.target.value, totalFee: (Number(formData.tuitionFee || 0) + Number(e.target.value || 0) + Number(formData.bookFee || 0) + Number(formData.otherFee || 0)).toString()})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <input type="number" value={formData.hostelFee} onChange={(e) => setFormData({ ...formData, hostelFee: e.target.value, totalFee: (Number(formData.tuitionFee || 0) + Number(e.target.value || 0) + Number(formData.bookFee || 0) + Number(formData.otherFee || 0)).toString() })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Book Fee</label>
-                  <input type="number" value={formData.bookFee} onChange={(e) => setFormData({...formData, bookFee: e.target.value, totalFee: (Number(formData.tuitionFee || 0) + Number(formData.hostelFee || 0) + Number(e.target.value || 0) + Number(formData.otherFee || 0)).toString()})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <input type="number" value={formData.bookFee} onChange={(e) => setFormData({ ...formData, bookFee: e.target.value, totalFee: (Number(formData.tuitionFee || 0) + Number(formData.hostelFee || 0) + Number(e.target.value || 0) + Number(formData.otherFee || 0)).toString() })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Other Fee</label>
-                  <input type="number" value={formData.otherFee} onChange={(e) => setFormData({...formData, otherFee: e.target.value, totalFee: (Number(formData.tuitionFee || 0) + Number(formData.hostelFee || 0) + Number(formData.bookFee || 0) + Number(e.target.value || 0)).toString()})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
+                  <input type="number" value={formData.otherFee} onChange={(e) => setFormData({ ...formData, otherFee: e.target.value, totalFee: (Number(formData.tuitionFee || 0) + Number(formData.hostelFee || 0) + Number(formData.bookFee || 0) + Number(e.target.value || 0)).toString() })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
                 <div className="md:col-span-4">
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Fee Structure / Notes</label>
-                  <input type="text" value={formData.feeConfiguration} onChange={(e) => setFormData({...formData, feeConfiguration: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Standard Annual Fee Schedule, Termly installment" />
+                  <input type="text" value={formData.feeConfiguration} onChange={(e) => setFormData({ ...formData, feeConfiguration: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="e.g. Standard Annual Fee Schedule, Termly installment" />
                 </div>
                 <div className="md:col-span-4 bg-primary-50 p-4 rounded-xl flex items-center justify-between border border-primary-100">
                   <span className="font-bold text-primary-800">Total Calculated Fee:</span>
@@ -2295,13 +2307,13 @@ export default function StudentManagement() {
 
 
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3">
-              <button 
+              <button
                 type="button" onClick={() => { setShowForm(false); setAddErrors({}); }}
                 className="px-6 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 type="submit" disabled={saving || classes.length === 0}
                 className="px-8 py-2.5 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 shadow-sm disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
               >
@@ -2328,8 +2340,8 @@ export default function StudentManagement() {
               </div>
               <div className="mt-2.5">
                 <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                  <div 
-                    className={`h-full transition-all ${isSeatLimitReached ? 'bg-red-500' : isSeatLimitWarning ? 'bg-amber-500' : 'bg-primary-600'}`} 
+                  <div
+                    className={`h-full transition-all ${isSeatLimitReached ? 'bg-red-500' : isSeatLimitWarning ? 'bg-amber-500' : 'bg-primary-600'}`}
                     style={{ width: `${seatUsagePercent}%` }}
                   />
                 </div>
@@ -2352,15 +2364,15 @@ export default function StudentManagement() {
           <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-wrap gap-4 items-center justify-between bg-white dark:bg-slate-900">
             <div className="relative flex-1 min-w-[250px] max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-300" size={18} />
-              <input 
-                type="text" 
-                placeholder="Search by student name or admission number..." 
+              <input
+                type="text"
+                placeholder="Search by student name or admission number..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
               />
               {searchQuery && (
-                <button 
+                <button
                   onClick={() => setSearchQuery('')}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                   title="Clear search"
@@ -2371,7 +2383,7 @@ export default function StudentManagement() {
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <Filter size={18} className="text-slate-400 dark:text-slate-300 hidden sm:block" />
-              <select 
+              <select
                 value={genderFilter}
                 onChange={(e) => setGenderFilter(e.target.value)}
                 className="px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -2381,7 +2393,7 @@ export default function StudentManagement() {
                 <option value="Female">Female</option>
                 <option value="Other">Other</option>
               </select>
-              <select 
+              <select
                 value={classFilter}
                 onChange={(e) => setClassFilter(e.target.value)}
                 className="px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -2391,7 +2403,7 @@ export default function StudentManagement() {
                   <option key={opt.key} value={opt.key}>{opt.label}</option>
                 ))}
               </select>
-              <select 
+              <select
                 value={rowsPerPage}
                 onChange={(e) => setRowsPerPage(Number(e.target.value))}
                 className="px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -2424,8 +2436,8 @@ export default function StudentManagement() {
                           {searchQuery ? `No students matching "${searchQuery}"` : 'No enrolled students found'}
                         </p>
                         <p className="text-xs text-slate-400 dark:text-slate-300 mt-1">
-                          {searchQuery 
-                            ? 'Check the spelling of the student name or admission number, or reset your search.' 
+                          {searchQuery
+                            ? 'Check the spelling of the student name or admission number, or reset your search.'
                             : 'Try adjusting your filters, or admit a new student.'}
                         </p>
                         {searchQuery && (
@@ -2475,7 +2487,7 @@ export default function StudentManagement() {
                       </td>
                       <td className="p-4 pr-6 text-right">
                         <div className="flex justify-end gap-2">
-                          <button 
+                          <button
                             onClick={() => {
                               setSelectedStudentToView(student);
                               setIsEditMode(false);
@@ -2493,7 +2505,7 @@ export default function StudentManagement() {
                                     medicalInfo: hData.doctorNotes || prev.medicalInfo
                                   } : prev));
                                 }
-                              }).catch(() => {});
+                              }).catch(() => { });
                               getStudent(student.id).then((freshRes) => {
                                 const fresh = freshRes?.data || freshRes;
                                 if (fresh) {
@@ -2551,7 +2563,7 @@ export default function StudentManagement() {
                                     };
                                   });
                                 }
-                              }).catch(() => {});
+                              }).catch(() => { });
                             }}
                             className="p-2 text-slate-500 dark:text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
                             title="View Details"
@@ -2559,7 +2571,7 @@ export default function StudentManagement() {
                             <Eye size={18} />
                           </button>
                           {hasDeletePermission && (
-                            <button 
+                            <button
                               onClick={() => setConfirmDeleteState({ isOpen: true, id: student.id, name: `${student.firstName} ${student.lastName}` })}
                               className="p-2 text-slate-500 dark:text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
                               title="Delete Student"
@@ -2567,12 +2579,12 @@ export default function StudentManagement() {
                               <Trash size={18} />
                             </button>
                           )}
-                           <button 
-                             onClick={() => openAssignModal(student)}
-                             className="px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors"
-                           >
-                             {student.classId ? 'Change Class' : 'Assign'}
-                           </button>
+                          <button
+                            onClick={() => openAssignModal(student)}
+                            className="px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors"
+                          >
+                            {student.classId ? 'Change Class' : 'Assign'}
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -2588,7 +2600,7 @@ export default function StudentManagement() {
                 Showing {(currentPage - 1) * rowsPerPage + 1} to {Math.min(currentPage * rowsPerPage, filteredStudents.length)} of {filteredStudents.length} entries
               </span>
               <div className="flex gap-2">
-                <button 
+                <button
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
                   className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
@@ -2598,7 +2610,7 @@ export default function StudentManagement() {
                 <div className="flex items-center justify-center px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">
                   Page {currentPage} of {totalPages}
                 </div>
-                <button 
+                <button
                   onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                   disabled={currentPage === totalPages}
                   className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
@@ -2648,15 +2660,15 @@ export default function StudentManagement() {
           <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-wrap gap-4 items-center justify-between bg-white dark:bg-slate-900">
             <div className="relative flex-1 min-w-[250px] max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-300" size={18} />
-              <input 
-                type="text" 
-                placeholder="Search by student name, application no, parent phone..." 
+              <input
+                type="text"
+                placeholder="Search by student name, application no, parent phone..."
                 value={appSearchQuery}
                 onChange={(e) => setAppSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
               />
               {appSearchQuery && (
-                <button 
+                <button
                   onClick={() => setAppSearchQuery('')}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                   title="Clear search"
@@ -2667,7 +2679,7 @@ export default function StudentManagement() {
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <Filter size={18} className="text-slate-400 dark:text-slate-300 hidden sm:block" />
-              <select 
+              <select
                 value={appStatusFilter}
                 onChange={(e) => setAppStatusFilter(e.target.value)}
                 className="px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -2677,7 +2689,7 @@ export default function StudentManagement() {
                 <option value="Approved">Approved & Admitted</option>
                 <option value="Rejected">Rejected</option>
               </select>
-              <select 
+              <select
                 value={appRowsPerPage}
                 onChange={(e) => setAppRowsPerPage(Number(e.target.value))}
                 className="px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -2735,9 +2747,9 @@ export default function StudentManagement() {
                       <td className="py-4 px-6">
                         <div className="flex items-center gap-3">
                           {app.photoUrl ? (
-                            <img 
-                              src={app.photoUrl} 
-                              alt={app.studentName || `${app.firstName} ${app.lastName}`} 
+                            <img
+                              src={app.photoUrl}
+                              alt={app.studentName || `${app.firstName} ${app.lastName}`}
                               className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-700 shrink-0"
                             />
                           ) : (
@@ -2792,20 +2804,19 @@ export default function StudentManagement() {
                       </td>
                       <td className="py-4 px-6 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <button 
+                          <button
                             onClick={() => handleOpenReviewModal(app)}
-                            className={`px-3.5 py-1.5 rounded-xl font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all ${
-                              app.status === 'Approved'
+                            className={`px-3.5 py-1.5 rounded-xl font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all ${app.status === 'Approved'
                                 ? 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
                                 : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                            }`}
+                              }`}
                             title="Review Application Details & Admit"
                           >
                             <Eye size={14} />
                             {app.status === 'Approved' ? 'View Details' : 'Review & Admit'}
                           </button>
                           {hasDeletePermission && (
-                            <button 
+                            <button
                               onClick={() => {
                                 if (window.confirm(`Delete application for ${app.studentName || app.firstName}?`)) {
                                   handleDeleteApplication(app.id);
@@ -2832,7 +2843,7 @@ export default function StudentManagement() {
                 Showing {(appCurrentPage - 1) * appRowsPerPage + 1} to {Math.min(appCurrentPage * appRowsPerPage, filteredApplications.length)} of {filteredApplications.length} applications
               </span>
               <div className="flex gap-2">
-                <button 
+                <button
                   onClick={() => setAppCurrentPage(prev => Math.max(prev - 1, 1))}
                   disabled={appCurrentPage === 1}
                   className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
@@ -2842,7 +2853,7 @@ export default function StudentManagement() {
                 <div className="flex items-center justify-center px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">
                   Page {appCurrentPage} of {appTotalPages}
                 </div>
-                <button 
+                <button
                   onClick={() => setAppCurrentPage(prev => Math.min(prev + 1, appTotalPages))}
                   disabled={appCurrentPage === appTotalPages}
                   className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
@@ -2871,8 +2882,8 @@ export default function StudentManagement() {
             <div className="p-6 flex-1 overflow-y-auto custom-scrollbar">
               {selectedStudentForUpload ? (
                 <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
-                  Upload a document (e.g. Birth Certificate) for <span className="font-bold text-slate-900 dark:text-white">{selectedStudentForUpload.firstName} {selectedStudentForUpload.lastName}</span>. 
-                  <br/><span className="text-xs text-slate-400 dark:text-slate-300 mt-1 block">File will be securely stored in: {schoolName}/Students/...</span>
+                  Upload a document (e.g. Birth Certificate) for <span className="font-bold text-slate-900 dark:text-white">{selectedStudentForUpload.firstName} {selectedStudentForUpload.lastName}</span>.
+                  <br /><span className="text-xs text-slate-400 dark:text-slate-300 mt-1 block">File will be securely stored in: {schoolName}/Students/...</span>
                 </p>
               ) : (
                 <div className="flex flex-col gap-3 mb-6 bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-800/30">
@@ -2898,8 +2909,8 @@ export default function StudentManagement() {
               )}
 
               <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-8 bg-slate-50 dark:bg-slate-800 relative overflow-hidden group hover:border-primary-400 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-all text-center">
-                <input 
-                  type="file" 
+                <input
+                  type="file"
                   accept={selectedStudentForUpload ? "image/*, .pdf" : ".xlsx, .csv"}
                   onChange={(e) => {
                     const file = e.target.files[0];
@@ -2912,7 +2923,7 @@ export default function StudentManagement() {
                       setUploadFile(file);
                     }
                   }}
-                  className="absolute inset-0 opacity-0 cursor-pointer z-10" 
+                  className="absolute inset-0 opacity-0 cursor-pointer z-10"
                 />
                 <UploadCloud size={32} className={`mx-auto mb-3 ${uploadFile ? 'text-green-500' : 'text-slate-400 dark:text-slate-300 group-hover:text-primary-500'}`} />
                 {uploadFile ? (
@@ -2930,13 +2941,13 @@ export default function StudentManagement() {
             </div>
 
             <div className="p-6 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 shrink-0">
-              <button 
+              <button
                 onClick={() => setUploadModalOpen(false)}
                 className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleUpload}
                 disabled={uploading || !uploadFile}
                 className="px-6 py-2.5 bg-primary-600 text-white font-bold hover:bg-primary-700 rounded-xl shadow-sm disabled:opacity-50 transition-colors flex items-center gap-2"
@@ -3071,19 +3082,18 @@ export default function StudentManagement() {
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Admission Date</label>
                         <p className="text-slate-950 font-semibold">
-                          {selectedStudentToView.admissionDate 
-                            ? (isNaN(new Date(selectedStudentToView.admissionDate).getTime()) 
-                                ? selectedStudentToView.admissionDate 
-                                : new Date(selectedStudentToView.admissionDate).toLocaleDateString('en-GB')) 
+                          {selectedStudentToView.admissionDate
+                            ? (isNaN(new Date(selectedStudentToView.admissionDate).getTime())
+                              ? selectedStudentToView.admissionDate
+                              : new Date(selectedStudentToView.admissionDate).toLocaleDateString('en-GB'))
                             : (selectedStudentToView.customData?.admissionDate || '—')}
                         </p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">Status</label>
                         <div>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                            selectedStudentToView.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                          }`}>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${selectedStudentToView.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}>
                             {selectedStudentToView.status || 'Active'}
                           </span>
                         </div>
@@ -3262,11 +3272,10 @@ export default function StudentManagement() {
                           {(() => {
                             const rate = studentStats.percentage !== undefined ? studentStats.percentage : (studentStats.attendancePercentage ?? 0);
                             return (
-                              <span className={`inline-block mt-2 text-xl font-black px-2.5 py-0.5 rounded-full border ${
-                                rate >= 75 ? 'bg-green-50 text-green-700 border-green-200' :
-                                rate >= 50 ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                'bg-red-50 text-red-700 border-red-200'
-                              }`}>
+                              <span className={`inline-block mt-2 text-xl font-black px-2.5 py-0.5 rounded-full border ${rate >= 75 ? 'bg-green-50 text-green-700 border-green-200' :
+                                  rate >= 50 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                    'bg-red-50 text-red-700 border-red-200'
+                                }`}>
                                 {rate}%
                               </span>
                             );
@@ -3315,11 +3324,10 @@ export default function StudentManagement() {
                                   <span className="font-bold text-slate-800 dark:text-slate-100">{dateDisplay}</span>
                                   <span className="text-slate-400 dark:text-slate-300 ml-2 font-medium">({sessionDisplay})</span>
                                 </div>
-                                <span className={`px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border text-[10px] ${
-                                  item.status === 'Present' ? 'bg-green-50 text-green-700 border-green-100' :
-                                  item.status === 'Absent' ? 'bg-red-50 text-red-700 border-red-100' :
-                                  'bg-amber-50 text-amber-700 border-amber-100'
-                                }`}>
+                                <span className={`px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border text-[10px] ${item.status === 'Present' ? 'bg-green-50 text-green-700 border-green-100' :
+                                    item.status === 'Absent' ? 'bg-red-50 text-red-700 border-red-100' :
+                                      'bg-amber-50 text-amber-700 border-amber-100'
+                                  }`}>
                                   {item.status}
                                 </span>
                               </div>
@@ -3372,10 +3380,10 @@ export default function StudentManagement() {
                             </div>
                           </div>
                         ) : selectedStudentToView.photoUrl && (
-                           <div className="mt-2 text-xs text-slate-600 dark:text-slate-300 flex items-center gap-3">
-                             <img src={selectedStudentToView.photoUrl} alt="Current profile" className="w-10 h-10 rounded-full object-cover border shadow-sm" />
-                             <span className="font-medium">Current photo</span>
-                           </div>
+                          <div className="mt-2 text-xs text-slate-600 dark:text-slate-300 flex items-center gap-3">
+                            <img src={selectedStudentToView.photoUrl} alt="Current profile" className="w-10 h-10 rounded-full object-cover border shadow-sm" />
+                            <span className="font-medium">Current photo</span>
+                          </div>
                         )}
                       </div>
                       <div>
@@ -3902,13 +3910,13 @@ export default function StudentManagement() {
             <div className="p-6 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 shrink-0">
               {isEditMode ? (
                 <>
-                  <button 
+                  <button
                     onClick={handleModalCloseOrCancel}
                     className="px-6 py-2.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-300 rounded-xl transition-colors"
                   >
                     Cancel
                   </button>
-                  <button 
+                  <button
                     onClick={handleSaveStudentEdit}
                     disabled={saving}
                     className="px-6 py-2.5 bg-primary-600 text-white font-bold hover:bg-primary-700 rounded-xl transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2"
@@ -3924,7 +3932,7 @@ export default function StudentManagement() {
               ) : (
                 <>
                   {hasEditPermission && (
-                    <button 
+                    <button
                       onClick={() => {
                         setEditStudentData({ ...selectedStudentToView });
                         setEditCustomData({ ...selectedStudentToView.customData });
@@ -3936,7 +3944,7 @@ export default function StudentManagement() {
                       Edit
                     </button>
                   )}
-                  <button 
+                  <button
                     onClick={handleModalCloseOrCancel}
                     className="px-6 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-300 rounded-xl transition-colors"
                   >
@@ -3951,7 +3959,7 @@ export default function StudentManagement() {
 
       {/* Discard Unsaved Changes Warning Modal */}
       {showDiscardConfirm && (
-        <ConfirmModal 
+        <ConfirmModal
           isOpen={showDiscardConfirm}
           onClose={() => setShowDiscardConfirm(false)}
           onConfirm={() => {
@@ -3984,7 +3992,7 @@ export default function StudentManagement() {
 
               <div className="space-y-4">
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Class & Section</label>
-                <select 
+                <select
                   value={selectedClassIdForAssign}
                   onChange={(e) => setSelectedClassIdForAssign(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
@@ -3998,13 +4006,13 @@ export default function StudentManagement() {
             </div>
 
             <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 shrink-0 flex justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setAssignModalOpen(false)}
                 className="px-6 py-2.5 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleAssignClass}
                 disabled={assigning}
                 className="px-6 py-2.5 bg-primary-600 text-white font-bold hover:bg-primary-700 rounded-xl transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
@@ -4061,7 +4069,7 @@ export default function StudentManagement() {
                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">Export Student Directory</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Customize file settings and select columns to export.</p>
               </div>
-              <button 
+              <button
                 onClick={() => setShowExportModal(false)}
                 className="p-2 text-slate-400 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors"
               >
@@ -4100,13 +4108,12 @@ export default function StudentManagement() {
                     { key: 'parentEmail', label: 'Parent Email' },
                     { key: 'homeAddress', label: 'Home Address' }
                   ].map(({ key, label }) => (
-                    <label 
-                      key={key} 
-                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer select-none transition-all ${
-                        selectedFields[key] 
-                          ? 'border-primary-200 bg-primary-50/30 text-primary-900 font-semibold' 
+                    <label
+                      key={key}
+                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer select-none transition-all ${selectedFields[key]
+                          ? 'border-primary-200 bg-primary-50/30 text-primary-900 font-semibold'
                           : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
-                      }`}
+                        }`}
                     >
                       <input
                         type="checkbox"
@@ -4122,13 +4129,13 @@ export default function StudentManagement() {
             </div>
 
             <div className="p-6 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setShowExportModal(false)}
                 className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors text-sm"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleExport}
                 className="px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl shadow-sm transition-colors flex items-center gap-2 text-sm"
               >
@@ -4173,7 +4180,7 @@ export default function StudentManagement() {
                     <Clock size={14} /> Pending Review
                   </span>
                 )}
-                <button 
+                <button
                   onClick={() => {
                     setReviewAppModalOpen(false);
                     setSelectedAppForReview(null);
@@ -4241,9 +4248,9 @@ export default function StudentManagement() {
                 </h3>
                 <div className="flex flex-col sm:flex-row gap-6 items-start">
                   {selectedAppForReview.photoUrl ? (
-                    <img 
-                      src={selectedAppForReview.photoUrl} 
-                      alt="Student" 
+                    <img
+                      src={selectedAppForReview.photoUrl}
+                      alt="Student"
                       className="w-24 h-24 rounded-2xl object-cover border-2 border-slate-300 dark:border-slate-600 shadow-sm shrink-0"
                     />
                   ) : (
@@ -4414,7 +4421,7 @@ export default function StudentManagement() {
                   <p className="text-xs text-slate-500 dark:text-slate-400">Provide this link to prospective students and parents</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => {
                   setShareLinkModalOpen(false);
                   setCopiedAdmissionLink(false);
@@ -4449,11 +4456,10 @@ export default function StudentManagement() {
                       toast.success("Admission form link copied to clipboard!");
                       setTimeout(() => setCopiedAdmissionLink(false), 3000);
                     }}
-                    className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm ${
-                      copiedAdmissionLink 
-                        ? 'bg-emerald-600 text-white' 
+                    className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm ${copiedAdmissionLink
+                        ? 'bg-emerald-600 text-white'
                         : 'bg-primary-600 hover:bg-primary-700 text-white'
-                    }`}
+                      }`}
                   >
                     {copiedAdmissionLink ? <><Check size={16} /> Copied</> : <><Copy size={16} /> Copy</>}
                   </button>

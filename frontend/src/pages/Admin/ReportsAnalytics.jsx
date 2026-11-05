@@ -76,7 +76,7 @@ export default function ReportsAnalytics() {
       const totalRevenue = Number(invoiceStatsRes?.data?.collectedAmount ?? invoiceStatsRes?.data?.collected ?? 0);
       const studentEnrollment = Number(studentsRes?.pagination?.total || 0);
       const totalStaff = Number(staffRes?.pagination?.total || 0);
-      const averageAttendance = Math.round(Number(todayAttendanceRes?.data?.schoolWide?.percentage || 0));
+      const averageAttendance = Math.min(100, Math.max(0, Math.round(Number(todayAttendanceRes?.data?.schoolWide?.percentage || 0))));
 
       setMetrics({
         totalRevenue,
@@ -109,7 +109,7 @@ export default function ReportsAnalytics() {
 
       const chartWithPct = revChart.map(item => ({
         ...item,
-        pct: maxRev > 0 ? Math.round((item.revenue / maxRev) * 100) : 0
+        pct: maxRev > 0 ? Math.min(100, Math.round((item.revenue / maxRev) * 100)) : 0
       }));
       setRevenueData(chartWithPct);
 
@@ -121,11 +121,13 @@ export default function ReportsAnalytics() {
         const present = Number(sw.present || 0);
         const absent = Number(sw.absent || 0);
         const late = Number(sw.late || 0);
-        const percentage = sw.percentage !== undefined && total > 0
+        const rawPercentage = sw.percentage !== undefined && total > 0
           ? Math.round(Number(sw.percentage))
           : total > 0
             ? Math.round(((present + late) / total) * 100)
             : 0;
+        // Clamp to 0-100 so bars never overflow the chart area
+        const percentage = Number.isFinite(rawPercentage) ? Math.min(100, Math.max(0, rawPercentage)) : 0;
 
         return {
           date: d.iso,
@@ -188,7 +190,7 @@ export default function ReportsAnalytics() {
       }));
 
       const wb = XLSX.utils.book_new();
-      
+
       const wsMetrics = XLSX.utils.json_to_sheet(data);
       XLSX.utils.book_append_sheet(wb, wsMetrics, "KPI Metrics");
 
@@ -213,20 +215,20 @@ export default function ReportsAnalytics() {
   }
 
   return (
-    <div className="p-4 sm:p-8 max-w-7xl mx-auto h-[calc(100vh-2rem)] flex flex-col overflow-y-auto custom-scrollbar">
+    <div className="p-4 sm:p-8 max-w-7xl mx-auto flex flex-col">
       <div className="flex justify-between items-end mb-8 shrink-0">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Reports & Analytics</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1">Key performance metrics and school insights.</p>
         </div>
-        <button 
+        <button
           onClick={handleDownload}
           className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 px-5 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all font-medium shadow-sm active:scale-95"
         >
           Download Full Report
         </button>
       </div>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 shrink-0">
         {displayMetrics.map((metric, idx) => (
           <div key={idx} className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
@@ -243,21 +245,23 @@ export default function ReportsAnalytics() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-[400px]">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
         {/* Revenue Chart */}
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6">Revenue Overview</h3>
-          <div className="flex-1 flex items-end justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2">
+          <div className="h-64 pt-10 flex items-end gap-2 border-b border-slate-100 dark:border-slate-800">
             {revenueData.map((data, i) => (
-              <div key={i} className="w-full bg-emerald-100 rounded-t-md relative group hover:bg-emerald-200 transition-colors" style={{ height: `${Math.max(data.pct, 5)}%` }}>
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                  ₹{data.revenue.toLocaleString()}
+              <div key={i} className="flex-1 h-full flex items-end">
+                <div className="w-full bg-emerald-100 dark:bg-emerald-500/30 rounded-t-md relative group hover:bg-emerald-200 dark:hover:bg-emerald-500/50 transition-colors" style={{ height: `${Math.max(data.pct, 5)}%` }}>
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
+                    ₹{data.revenue.toLocaleString()}
+                  </div>
                 </div>
               </div>
             ))}
           </div>
-          <div className="flex justify-between text-xs text-slate-400 dark:text-slate-300 mt-2 font-medium px-2">
-            {revenueData.map((data, i) => <span key={i}>{data.month}</span>)}
+          <div className="flex gap-2 text-xs text-slate-400 dark:text-slate-300 mt-2 font-medium">
+            {revenueData.map((data, i) => <span key={i} className="flex-1 text-center">{data.month}</span>)}
           </div>
         </div>
 
@@ -275,43 +279,44 @@ export default function ReportsAnalytics() {
             )}
           </div>
 
-          <div className="flex-1 flex items-end justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2 min-h-[160px]">
+          <div className="h-64 pt-10 flex items-end gap-2 border-b border-slate-100 dark:border-slate-800">
             {attendanceData.map((data, i) => {
               const hasRecords = data.total > 0;
-              const barHeight = hasRecords ? Math.max(data.attendance, 6) : 4;
+              const barHeight = hasRecords ? Math.min(100, Math.max(data.attendance, 6)) : 4;
               const barBg = hasRecords
                 ? 'bg-indigo-500/80 hover:bg-indigo-600 dark:bg-indigo-500 dark:hover:bg-indigo-400'
                 : 'bg-slate-100 dark:bg-slate-800';
 
               return (
-                <div
-                  key={i}
-                  className={`w-full ${barBg} rounded-t-lg relative group transition-all duration-300 cursor-pointer`}
-                  style={{ height: `${barHeight}%` }}
-                >
-                  {/* Tooltip */}
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900 text-white text-xs px-3 py-2 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xl z-20 border border-slate-700">
-                    <p className="font-bold border-b border-slate-700 pb-1 mb-1">{data.formattedDate} ({data.day})</p>
-                    {hasRecords ? (
-                      <div className="space-y-0.5 text-[11px]">
-                        <p className="text-indigo-300 font-bold">Attendance: {data.attendance}%</p>
-                        <p className="text-emerald-400 font-medium">Present: {data.present}</p>
-                        <p className="text-rose-400 font-medium">Absent: {data.absent}</p>
-                        {data.late > 0 && <p className="text-amber-400 font-medium">Late: {data.late}</p>}
-                        <p className="text-slate-400">Total: {data.total}</p>
-                      </div>
-                    ) : (
-                      <p className="text-slate-400 text-[11px] italic">No attendance recorded</p>
-                    )}
+                <div key={i} className="flex-1 h-full flex items-end">
+                  <div
+                    className={`w-full ${barBg} rounded-t-lg relative group transition-all duration-300 cursor-pointer`}
+                    style={{ height: `${barHeight}%` }}
+                  >
+                    {/* Tooltip */}
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900 text-white text-xs px-3 py-2 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xl z-20 border border-slate-700">
+                      <p className="font-bold border-b border-slate-700 pb-1 mb-1">{data.formattedDate} ({data.day})</p>
+                      {hasRecords ? (
+                        <div className="space-y-0.5 text-[11px]">
+                          <p className="text-indigo-300 font-bold">Attendance: {data.attendance}%</p>
+                          <p className="text-emerald-400 font-medium">Present: {data.present}</p>
+                          <p className="text-rose-400 font-medium">Absent: {data.absent}</p>
+                          {data.late > 0 && <p className="text-amber-400 font-medium">Late: {data.late}</p>}
+                          <p className="text-slate-400">Total: {data.total}</p>
+                        </div>
+                      ) : (
+                        <p className="text-slate-400 text-[11px] italic">No attendance recorded</p>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
 
-          <div className="flex justify-between text-xs text-slate-400 dark:text-slate-300 mt-3 font-semibold px-1">
+          <div className="flex gap-2 text-xs text-slate-400 dark:text-slate-300 mt-3 font-semibold">
             {attendanceData.map((data, i) => (
-              <div key={i} className="flex flex-col items-center">
+              <div key={i} className="flex-1 flex flex-col items-center">
                 <span className="text-slate-700 dark:text-slate-200 font-bold">{data.day}</span>
                 <span className="text-[10px] text-slate-400">{data.formattedDate}</span>
               </div>
