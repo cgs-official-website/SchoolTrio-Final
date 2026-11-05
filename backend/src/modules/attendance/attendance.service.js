@@ -1,5 +1,6 @@
 import * as attendanceRepository from './attendance.repository.js';
 import { prisma } from '../../database/prisma.client.js';
+import { getTeacherAssignments } from '../classes/class.service.js';
 import { createAuditLog } from '../audit/audit.repository.js';
 import {
   NotFoundError,
@@ -65,7 +66,7 @@ export async function resolveAbsenteeThreshold(schoolId) {
 /**
  * Verifies whether the requesting actor is authorized to mark or update attendance for a given class.
  */
-export async function verifyTeacherClassAuthorization(schoolId, classId, actor) {
+export async function verifyTeacherClassAuthorization(schoolId, classId, actor, sectionId = null) {
   if (!actor) {
     throw new ForbiddenError('Authentication context required');
   }
@@ -96,6 +97,25 @@ export async function verifyTeacherClassAuthorization(schoolId, classId, actor) 
     permissions.includes('attendance.edit')
   ) {
     return true;
+  }
+
+  // 3a. SECTION-LEVEL CHECK (source of truth: Section.classTeacherId).
+  // A class can have several sections (V-A, V-B), each with its own class teacher. The legacy
+  // StaffProfile.assignedClassId only stores the parent CLASS, so it cannot tell V-A from V-B
+  // (and may be stale), which caused "You are only authorized to mark attendance for your
+  // assigned class" for the genuine class teacher. Mirror exactly what the teacher sees in the
+  // UI (GET /classes/my-classes?classTeacherOnly=true).
+  if (sectionId) {
+    const scope = await getTeacherAssignments(schoolId, actor.id || actor.userId);
+    if (scope.staffProfile) {
+      const allowed = scope.classTeacherSectionIds.size > 0
+        ? scope.classTeacherSectionIds.has(sectionId)
+        : (scope.sectionIds.has(sectionId) || scope.wholeClassIds.has(classId));
+      if (allowed) {
+        return true;
+      }
+      throw new ForbiddenError('You are only authorized to mark attendance for the section you are class teacher of');
+    }
   }
 
   // 3. Class Teacher / Staff Check
@@ -198,6 +218,20 @@ export async function verifyTeacherClassAuthorization(schoolId, classId, actor) 
     }
 
     if (staffProfile.assignedClassId && !isDirectlyAssigned) {
+      // Legacy column may be stale - re-check against section/class-teacher assignments
+      const scope = await getTeacherAssignments(schoolId, actor.id || actor.userId);
+      if (scope.wholeClassIds.has(classId)) {
+        return true;
+      }
+      if (scope.classTeacherSectionIds.size > 0 || scope.sectionIds.size > 0) {
+        const sectionsOfClass = await prisma.section.findMany({
+          where: { schoolId, classId, id: { in: Array.from(scope.classTeacherSectionIds.size > 0 ? scope.classTeacherSectionIds : scope.sectionIds) } },
+          select: { id: true }
+        });
+        if (sectionsOfClass.length > 0) {
+          return true;
+        }
+      }
       throw new ForbiddenError('You are only authorized to mark attendance for your assigned class');
     }
   }
@@ -305,7 +339,7 @@ export async function submitAttendanceSession(schoolId, data, actor = null) {
   }
 
   // 3. Verify Teacher Authorization
-  await verifyTeacherClassAuthorization(schoolId, classId, actor);
+  await verifyTeacherClassAuthorization(schoolId, classId, actor, sectionId || null);
 
   // 4. Validate Student IDs belong to target Class & Tenant
   const studentIds = records.map(r => r.studentId);
@@ -412,7 +446,7 @@ export async function updateAttendanceSession(schoolId, id, data, actor = null) 
   }
 
   // 1. Verify Teacher Authorization
-  await verifyTeacherClassAuthorization(schoolId, existingSession.classId, actor);
+  await verifyTeacherClassAuthorization(schoolId, existingSession.classId, actor, existingSession.sectionId || null);
 
   const { records } = data;
 
@@ -422,7 +456,8 @@ export async function updateAttendanceSession(schoolId, id, data, actor = null) 
     where: {
       id: { in: studentIds },
       schoolId,
-      classId: existingSession.classId
+      classId: existingSession.classId,
+      ...(existingSession.sectionId ? { sectionId: existingSession.sectionId } : {})
     },
     select: { id: true }
   });

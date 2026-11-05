@@ -61,7 +61,7 @@ export default function ParentChat() {
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      
+
       let fileName = customName;
       try {
         const decoded = decodeURIComponent(url.split('/').pop().split('?')[0]);
@@ -71,7 +71,7 @@ export default function ParentChat() {
       } catch (e) {
         console.warn(e);
       }
-      
+
       link.download = fileName;
       document.body.appendChild(link);
       link.click();
@@ -103,7 +103,8 @@ export default function ParentChat() {
       // If no room exists yet, attempt auto-resolution with class teacher
       if (studentRooms.length === 0) {
         try {
-          const resolved = await chatsApi.resolveChatRoom({ studentId: targetStudentId });
+          const resolvedRes = await chatsApi.resolveChatRoom({ studentId: targetStudentId });
+          const resolved = resolvedRes?.data || resolvedRes;
           if (resolved?.id) {
             studentRooms = [resolved];
           }
@@ -287,7 +288,7 @@ export default function ParentChat() {
           const newMsgs = Array.isArray(res?.data) ? res.data : [];
           setMessages(prev => areMessagesEqual(prev, newMsgs) ? prev : newMsgs);
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [studentId, fetchConversations, fetchChannels, activeTab, activeConversation?.roomId]), [studentId, fetchConversations, fetchChannels, activeTab, activeConversation?.roomId], ['chats', 'all']);
 
@@ -303,7 +304,7 @@ export default function ParentChat() {
         if (isCancelled || !mountedRef.current) return;
         const newMsgs = Array.isArray(res?.data) ? res.data : [];
         setMessages(prev => areMessagesEqual(prev, newMsgs) ? prev : newMsgs);
-      } catch (err) {}
+      } catch (err) { }
     };
 
     const interval = setInterval(pollMessages, 3000);
@@ -325,7 +326,7 @@ export default function ParentChat() {
         if (isCancelled || !mountedRef.current) return;
         const newPosts = Array.isArray(res?.data) ? res.data : [];
         setMessages(prev => areMessagesEqual(prev, newPosts) ? prev : newPosts);
-      } catch (err) {}
+      } catch (err) { }
     };
 
     const interval = setInterval(pollChannelPosts, 4000);
@@ -373,9 +374,9 @@ export default function ParentChat() {
           notifyDataChanged('chats');
           // Update last message in conversation list
           const previewText = text || (mediaType ? `[${mediaType}]` : '[Attachment]');
-          setConversations(prev => prev.map(c => 
-            c.roomId === activeConversation.roomId 
-              ? { ...c, lastMessage: previewText, lastMessageTime: new Date().toISOString() } 
+          setConversations(prev => prev.map(c =>
+            c.roomId === activeConversation.roomId
+              ? { ...c, lastMessage: previewText, lastMessageTime: new Date().toISOString() }
               : c
           ));
         }
@@ -406,7 +407,7 @@ export default function ParentChat() {
 
     if (date.toDateString() === today.toDateString()) return 'Today';
     if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-    
+
     return date.toLocaleDateString('en-GB');
   };
 
@@ -424,8 +425,8 @@ export default function ParentChat() {
         {msg.mediaUrl && (
           <div className="mb-1">
             {msg.mediaType === 'image' && (
-              <button 
-                onClick={() => setPreviewFile({ url: msg.mediaUrl, type: 'image' })} 
+              <button
+                onClick={() => setPreviewFile({ url: msg.mediaUrl, type: 'image' })}
                 className="focus:outline-none hover:opacity-90 transition-opacity text-left block"
               >
                 <img src={msg.mediaUrl} alt="Attachment" className="max-w-full h-auto max-h-48 rounded-lg object-contain bg-black/5 dark:bg-white/5 cursor-zoom-in" />
@@ -435,8 +436,8 @@ export default function ParentChat() {
               <CustomAudioPlayer src={msg.mediaUrl} isMe={isMe} />
             )}
             {msg.mediaType === 'document' && (
-              <button 
-                onClick={() => setPreviewFile({ url: msg.mediaUrl, type: 'document' })} 
+              <button
+                onClick={() => setPreviewFile({ url: msg.mediaUrl, type: 'document' })}
                 className="flex items-center gap-2 p-3 bg-black/5 dark:bg-white/5 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors focus:outline-none text-left w-full text-inherit"
               >
                 <FileIcon size={20} className="shrink-0" />
@@ -470,21 +471,20 @@ export default function ParentChat() {
       </div>
 
       <div className="flex flex-col lg:flex-row gap-0 md:gap-6 flex-1 min-h-0 bg-white dark:bg-slate-900 md:bg-transparent w-full min-w-0">
-        
+
         {/* Sidebar */}
-        <div className={`w-full lg:w-80 flex-col bg-white dark:bg-slate-900 md:border md:border-slate-200 md:rounded-3xl overflow-hidden md:shadow-sm shrink-0 min-w-0 ${
-          activeConversation || activeChannel ? 'hidden lg:flex' : 'flex'
-        }`}>
+        <div className={`w-full lg:w-80 flex-col bg-white dark:bg-slate-900 md:border md:border-slate-200 md:rounded-3xl overflow-hidden md:shadow-sm shrink-0 min-w-0 ${activeConversation || activeChannel ? 'hidden lg:flex' : 'flex'
+          }`}>
           <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex flex-col gap-4">
             <h2 className="font-bold text-slate-700 dark:text-slate-200">Messaging</h2>
             <div className="flex bg-slate-100 dark:bg-slate-700 rounded-xl p-1">
-              <button 
+              <button
                 onClick={() => { setActiveTab('dms'); setActiveChannel(null); }}
                 className={`flex-1 text-sm font-bold py-1.5 rounded-lg transition-colors ${activeTab === 'dms' ? 'bg-white dark:bg-slate-900 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
               >
                 Staff DMs
               </button>
-              <button 
+              <button
                 onClick={() => { setActiveTab('channels'); setActiveConversation(null); }}
                 className={`flex-1 text-sm font-bold py-1.5 rounded-lg transition-colors ${activeTab === 'channels' ? 'bg-white dark:bg-slate-900 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
               >
@@ -492,7 +492,7 @@ export default function ParentChat() {
               </button>
             </div>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
             {activeTab === 'dms' ? (
               conversations.length === 0 ? (
@@ -502,15 +502,13 @@ export default function ParentChat() {
                   <button
                     key={conv.roomId}
                     onClick={() => setActiveConversation(conv)}
-                    className={`w-full text-left p-3 rounded-2xl flex items-center gap-3 transition-colors ${
-                      activeConversation?.roomId === conv.roomId 
-                        ? 'bg-primary-50 dark:bg-slate-800 border-l-4 border-l-primary-600 border-y-transparent border-r-transparent shadow-sm' 
+                    className={`w-full text-left p-3 rounded-2xl flex items-center gap-3 transition-colors ${activeConversation?.roomId === conv.roomId
+                        ? 'bg-primary-50 dark:bg-slate-800 border-l-4 border-l-primary-600 border-y-transparent border-r-transparent shadow-sm'
                         : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
-                    }`}
+                      }`}
                   >
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${
-                      activeConversation?.roomId === conv.roomId ? 'bg-primary-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                    }`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${activeConversation?.roomId === conv.roomId ? 'bg-primary-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                      }`}>
                       {(conv.teacherName || 'T').charAt(0).toUpperCase()}
                     </div>
                     <div className="overflow-hidden flex-1">
@@ -537,15 +535,13 @@ export default function ParentChat() {
                   <button
                     key={channel.id}
                     onClick={() => setActiveChannel(channel)}
-                    className={`w-full text-left p-3 rounded-2xl flex items-center gap-3 transition-colors ${
-                      activeChannel?.id === channel.id 
-                        ? 'bg-primary-50 dark:bg-slate-800 border-l-4 border-l-primary-600 border-y-transparent border-r-transparent shadow-sm' 
+                    className={`w-full text-left p-3 rounded-2xl flex items-center gap-3 transition-colors ${activeChannel?.id === channel.id
+                        ? 'bg-primary-50 dark:bg-slate-800 border-l-4 border-l-primary-600 border-y-transparent border-r-transparent shadow-sm'
                         : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
-                    }`}
+                      }`}
                   >
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg shrink-0 ${
-                      activeChannel?.id === channel.id ? 'bg-primary-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                    }`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg shrink-0 ${activeChannel?.id === channel.id ? 'bg-primary-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                      }`}>
                       #
                     </div>
                     <div className="overflow-hidden flex-1">
@@ -562,18 +558,17 @@ export default function ParentChat() {
         </div>
 
         {/* Main Chat Area */}
-        <div className={`flex-1 bg-white dark:bg-slate-900 md:rounded-3xl md:border border-slate-200 dark:border-slate-700 md:shadow-sm flex-col min-h-0 overflow-hidden relative ${
-          !activeConversation && !activeChannel ? 'hidden lg:flex' : 'flex'
-        }`}>
+        <div className={`flex-1 bg-white dark:bg-slate-900 md:rounded-3xl md:border border-slate-200 dark:border-slate-700 md:shadow-sm flex-col min-h-0 overflow-hidden relative ${!activeConversation && !activeChannel ? 'hidden lg:flex' : 'flex'
+          }`}>
           {activeTab === 'dms' && activeConversation && (
             <>
               {/* Chat Header */}
               <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 flex items-center gap-4 shrink-0">
-                <button 
+                <button
                   onClick={() => setActiveConversation(null)}
                   className="lg:hidden p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full"
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
                 </button>
                 <div className="w-12 h-12 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-lg shrink-0">
                   {(activeConversation.teacherName || 'T').charAt(0).toUpperCase()}
@@ -606,7 +601,7 @@ export default function ParentChat() {
                     let unreadCounter = currentConv?.otherUnreadCount || 0;
                     const readStatus = {};
                     const visibleMessages = messages;
-                    
+
                     for (let i = visibleMessages.length - 1; i >= 0; i--) {
                       const msg = visibleMessages[i];
                       const isMe = msg.senderRole === 'parent' || msg.senderId === currentUserId;
@@ -636,21 +631,20 @@ export default function ParentChat() {
                             </div>
                           )}
                           <div className={`flex ${isMe ? 'justify-end' : 'justify-start'} group items-center gap-2`}>
-                            
+
                             {/* Message Options (Me) */}
                             {isMe && !msg.isDeletedForEveryone && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 z-10 shrink-0">
-                                {msg.text && <button onClick={() => handleCopy(msg.text)} className="p-1.5 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 shadow-sm border border-slate-200 dark:border-slate-700" title="Copy"><Copy size={14}/></button>}
-                                {msg.text && <button onClick={() => handleForward(msg.text)} className="p-1.5 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 shadow-sm border border-slate-200 dark:border-slate-700" title="Forward"><Forward size={14}/></button>}
+                                {msg.text && <button onClick={() => handleCopy(msg.text)} className="p-1.5 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 shadow-sm border border-slate-200 dark:border-slate-700" title="Copy"><Copy size={14} /></button>}
+                                {msg.text && <button onClick={() => handleForward(msg.text)} className="p-1.5 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 shadow-sm border border-slate-200 dark:border-slate-700" title="Forward"><Forward size={14} /></button>}
                               </div>
                             )}
 
-                            <div className={`max-w-[85%] md:max-w-[75%] rounded-2xl p-4 ${
-                              isMe 
+                            <div className={`max-w-[85%] md:max-w-[75%] rounded-2xl p-4 ${isMe
                                 ? (msg.isDeletedForEveryone ? 'bg-primary-500 text-white/80 rounded-tr-sm' : 'bg-gradient-to-br from-primary-500 to-primary-600 text-white rounded-tr-sm shadow-md shadow-primary-500/20')
                                 : (msg.isDeletedForEveryone ? 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-tl-sm shadow-sm' : 'bg-white dark:bg-slate-900 border-0 text-slate-800 dark:text-slate-100 rounded-tl-sm shadow-md shadow-slate-200/50 dark:shadow-none')
-                            } relative`}>
-                              
+                              } relative`}>
+
                               {renderMessageContent(msg, isMe)}
                               <span className={`text-[10px] mt-1 flex items-center gap-1 ${isMe ? 'text-primary-200 justify-end' : 'text-slate-400 dark:text-slate-300 justify-start'}`}>
                                 {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -665,8 +659,8 @@ export default function ParentChat() {
                             {/* Message Options (Non-Me) */}
                             {!isMe && !msg.isDeletedForEveryone && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 z-10 shrink-0">
-                                {msg.text && <button onClick={() => handleCopy(msg.text)} className="p-1.5 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 shadow-sm border border-slate-200 dark:border-slate-700" title="Copy"><Copy size={14}/></button>}
-                                {msg.text && <button onClick={() => handleForward(msg.text)} className="p-1.5 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 shadow-sm border border-slate-200 dark:border-slate-700" title="Forward"><Forward size={14}/></button>}
+                                {msg.text && <button onClick={() => handleCopy(msg.text)} className="p-1.5 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 shadow-sm border border-slate-200 dark:border-slate-700" title="Copy"><Copy size={14} /></button>}
+                                {msg.text && <button onClick={() => handleForward(msg.text)} className="p-1.5 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 shadow-sm border border-slate-200 dark:border-slate-700" title="Forward"><Forward size={14} /></button>}
                               </div>
                             )}
                           </div>
@@ -679,9 +673,9 @@ export default function ParentChat() {
               </div>
 
               {/* Input Area */}
-              <ChatInput 
-                chatRoomId={activeConversation.roomId} 
-                onSendMessage={handleSendMessage} 
+              <ChatInput
+                chatRoomId={activeConversation.roomId}
+                onSendMessage={handleSendMessage}
               />
             </>
           )}
@@ -701,11 +695,11 @@ export default function ParentChat() {
               {/* Channel Header */}
               <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-4">
-                  <button 
+                  <button
                     onClick={() => setActiveChannel(null)}
                     className="lg:hidden p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full"
                   >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
                   </button>
                   <div className="w-12 h-12 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-lg shrink-0">
                     #
@@ -741,13 +735,12 @@ export default function ParentChat() {
                         <div className={`text-xs font-semibold mb-1 ${isTeacher ? 'text-primary-600' : 'text-slate-500 dark:text-slate-400'}`}>
                           {msg.senderName || (isTeacher ? 'Teacher' : 'Staff')}
                         </div>
-                        <div className={`max-w-[85%] md:max-w-[75%] rounded-2xl p-4 ${
-                          isMe 
-                            ? 'bg-gradient-to-br from-primary-500 to-primary-600 text-white rounded-tr-sm shadow-md shadow-primary-500/20' 
+                        <div className={`max-w-[85%] md:max-w-[75%] rounded-2xl p-4 ${isMe
+                            ? 'bg-gradient-to-br from-primary-500 to-primary-600 text-white rounded-tr-sm shadow-md shadow-primary-500/20'
                             : (isTeacher ? 'bg-primary-50 text-slate-900 dark:text-white rounded-tl-sm shadow-sm' : 'bg-white dark:bg-slate-900 border-0 text-slate-800 dark:text-slate-100 rounded-tl-sm shadow-md shadow-slate-200/50 dark:shadow-none')
-                        } relative`}>
+                          } relative`}>
                           {renderMessageContent(msg, isMe)}
-                          
+
                           <div className={`text-[10px] mt-2 text-right ${isMe ? 'text-primary-100' : 'text-slate-400 dark:text-slate-300'}`}>
                             {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </div>
@@ -807,8 +800,8 @@ export default function ParentChat() {
               />
             ) : (
               previewFile.url.toLowerCase().includes('.pdf') || previewFile.url.toLowerCase().includes('/raw/upload') ? (
-                <iframe 
-                  src={previewFile.url} 
+                <iframe
+                  src={previewFile.url}
                   title="Document Preview"
                   className="w-[85vw] md:w-[70vw] h-[75vh] rounded-2xl border border-white/10 bg-white dark:bg-slate-900 shadow-2xl"
                 />

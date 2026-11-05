@@ -25,6 +25,28 @@ export async function listLessonPlans(req, res, next) {
 }
 
 /**
+ * Returns the class/section units and subjects the authenticated user may plan for.
+ * GET /api/v1/lesson-plans/my-scope
+ */
+export async function getLessonPlanScope(req, res, next) {
+  try {
+    const schoolId = req.tenant?.schoolId;
+    const actor = req.user || req.auth;
+
+    const result = await lessonPlanService.getLessonPlanScope(schoolId, actor);
+
+    return ApiResponse.success(
+      res,
+      result,
+      'Lesson plan scope retrieved successfully',
+      200
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
  * Retrieves a single lesson plan by ID.
  * GET /api/v1/lesson-plans/:id
  */
@@ -117,6 +139,7 @@ export async function deleteLessonPlan(req, res, next) {
 
 export const lessonPlanController = {
   listLessonPlans,
+  getLessonPlanScope,
   getLessonPlanById,
   createLessonPlan,
   updateLessonPlan,

@@ -9,6 +9,7 @@ import {
   TenantAccessError
 } from '../../utils/app-error.js';
 import { SENDER_ROLES } from './chats.schema.js';
+import { getTeacherScope, isStudentInScope, resolveClassTeacherForStudent } from '../classes/teacher-scope.js';
 
 // ============================================================
 // DTO FORMATTERS
@@ -28,7 +29,7 @@ export function formatChatRoom(room) {
     ? `${student.firstName} ${student.lastName || ''}`.trim()
     : 'Unknown Student';
 
-  const parent = student?.parents?.[0]?.parent;
+  const parent = (student?.parents || []).map((l) => l?.parent).find(Boolean);
   const parentName = parent?.name || 'Parent';
   const parentPhone = parent?.phone || null;
   const parentEmail = parent?.email || null;
@@ -225,14 +226,15 @@ export async function verifyRoomAccess(schoolId, roomId, actor, tx = prisma) {
     return { room, actorRole: SENDER_ROLES.PARENT };
   }
 
-  // Teacher authorization
+  // Teacher authorization (section-aware)
   const teacherProfile = await resolveTeacherStaffProfile(schoolId, actor, tx);
   const isDirectTeacher = room.teacherId === teacherProfile.id;
-  const isClassTeacher = teacherProfile.assignedClassId && teacherProfile.assignedClassId === room.student?.classId;
-  const isHeadTeacher = teacherProfile.headedClasses?.some((c) => c.id === room.student?.classId);
 
-  if (!isDirectTeacher && !isClassTeacher && !isHeadTeacher) {
-    throw new ForbiddenError('You are not authorized to access this chat room');
+  if (!isDirectTeacher) {
+    const scope = await getTeacherScope(schoolId, actor.id || actor.userId);
+    if (!isStudentInScope(scope, room.student)) {
+      throw new ForbiddenError('You are not authorized to access this chat room');
+    }
   }
 
   return { room, actorRole: SENDER_ROLES.TEACHER, teacherProfile };
@@ -258,7 +260,10 @@ export async function resolveRoom(schoolId, input, actor) {
   const { studentId } = input;
   let teacherId = input.teacherId;
 
-  const result = await prisma.$transaction(async (tx) => {
+  // NOTE: no interactive transaction here. This is a few reads + one idempotent upsert; wrapping
+  // it in $transaction held a connection while helpers queried on other connections, which
+  // exhausted the pool and surfaced as "Transaction timed out or failed".
+  const result = await (async (tx) => {
     // 1. Verify student exists in tenant
     const student = await chatsRepository.findStudentById(schoolId, studentId, tx);
     if (!student) {
@@ -268,18 +273,8 @@ export async function resolveRoom(schoolId, input, actor) {
     // 2. Authorize actor & resolve teacherId
     if (isAdministrator(actor)) {
       if (!teacherId) {
-        // Fallback to student's class teacher if available
-        if (student.classId) {
-          const classTeacher = await tx.staffProfile.findFirst({
-            where: {
-              schoolId,
-              assignedClassId: student.classId,
-              status: 'Active'
-            },
-            select: { id: true }
-          });
-          teacherId = classTeacher?.id;
-        }
+        // Fallback to the student's section class teacher
+        teacherId = await resolveClassTeacherForStudent(schoolId, student, tx);
       }
       if (!teacherId) {
         throw new ValidationError('teacherId is required when resolving room as administrator');
@@ -295,18 +290,8 @@ export async function resolveRoom(schoolId, input, actor) {
       }
 
       if (!teacherId) {
-        // Find student's class teacher
-        if (student.classId) {
-          const classTeacher = await tx.staffProfile.findFirst({
-            where: {
-              schoolId,
-              assignedClassId: student.classId,
-              status: 'Active'
-            },
-            select: { id: true }
-          });
-          teacherId = classTeacher?.id;
-        }
+        // The parent always talks to the class teacher of the child's SECTION
+        teacherId = await resolveClassTeacherForStudent(schoolId, student, tx);
       }
       if (!teacherId) {
         throw new ValidationError('Teacher could not be resolved for student');
@@ -320,18 +305,16 @@ export async function resolveRoom(schoolId, input, actor) {
       const teacherProfile = await resolveTeacherStaffProfile(schoolId, actor, tx);
       teacherId = teacherProfile.id;
 
-      const isAssigned = teacherProfile.assignedClassId && teacherProfile.assignedClassId === student.classId;
-      const isHeading = teacherProfile.headedClasses?.some((c) => c.id === student.classId);
-
-      if (!isAssigned && !isHeading && teacherProfile.assignedClassId) {
-        // Teacher is restricted to their assigned/headed class
-        throw new ForbiddenError('Teachers can only initiate chats with students in their assigned class');
+      const scope = await getTeacherScope(schoolId, actor.id || actor.userId);
+      const hasAnyScope = scope.sectionIds.size > 0 || scope.wholeClassIds.size > 0;
+      if (hasAnyScope && !isStudentInScope(scope, student)) {
+        throw new ForbiddenError('Teachers can only chat with parents of students in their assigned class/section');
       }
     }
 
     // 3. Upsert ChatRoom
     return chatsRepository.upsertChatRoom(schoolId, { studentId, teacherId }, tx);
-  });
+  })(prisma);
 
   // Non-blocking audit log
   createAuditLog({
@@ -717,14 +700,9 @@ export async function listChannels(schoolId, query = {}, actor) {
     };
   } else {
     // Teacher
-    const teacherProfile = await resolveTeacherStaffProfile(schoolId, actor);
-    const teacherClassIds = [];
-    if (teacherProfile.assignedClassId) {
-      teacherClassIds.push(teacherProfile.assignedClassId);
-    }
-    if (teacherProfile.headedClasses) {
-      teacherProfile.headedClasses.forEach((c) => teacherClassIds.push(c.id));
-    }
+    await resolveTeacherStaffProfile(schoolId, actor);
+    const scope = await getTeacherScope(schoolId, actor.id || actor.userId);
+    const teacherClassIds = Array.from(scope.classIds);
 
     filter = {
       OR: [
@@ -779,11 +757,10 @@ export async function createChannel(schoolId, input, actor) {
     if (!input.classId) {
       throw new ForbiddenError('Teachers cannot create school-wide broadcast channels');
     }
-    const teacherProfile = await resolveTeacherStaffProfile(schoolId, actor);
-    const isAssigned = teacherProfile.assignedClassId === input.classId;
-    const isHeading = teacherProfile.headedClasses?.some((c) => c.id === input.classId);
+    await resolveTeacherStaffProfile(schoolId, actor);
+    const scope = await getTeacherScope(schoolId, actor.id || actor.userId);
 
-    if (!isAssigned && !isHeading) {
+    if (!scope.classIds.has(input.classId)) {
       throw new ForbiddenError('You can only create channels for your assigned class');
     }
   }
@@ -855,10 +832,9 @@ export async function listChannelPosts(schoolId, channelId, query = {}, actor) {
         }
       } else {
         // Teacher
-        const teacherProfile = await resolveTeacherStaffProfile(schoolId, actor);
-        const isAssigned = teacherProfile.assignedClassId === channel.classId;
-        const isHeading = teacherProfile.headedClasses?.some((c) => c.id === channel.classId);
-        if (!isAssigned && !isHeading) {
+        await resolveTeacherStaffProfile(schoolId, actor);
+        const scope = await getTeacherScope(schoolId, actor.id || actor.userId);
+        if (!scope.classIds.has(channel.classId)) {
           throw new ForbiddenError('You do not have access to this broadcast channel');
         }
       }
@@ -926,9 +902,8 @@ export async function createChannelPost(schoolId, channelId, input, actor) {
     senderName = teacherProfile.name || senderName;
 
     if (channel.classId) {
-      const isAssigned = teacherProfile.assignedClassId === channel.classId;
-      const isHeading = teacherProfile.headedClasses?.some((c) => c.id === channel.classId);
-      if (!isAssigned && !isHeading) {
+      const scope = await getTeacherScope(schoolId, actor.id || actor.userId);
+      if (!scope.classIds.has(channel.classId)) {
         throw new ForbiddenError('You can only post to broadcast channels for your assigned class');
       }
     }

@@ -934,7 +934,7 @@ export default function Attendance() {
       </div>
 
       {/* Amber Cutoff Warning Banner */}
-      {viewMode === 'daily' && isPastCutoff && !hasExistingRecord && (
+      {viewMode === 'daily' && selectedSession !== 'AN' && isPastCutoff && !hasExistingRecord && (
         <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 rounded-xl mb-6">
           <AlertCircle size={20} className="shrink-0 text-amber-600" />
           <div>

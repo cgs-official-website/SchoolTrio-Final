@@ -22,6 +22,19 @@ lessonPlanRouter.get(
 );
 
 /**
+ * 1b. Lesson plan scope (classes/sections + subjects the user handles)
+ * GET /api/v1/lesson-plans/my-scope
+ * NOTE: must be registered before '/:id'
+ */
+lessonPlanRouter.get(
+  '/my-scope',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('lesson_plans', 'read'),
+  lessonPlanController.getLessonPlanScope
+);
+
+/**
  * 2. Get Single Lesson Plan Endpoint
  * GET /api/v1/lesson-plans/:id
  */

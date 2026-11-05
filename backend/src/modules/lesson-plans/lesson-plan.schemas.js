@@ -101,6 +101,7 @@ export const lessonPlanIdParamSchema = {
 
 export const createLessonPlanBodySchema = z.object({
   classId: z.string({ required_error: 'classId is required' }).uuid({ message: 'classId must be a valid UUID' }),
+  sectionId: z.string().uuid({ message: 'sectionId must be a valid UUID' }).optional().nullable(),
   subjectId: z.string({ required_error: 'subjectId is required' }).uuid({ message: 'subjectId must be a valid UUID' }),
   topic: z
     .string({ required_error: 'topic is required' })
@@ -119,6 +120,7 @@ export const createLessonPlanSchema = {
 
 export const updateLessonPlanBodySchema = z.object({
   classId: z.string().uuid({ message: 'classId must be a valid UUID' }).optional(),
+  sectionId: z.string().uuid({ message: 'sectionId must be a valid UUID' }).optional().nullable(),
   subjectId: z.string().uuid({ message: 'subjectId must be a valid UUID' }).optional(),
   topic: z
     .string()

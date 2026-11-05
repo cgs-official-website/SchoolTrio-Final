@@ -2,6 +2,8 @@ import { prisma } from '../../database/prisma.client.js';
 import * as lessonPlanRepository from './lesson-plan.repository.js';
 import { createAuditLog } from '../audit/audit.repository.js';
 import { calculateWeekNumber } from './lesson-plan.schemas.js';
+import { getMyTeacherClasses } from '../classes/class.service.js';
+import { SYSTEM_ROLES } from '../../config/constants.js';
 import {
   ValidationError,
   NotFoundError,
@@ -68,6 +70,144 @@ export async function resolveTeacherProfile(schoolId, actor, tx = prisma) {
   return profile;
 }
 
+
+/**
+ * Collects the subject ids a teacher handles: subjects assigned in the staff directory
+ * (customData.assignments.assignedSubjectIds) plus subjects the teacher is scheduled for in the timetable.
+ *
+ * @param {string} schoolId
+ * @param {Object} profile - StaffProfile
+ * @returns {Promise<Array<string>>}
+ */
+async function collectTeacherSubjectIds(schoolId, profile) {
+  const custom = profile.customData || {};
+  const assignments = custom.assignments || {};
+  const ids = new Set();
+
+  [
+    ...(Array.isArray(assignments.assignedSubjectIds) ? assignments.assignedSubjectIds : []),
+    ...(Array.isArray(custom.assignedSubjectIds) ? custom.assignedSubjectIds : [])
+  ].forEach(id => id && typeof id === 'string' && ids.add(id));
+
+  const periods = await prisma.timetablePeriod.findMany({
+    where: { schoolId, teacherId: profile.id, subjectId: { not: null } },
+    select: { subjectId: true },
+    distinct: ['subjectId']
+  });
+  periods.forEach(p => p.subjectId && ids.add(p.subjectId));
+
+  return Array.from(ids);
+}
+
+/**
+ * Flattens classes (with their sections) into selectable class/section units.
+ */
+function flattenUnits(classes = []) {
+  const units = [];
+  for (const c of classes) {
+    const sections = Array.isArray(c.sections) ? c.sections : [];
+    if (sections.length === 0) {
+      units.push({
+        classId: c.id,
+        className: c.name,
+        sectionId: null,
+        sectionName: null,
+        label: c.name,
+        isClassTeacher: false
+      });
+      continue;
+    }
+    for (const sec of sections) {
+      units.push({
+        classId: c.id,
+        className: c.name,
+        sectionId: sec.id,
+        sectionName: sec.name,
+        label: `${c.name} - Section ${sec.name}`,
+        isClassTeacher: Boolean(sec.isClassTeacher)
+      });
+    }
+  }
+  return units;
+}
+
+/**
+ * Returns the class/section units and subjects the actor may create lesson plans for.
+ * - Admins: every class/section and every subject.
+ * - Teachers: only the sections they are class teacher of / teach, and only the subjects they handle.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Object} actor - Authenticated user context
+ * @returns {Promise<{ restricted: boolean, units: Array<Object>, subjects: Array<Object> }>}
+ */
+export async function getLessonPlanScope(schoolId, actor) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required to load lesson plan scope');
+  }
+
+  if (isLessonPlanAdmin(actor)) {
+    const [classes, subjects] = await Promise.all([
+      prisma.class.findMany({
+        where: { schoolId },
+        include: { sections: { select: { id: true, name: true }, orderBy: { name: 'asc' } } },
+        orderBy: [{ gradeLevel: 'asc' }, { name: 'asc' }]
+      }),
+      prisma.subject.findMany({
+        where: { schoolId },
+        select: { id: true, name: true, code: true },
+        orderBy: { name: 'asc' }
+      })
+    ]);
+    return { restricted: false, units: flattenUnits(classes), subjects };
+  }
+
+  const profile = await resolveTeacherProfile(schoolId, actor);
+  const teacherActor = {
+    id: actor.id || actor.userId,
+    userId: actor.id || actor.userId,
+    systemRole: SYSTEM_ROLES.TEACHER
+  };
+
+  const [classes, subjectIds] = await Promise.all([
+    getMyTeacherClasses(schoolId, teacherActor, {}),
+    collectTeacherSubjectIds(schoolId, profile)
+  ]);
+
+  const subjects = subjectIds.length > 0
+    ? await prisma.subject.findMany({
+      where: { schoolId, id: { in: subjectIds } },
+      select: { id: true, name: true, code: true },
+      orderBy: { name: 'asc' }
+    })
+    : [];
+
+  return { restricted: true, units: flattenUnits(classes), subjects };
+}
+
+/**
+ * Ensures a teacher only plans for a class/section and subject they handle.
+ * Admins are not restricted.
+ */
+async function assertWithinTeacherScope(schoolId, actor, { classId, sectionId, subjectId, checkClass = true, checkSubject = true }) {
+  if (isLessonPlanAdmin(actor)) return null;
+
+  const scope = await getLessonPlanScope(schoolId, actor);
+
+  let unit = null;
+  if (checkClass) {
+    unit = scope.units.find(u => u.classId === classId && (sectionId ? u.sectionId === sectionId : true)) || null;
+    if (!unit) {
+      throw new ForbiddenError('You can create lesson plans only for the classes/sections you handle');
+    }
+  }
+
+  if (checkSubject && !scope.subjects.some(s => s.id === subjectId)) {
+    throw new ForbiddenError('You can create lesson plans only for the subjects you handle');
+  }
+
+  return unit;
+}
+
 /**
  * Normalizes and formats a LessonPlan database entity into the authoritative REST DTO.
  *
@@ -89,6 +229,8 @@ export function formatLessonPlanDto(lp) {
     teacherName: lp.teacher?.name || '',
     classId: lp.classId,
     className: lp.class?.name || '',
+    sectionId: (lp.customData && typeof lp.customData === 'object' && lp.customData.sectionId) || null,
+    sectionName: (lp.customData && typeof lp.customData === 'object' && lp.customData.sectionName) || null,
     subjectId: lp.subjectId,
     subjectName: lp.subject?.name || '',
     topic: lp.topics || '',
@@ -147,6 +289,13 @@ export async function createLessonPlan(schoolId, actor, payload) {
     throw new NotFoundError('Class not found in current school');
   }
 
+  // Teachers may only plan for their own class/section and subjects
+  const scopedUnit = await assertWithinTeacherScope(schoolId, actor, {
+    classId: payload.classId,
+    sectionId: payload.sectionId || null,
+    subjectId: payload.subjectId
+  });
+
   // Validate subject belongs to tenant
   const subjectRecord = await lessonPlanRepository.findSubjectById(schoolId, payload.subjectId);
   if (!subjectRecord) {
@@ -156,8 +305,22 @@ export async function createLessonPlan(schoolId, actor, payload) {
   // Derive weekNumber exclusively from date
   const weekNumber = calculateWeekNumber(payload.date);
 
+  const resolvedSectionId = payload.sectionId || scopedUnit?.sectionId || null;
+  let resolvedSectionName = scopedUnit?.sectionName || null;
+  if (resolvedSectionId && !resolvedSectionName) {
+    const sec = await prisma.section.findFirst({
+      where: { id: resolvedSectionId, schoolId, classId: payload.classId },
+      select: { name: true }
+    });
+    if (!sec) {
+      throw new NotFoundError('Section not found in the selected class');
+    }
+    resolvedSectionName = sec.name;
+  }
+
   const customData = {
-    date: payload.date
+    date: payload.date,
+    ...(resolvedSectionId ? { sectionId: resolvedSectionId, sectionName: resolvedSectionName } : {})
   };
 
   const createdRecord = await lessonPlanRepository.createLessonPlan(schoolId, {
@@ -324,6 +487,23 @@ export async function updateLessonPlan(schoolId, actor, id, payload) {
       updateData.teacherId = staffRecord.id;
     }
 
+    // 3b. Teachers may only move a plan to a class/section/subject they handle
+    if (!isAdmin) {
+      const existingCustom = existing.customData && typeof existing.customData === 'object' ? existing.customData : {};
+      const classChanged = Boolean(payload.classId) && payload.classId !== existing.classId;
+      const sectionChanged = payload.sectionId !== undefined && (payload.sectionId || null) !== (existingCustom.sectionId || null);
+      const subjectChanged = Boolean(payload.subjectId) && payload.subjectId !== existing.subjectId;
+      if (classChanged || sectionChanged || subjectChanged) {
+        await assertWithinTeacherScope(schoolId, actor, {
+          classId: payload.classId || existing.classId,
+          sectionId: payload.sectionId !== undefined ? payload.sectionId : (existingCustom.sectionId || null),
+          subjectId: payload.subjectId || existing.subjectId,
+          checkClass: classChanged || sectionChanged,
+          checkSubject: subjectChanged
+        });
+      }
+    }
+
     // 4. Class verification
     if (payload.classId) {
       const classRecord = await lessonPlanRepository.findClassById(schoolId, payload.classId, tx);
@@ -355,15 +535,32 @@ export async function updateLessonPlan(schoolId, actor, id, payload) {
       updateData.status = payload.status;
     }
 
-    // 8. Date & weekNumber
-    if (payload.date) {
+    // 8. Date, section & weekNumber
+    if (payload.date || payload.sectionId !== undefined) {
       const existingCustomData =
         existing.customData && typeof existing.customData === 'object' ? existing.customData : {};
-      updateData.customData = {
-        ...existingCustomData,
-        date: payload.date
-      };
-      updateData.weekNumber = calculateWeekNumber(payload.date);
+      const nextCustomData = { ...existingCustomData };
+      if (payload.date) {
+        nextCustomData.date = payload.date;
+        updateData.weekNumber = calculateWeekNumber(payload.date);
+      }
+      if (payload.sectionId !== undefined) {
+        if (payload.sectionId) {
+          const sec = await tx.section.findFirst({
+            where: { id: payload.sectionId, schoolId, classId: payload.classId || existing.classId },
+            select: { name: true }
+          });
+          if (!sec) {
+            throw new NotFoundError('Section not found in the selected class');
+          }
+          nextCustomData.sectionId = payload.sectionId;
+          nextCustomData.sectionName = sec.name;
+        } else {
+          delete nextCustomData.sectionId;
+          delete nextCustomData.sectionName;
+        }
+      }
+      updateData.customData = nextCustomData;
     }
 
     return lessonPlanRepository.updateLessonPlan(schoolId, id, updateData, tx);

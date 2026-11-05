@@ -54,6 +54,19 @@ export async function listLessonPlans(params = {}) {
 }
 
 /**
+ * Gets the class/section units and subjects the logged-in user may create lesson plans for.
+ * Teachers only get the sections they handle and the subjects they teach; admins get everything.
+ * Calls GET /api/v1/lesson-plans/my-scope.
+ *
+ * @returns {Promise<{ success: boolean, data: { restricted: boolean, units: Array<Object>, subjects: Array<Object> } }>}
+ */
+export async function getLessonPlanScope() {
+  return apiClient('/api/v1/lesson-plans/my-scope', {
+    method: 'GET'
+  });
+}
+
+/**
  * Retrieves a single lesson plan by ID.
  * Calls GET /api/v1/lesson-plans/:id.
  *

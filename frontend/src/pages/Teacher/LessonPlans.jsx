@@ -1,14 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LuBookOpen, LuPlus, LuSearch, LuCalendar, LuFileText, LuCircleCheck, LuClock, LuX, LuTrash, LuFileDown } from 'react-icons/lu';
 import { useAuth } from '../../context/AuthContext';
-import { listLessonPlans, createLessonPlan, updateLessonPlan, deleteLessonPlan } from '../../api/lesson-plans';
-import { listClasses } from '../../api/classes';
-import { listSubjects } from '../../api/subjects';
+import { listLessonPlans, createLessonPlan, updateLessonPlan, deleteLessonPlan, getLessonPlanScope } from '../../api/lesson-plans';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import usePermissions from '../../hooks/usePermissions';
 import ConfirmModal from '../../components/ConfirmModal';
-import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
 import { notifyDataChanged } from '../../utils/liveData';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
@@ -38,6 +35,15 @@ function formatDateDisplay(dateStr) {
   return clean;
 }
 
+/**
+ * "V - Section A" style label for a lesson plan's class/section.
+ */
+function formatPlanClass(plan) {
+  const base = plan?.className || plan?.class || '';
+  if (!base) return '';
+  return plan?.sectionName ? `${base} - Section ${plan.sectionName}` : base;
+}
+
 export default function LessonPlans() {
   const { userProfile, currentUser } = useAuth();
   const schoolId = userProfile?.schoolId;
@@ -49,8 +55,10 @@ export default function LessonPlans() {
   const [activeTab, setActiveTab] = useState('upcoming');
   const [searchTerm, setSearchTerm] = useState('');
   const [plans, setPlans] = useState([]);
-  const [classes, setClasses] = useState([]);
+  // Class/section units and subjects this user is allowed to plan for (teacher: only what they handle)
+  const [units, setUnits] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  const [scopeLoaded, setScopeLoaded] = useState(false);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, planId: null, planTopic: '' });
   const [loading, setLoading] = useState(true);
 
@@ -108,7 +116,7 @@ export default function LessonPlans() {
           if (field.key === 'date') {
             row[field.label] = formatDateDisplay(plan.date);
           } else if (field.key === 'class') {
-            row[field.label] = plan.className || plan.class || '';
+            row[field.label] = formatPlanClass(plan);
           } else if (field.key === 'subject') {
             row[field.label] = plan.subjectName || plan.subject || '';
           } else {
@@ -122,10 +130,10 @@ export default function LessonPlans() {
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Lesson Plans");
-    
+
     const rawName = exportFileName.trim() || "My_Lesson_Plans";
     const finalFileName = rawName.toLowerCase().endsWith('.xlsx') ? rawName : `${rawName}.xlsx`;
-    
+
     XLSX.writeFile(workbook, finalFileName);
     setShowExportModal(false);
     toast.success("Lesson plans exported successfully!");
@@ -133,6 +141,7 @@ export default function LessonPlans() {
 
   const [formData, setFormData] = useState({
     classId: '',
+    sectionId: '',
     subjectId: '',
     topic: '',
     date: '',
@@ -140,29 +149,19 @@ export default function LessonPlans() {
     objectives: ''
   });
 
-  // Fetch classes and subjects metadata
+  // Fetch the classes/sections and subjects the user is allowed to plan for
   const fetchMetadata = useCallback(async () => {
     if (!schoolId) return;
     try {
-      const [classesRes, subjectsRes] = await Promise.all([
-        listClasses({ limit: 100 }),
-        listSubjects({ limit: 100 })
-      ]);
-
-      if (classesRes?.data) {
-        setClasses(sortClassesAscending(classesRes.data));
-      } else if (Array.isArray(classesRes)) {
-        setClasses(sortClassesAscending(classesRes));
-      }
-
-      if (subjectsRes?.data) {
-        setSubjects(subjectsRes.data);
-      } else if (Array.isArray(subjectsRes)) {
-        setSubjects(subjectsRes);
-      }
+      const res = await getLessonPlanScope();
+      const scope = res?.data || res || {};
+      setUnits(Array.isArray(scope.units) ? scope.units : []);
+      setSubjects(Array.isArray(scope.subjects) ? scope.subjects : []);
     } catch (err) {
-      console.error('Error fetching classes/subjects metadata:', err);
-      toast.error('Failed to load classes or subjects');
+      console.error('Error fetching lesson plan scope:', err);
+      toast.error(err?.message || 'Failed to load your classes or subjects');
+    } finally {
+      setScopeLoaded(true);
     }
   }, [schoolId]);
 
@@ -223,6 +222,7 @@ export default function LessonPlans() {
     setEditingPlan(null);
     setFormData({
       classId: '',
+      sectionId: '',
       subjectId: '',
       topic: '',
       date: '',
@@ -236,6 +236,7 @@ export default function LessonPlans() {
     setEditingPlan(plan);
     setFormData({
       classId: plan.classId || '',
+      sectionId: plan.sectionId || '',
       subjectId: plan.subjectId || '',
       topic: plan.topic || '',
       date: plan.date ? String(plan.date).substring(0, 10) : '',
@@ -280,6 +281,7 @@ export default function LessonPlans() {
     try {
       const payload = {
         classId: formData.classId,
+        sectionId: formData.sectionId || null,
         subjectId: formData.subjectId,
         topic: formData.topic.trim(),
         date: formData.date,
@@ -310,20 +312,20 @@ export default function LessonPlans() {
   };
 
   const filteredPlans = plans.filter(p => {
-    const matchesSearch = 
-      (p.topic || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const matchesSearch =
+      (p.topic || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (p.subjectName || p.subject || '').toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const planDateStr = p.date ? String(p.date).substring(0, 10) : '';
     const todayStr = getTodayDateString();
-    
+
     const isPast = (planDateStr && planDateStr < todayStr) || p.status === 'completed';
     if (activeTab === 'upcoming') return matchesSearch && !isPast;
     return matchesSearch && isPast;
   });
 
   const getStatusBadge = (status) => {
-    switch(status) {
+    switch (status) {
       case 'ready': return <span className="flex items-center gap-1 px-2.5 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-bold uppercase tracking-wider"><LuCircleCheck size={14} /> Ready</span>;
       case 'draft': return <span className="flex items-center gap-1 px-2.5 py-1 bg-amber-100 text-amber-700 rounded-lg text-xs font-bold uppercase tracking-wider"><LuClock size={14} /> Draft</span>;
       case 'completed': return <span className="flex items-center gap-1 px-2.5 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold uppercase tracking-wider"><LuFileText size={14} /> Completed</span>;
@@ -342,7 +344,7 @@ export default function LessonPlans() {
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
           {hasCreatePermission && (
-            <button 
+            <button
               onClick={handleOpenCreate}
               className="w-full sm:w-auto flex justify-center items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-semibold rounded-xl hover:bg-primary-700 transition-colors"
             >
@@ -368,13 +370,13 @@ export default function LessonPlans() {
 
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
         <div className="flex border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 px-6 pt-4 shrink-0 overflow-x-auto w-full custom-scrollbar">
-          <button 
+          <button
             onClick={() => setActiveTab('upcoming')}
             className={`px-6 py-3 font-bold text-sm border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${activeTab === 'upcoming' ? 'border-primary-600 text-primary-700 bg-white dark:bg-slate-900' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100/50'}`}
           >
             <LuCalendar size={18} /> Upcoming Lessons
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('past')}
             className={`px-6 py-3 font-bold text-sm border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${activeTab === 'past' ? 'border-primary-600 text-primary-700 bg-white dark:bg-slate-900' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100/50'}`}
           >
@@ -385,7 +387,7 @@ export default function LessonPlans() {
         <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex gap-4 shrink-0">
           <div className="relative flex-1 max-w-md">
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-300" size={20} />
-            <input 
+            <input
               type="text"
               placeholder="Search by topic or subject..."
               value={searchTerm}
@@ -407,22 +409,22 @@ export default function LessonPlans() {
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 mb-2 inline-block">
-                        {plan.className || plan.class || 'Unknown Class'}
+                        {formatPlanClass(plan) || 'Unknown Class'}
                       </span>
                       <h3 className="text-lg font-bold text-slate-900 dark:text-white leading-tight">{plan.topic}</h3>
                     </div>
                     {getStatusBadge(plan.status)}
                   </div>
-                  
+
                   <p className="text-sm font-semibold text-primary-600 mb-6 flex-1">{plan.subjectName || plan.subject || 'Unknown Subject'}</p>
-                  
+
                   <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center text-sm font-medium text-slate-500 dark:text-slate-400">
                     <span className="flex items-center gap-1">
-                      <LuCalendar size={14} /> 
+                      <LuCalendar size={14} />
                       {formatDateDisplay(plan.date)}
                     </span>
                     {hasEditPermission && (
-                      <button 
+                      <button
                         onClick={() => handleOpenEdit(plan)}
                         className="text-primary-600 hover:text-primary-700 font-bold opacity-0 group-hover:opacity-100 transition-opacity"
                       >
@@ -447,7 +449,7 @@ export default function LessonPlans() {
       {/* Create / Edit Plan Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
-          <form 
+          <form
             onSubmit={handleFormSubmit}
             className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden transform transition-all flex flex-col max-h-[90vh]"
           >
@@ -456,7 +458,7 @@ export default function LessonPlans() {
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">
                 {editingPlan ? 'Edit Lesson Plan' : 'New Lesson Plan'}
               </h3>
-              <button 
+              <button
                 type="button"
                 onClick={() => setShowModal(false)}
                 className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300 rounded-xl transition-colors"
@@ -469,54 +471,48 @@ export default function LessonPlans() {
             <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-4">
               <div>
                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-200 mb-2">Class / Section</label>
-                {classes.length > 0 ? (
-                  <select
-                    value={formData.classId}
-                    onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:outline-none text-sm font-medium"
-                  >
-                    <option value="">Select a Class</option>
-                    {classes.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {formatClassSection(c)}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    placeholder="Class ID (e.g. UUID)"
-                    value={formData.classId}
-                    onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:outline-none text-sm font-medium"
-                  />
-                )}
+                <select
+                  value={`${formData.classId}:${formData.sectionId || ''}`}
+                  onChange={(e) => {
+                    const [classId, sectionId] = e.target.value.split(':');
+                    setFormData({ ...formData, classId: classId || '', sectionId: sectionId || '' });
+                  }}
+                  disabled={units.length === 0 && !formData.classId}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:outline-none text-sm font-medium"
+                >
+                  <option value=":">{units.length === 0 && scopeLoaded ? 'No class assigned to you' : 'Select a Class'}</option>
+                  {/* Keep an existing plan's class visible while editing, even if it is no longer assigned */}
+                  {formData.classId && !units.some(u => u.classId === formData.classId && (u.sectionId || '') === (formData.sectionId || '')) && (
+                    <option value={`${formData.classId}:${formData.sectionId || ''}`}>
+                      {editingPlan?.className || 'Current class'}{editingPlan?.sectionName ? ` - Section ${editingPlan.sectionName}` : ''}
+                    </option>
+                  )}
+                  {units.map(u => (
+                    <option key={`${u.classId}:${u.sectionId || ''}`} value={`${u.classId}:${u.sectionId || ''}`}>
+                      {u.label}{u.isClassTeacher ? ' (Class Teacher)' : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-200 mb-2">Subject</label>
-                {subjects.length > 0 ? (
-                  <select
-                    value={formData.subjectId}
-                    onChange={(e) => setFormData({ ...formData, subjectId: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:outline-none text-sm font-medium"
-                  >
-                    <option value="">Select a Subject</option>
-                    {subjects.map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}{s.code ? ` (${s.code})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    placeholder="Subject ID (e.g. UUID)"
-                    value={formData.subjectId}
-                    onChange={(e) => setFormData({ ...formData, subjectId: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:outline-none text-sm font-medium"
-                  />
-                )}
+                <select
+                  value={formData.subjectId}
+                  onChange={(e) => setFormData({ ...formData, subjectId: e.target.value })}
+                  disabled={subjects.length === 0 && !formData.subjectId}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:outline-none text-sm font-medium"
+                >
+                  <option value="">{subjects.length === 0 && scopeLoaded ? 'No subject assigned to you' : 'Select a Subject'}</option>
+                  {formData.subjectId && !subjects.some(sub => sub.id === formData.subjectId) && (
+                    <option value={formData.subjectId}>{editingPlan?.subjectName || 'Current subject'}</option>
+                  )}
+                  {subjects.map(sub => (
+                    <option key={sub.id} value={sub.id}>
+                      {sub.name}{sub.code ? ` (${sub.code})` : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -610,7 +606,7 @@ export default function LessonPlans() {
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">Export Lesson Plans</h3>
                 <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5 font-medium">Select columns to include in the exported Excel spreadsheet</p>
               </div>
-              <button 
+              <button
                 onClick={() => setShowExportModal(false)}
                 className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300 rounded-xl transition-colors"
               >
@@ -656,11 +652,11 @@ export default function LessonPlans() {
               {/* Checkbox Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 {availableFieldsList.map((field) => (
-                  <label 
+                  <label
                     key={field.key}
                     className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50/50 cursor-pointer select-none transition-colors"
                   >
-                    <input 
+                    <input
                       type="checkbox"
                       checked={selectedFields[field.key]}
                       onChange={() => handleFieldToggle(field.key)}
