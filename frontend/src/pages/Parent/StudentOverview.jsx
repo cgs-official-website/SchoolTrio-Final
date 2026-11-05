@@ -6,6 +6,7 @@ import { getStudentInvoices } from '../../api/invoices';
 import { getStudentAttendance } from '../../api/attendance';
 import { listAssessments, getStudentAssessmentGrade } from '../../api/assessments';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import AiDailyBriefing from '../../components/AiDailyBriefing';
 import { LuCircleUser as _UserCircle, LuCalendar as Calendar, LuGraduationCap as GraduationCap, LuCircleCheck as CheckCircle2, LuTrendingUp as TrendingUp, LuTriangleAlert as AlertTriangle, LuCreditCard as CreditCard, LuArrowRight as ArrowRight } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 
@@ -303,7 +304,8 @@ export default function StudentOverview() {
     : Math.round(((attendanceStats.present + attendanceStats.late) / attendanceStats.total) * 100);
 
   return (
-    <div className="p-4 sm:p-8 max-w-7xl mx-auto pb-24 min-w-0 w-full">
+    <div className="p-4 sm:p-8 max-w-7xl mx-auto pb-24 min-w-0 w-full space-y-6">
+      <AiDailyBriefing stats={{ attendanceTotal: attendanceStats.total, attendancePresent: attendanceStats.present }} />
       {/* Student Header */}
       <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden mb-8 w-full">
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>

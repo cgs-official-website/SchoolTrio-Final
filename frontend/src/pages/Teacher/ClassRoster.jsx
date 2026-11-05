@@ -12,6 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { isMale, isFemale, normalizeGender } from '../../utils/genderUtils';
 import { formatClassSection, getSectionName, flattenClassesWithSections } from '../../utils/classSorting';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import AiDailyBriefing from '../../components/AiDailyBriefing';
 
 export default function ClassRoster() {
   const { userProfile } = useAuth();
@@ -282,7 +283,8 @@ export default function ClassRoster() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto pb-24">
+    <div className="p-8 max-w-7xl mx-auto pb-24 space-y-6">
+      <AiDailyBriefing stats={{ assignedClassesCount: classList.length }} />
       <div className="mb-6 bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-8 text-white shadow-lg relative overflow-hidden">
         {/* Decorative elements */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>

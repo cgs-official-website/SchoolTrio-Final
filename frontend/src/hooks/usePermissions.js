@@ -85,8 +85,10 @@ export default function usePermissions() {
     }
 
     // Direct superadmin / school admin optimization from profile if already known
-    const isDirectAdmin = userProfile.role === 'admin';
-    const isDirectSuperAdmin = userProfile.role === 'superadmin';
+    const roleLower = String(userProfile.role || '').toLowerCase();
+    const systemRoleLower = String(userProfile.systemRole || '').toLowerCase();
+    const isDirectAdmin = ['admin', 'school_admin', 'schooladmin'].includes(roleLower) || ['admin', 'school_admin'].includes(systemRoleLower);
+    const isDirectSuperAdmin = ['superadmin', 'super_admin'].includes(roleLower) || ['superadmin', 'super_admin'].includes(systemRoleLower);
 
     if (isDirectAdmin || isDirectSuperAdmin) {
       setIsSchoolAdmin(isDirectAdmin);

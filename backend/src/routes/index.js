@@ -45,6 +45,7 @@ import emailTemplateRoutes from '../modules/email-templates/email-templates.rout
 import { platformBrandingRouter } from '../modules/platform-branding/platform-branding.routes.js';
 import { emailsRouter } from '../modules/emails/emails.routes.js';
 import { publicContactMessagesRouter, superAdminContactMessagesRouter } from '../modules/contact-messages/contact-messages.routes.js';
+import dashboardRoutes from '../modules/dashboard/dashboard.routes.js';
 
 const router = Router();
 
@@ -339,6 +340,11 @@ router.use('/platform/branding', platformBrandingRouter);
  */
 router.use('/emails', emailsRouter);
 
+
+/**
+ * Dynamic Dashboard & AI Briefing Endpoints mounted under /api/v1/dashboard
+ */
+router.use('/dashboard', dashboardRoutes);
 
 /**
  * API v1 Foundation Root Status Endpoint

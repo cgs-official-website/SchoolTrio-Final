@@ -11,6 +11,8 @@ import { listStaff } from '../../api/staff';
 import { listClasses } from '../../api/classes';
 import { listNotices } from '../../api/notices';
 import { listPayroll } from '../../api/hr-payroll';
+import usePermissions from '../../hooks/usePermissions';
+
 import ConfirmModal from '../../components/ConfirmModal';
 import toast from 'react-hot-toast';
 import { 
@@ -45,10 +47,23 @@ export default function AdminOverview() {
   const navigate = useNavigate();
   const schoolId = userProfile?.schoolId;
 
-  const hasModule = (moduleKey) => {
-    if (userProfile?.role === 'superadmin') return true;
-    return userProfile?.permittedModules?.includes(moduleKey) ?? true;
-  };
+  const { canRead, isUnrestricted, loading: permissionsLoading } = usePermissions();
+
+  const hasModule = useCallback((moduleKey) => {
+    const roleLower = String(userProfile?.role || '').toLowerCase();
+    const systemRoleLower = String(userProfile?.systemRole || '').toLowerCase();
+    if (
+      roleLower === 'superadmin' ||
+      roleLower === 'admin' ||
+      roleLower === 'school_admin' ||
+      systemRoleLower === 'school_admin' ||
+      systemRoleLower === 'admin' ||
+      isUnrestricted
+    ) {
+      return true;
+    }
+    return Boolean(canRead(moduleKey));
+  }, [userProfile?.role, userProfile?.systemRole, isUnrestricted, canRead]);
 
   const [stats, setStats] = useState({
     students: 0,
@@ -77,7 +92,7 @@ export default function AdminOverview() {
 
   // Customization State
   const defaultConfig = {
-    metrics: { students: true, staff: true, classes: true, notices: true },
+    metrics: { students: true, staff: true, classes: true, notices: true, fees: true, payroll: true, calendar: true },
     widgets: { recentNotices: true, systemStatus: true, quickActions: true, attendanceSummary: true }
   };
   const [config, setConfig] = useState(defaultConfig);
@@ -159,29 +174,29 @@ export default function AdminOverview() {
 
   // Targeted Fetch Callbacks for Live Synchronization
   const fetchStudentsCount = useCallback(async () => {
-    if (!schoolId) return;
+    if (!schoolId || !hasModule('students')) return;
     try {
       const res = await listStudents({ limit: 1 });
-      const count = res?.pagination?.total ?? (Array.isArray(res?.data) ? res.data.length : 0);
+      const count = Number(res?.pagination?.total ?? (Array.isArray(res?.data) ? res.data.length : 0));
       setStats(prev => ({ ...prev, students: count }));
     } catch (err) {
       console.error('[AdminOverview] Error fetching students count:', err);
     }
-  }, [schoolId]);
+  }, [schoolId, hasModule]);
 
   const fetchStaffCount = useCallback(async () => {
-    if (!schoolId) return;
+    if (!schoolId || !hasModule('staff')) return;
     try {
       const res = await listStaff({ limit: 1 });
-      const count = res?.pagination?.total ?? (Array.isArray(res?.data) ? res.data.length : 0);
+      const count = Number(res?.pagination?.total ?? (Array.isArray(res?.data) ? res.data.length : 0));
       setStats(prev => ({ ...prev, staff: count }));
     } catch (err) {
       console.error('[AdminOverview] Error fetching staff count:', err);
     }
-  }, [schoolId]);
+  }, [schoolId, hasModule]);
 
   const fetchClassesCount = useCallback(async () => {
-    if (!schoolId) return;
+    if (!schoolId || !hasModule('classes')) return;
     try {
       const res = await listClasses({ limit: 100 });
       const classesData = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
@@ -195,10 +210,10 @@ export default function AdminOverview() {
     } catch (err) {
       console.error('[AdminOverview] Error fetching classes count:', err);
     }
-  }, [schoolId]);
+  }, [schoolId, hasModule]);
 
   const fetchNoticesData = useCallback(async () => {
-    if (!schoolId) return;
+    if (!schoolId || !hasModule('noticeboard')) return;
     try {
       const res = await listNotices({ limit: 10 });
       const noticesData = Array.isArray(res?.data) ? res.data : [];
@@ -207,10 +222,10 @@ export default function AdminOverview() {
     } catch (err) {
       console.error('[AdminOverview] Error fetching notices data:', err);
     }
-  }, [schoolId]);
+  }, [schoolId, hasModule]);
 
   const fetchPayrollStats = useCallback(async () => {
-    if (!schoolId) return;
+    if (!schoolId || !hasModule('hr-payroll')) return;
     try {
       const res = await listPayroll({ limit: 50 });
       const payrollData = Array.isArray(res?.data) ? res.data : [];
@@ -224,10 +239,10 @@ export default function AdminOverview() {
     } catch (err) {
       console.error('[AdminOverview] Error fetching payroll stats:', err);
     }
-  }, [schoolId]);
+  }, [schoolId, hasModule]);
 
   const fetchInvoiceStats = useCallback(async () => {
-    if (!schoolId) return;
+    if (!schoolId || !hasModule('fees')) return;
     try {
       const res = await getInvoiceStats();
       const statsData = res?.data || res || {};
@@ -240,10 +255,10 @@ export default function AdminOverview() {
     } catch (err) {
       console.error('[AdminOverview] Error fetching invoice stats:', err);
     }
-  }, [schoolId]);
+  }, [schoolId, hasModule]);
 
   const fetchAttendanceAlerts = useCallback(async () => {
-    if (!schoolId) return;
+    if (!schoolId || !hasModule('attendance')) return;
     try {
       const res = await notificationsApi.listNotifications({
         type: 'attendance_pending',
@@ -260,10 +275,10 @@ export default function AdminOverview() {
     } catch (error) {
       console.error('[AdminOverview] Error fetching pending attendance alerts from REST:', error);
     }
-  }, [schoolId]);
+  }, [schoolId, hasModule]);
 
   const fetchCalendarEvents = useCallback(async () => {
-    if (!schoolId) return;
+    if (!schoolId || !hasModule('calendar')) return;
     try {
       const todayStr = new Date().toISOString().split('T')[0];
       const res = await calendarApi.listEvents({ startDate: todayStr });
@@ -272,25 +287,26 @@ export default function AdminOverview() {
     } catch (error) {
       console.error('[AdminOverview] Error fetching calendar events from REST:', error);
     }
-  }, [schoolId]);
+  }, [schoolId, hasModule]);
 
-  // Initial load
+  // Initial load - scoped strictly to permitted modules
   useEffect(() => {
-    if (!schoolId) return;
+    if (!schoolId || permissionsLoading) return;
 
     let isMounted = true;
     setLoading(true);
 
-    Promise.allSettled([
-      fetchStudentsCount(),
-      fetchStaffCount(),
-      fetchClassesCount(),
-      fetchNoticesData(),
-      fetchPayrollStats(),
-      fetchInvoiceStats(),
-      fetchAttendanceAlerts(),
-      fetchCalendarEvents()
-    ]).finally(() => {
+    const tasks = [];
+    if (hasModule('students')) tasks.push(fetchStudentsCount());
+    if (hasModule('staff')) tasks.push(fetchStaffCount());
+    if (hasModule('classes')) tasks.push(fetchClassesCount());
+    if (hasModule('noticeboard')) tasks.push(fetchNoticesData());
+    if (hasModule('hr-payroll')) tasks.push(fetchPayrollStats());
+    if (hasModule('fees')) tasks.push(fetchInvoiceStats());
+    if (hasModule('attendance')) tasks.push(fetchAttendanceAlerts());
+    if (hasModule('calendar')) tasks.push(fetchCalendarEvents());
+
+    Promise.allSettled(tasks).finally(() => {
       if (isMounted) {
         setLoading(false);
       }
@@ -301,6 +317,8 @@ export default function AdminOverview() {
     };
   }, [
     schoolId,
+    permissionsLoading,
+    hasModule,
     fetchStudentsCount,
     fetchStaffCount,
     fetchClassesCount,
@@ -331,6 +349,7 @@ export default function AdminOverview() {
   const allStatCards = [
     {
       id: 'students',
+      moduleKey: 'students',
       title: "Total Students",
       value: stats.students,
       icon: <GraduationCap className="h-6 w-6 text-blue-600" />,
@@ -339,6 +358,7 @@ export default function AdminOverview() {
     },
     {
       id: 'staff',
+      moduleKey: 'staff',
       title: "Teaching Staff",
       value: stats.staff,
       icon: <Users className="h-6 w-6 text-purple-600" />,
@@ -347,6 +367,7 @@ export default function AdminOverview() {
     },
     {
       id: 'classes',
+      moduleKey: 'classes',
       title: "Active Classes",
       value: stats.classes,
       icon: <BookOpen className="h-6 w-6 text-green-600" />,
@@ -355,15 +376,46 @@ export default function AdminOverview() {
     },
     {
       id: 'notices',
+      moduleKey: 'noticeboard',
       title: "School Notices",
       value: stats.notices,
       icon: <Bell className="h-6 w-6 text-amber-600" />,
       bg: "bg-amber-50",
       trend: `${recentNotices.length} new this week`
+    },
+    {
+      id: 'fees',
+      moduleKey: 'fees',
+      title: "Fee Collection",
+      value: `${systemStatus.feeCollectedPct}%`,
+      icon: <Wallet className="h-6 w-6 text-emerald-600" />,
+      bg: "bg-emerald-50",
+      trend: systemStatus.feesActive ? 'Active invoices' : 'No invoices'
+    },
+    {
+      id: 'payroll',
+      moduleKey: 'hr-payroll',
+      title: "Payroll Status",
+      value: systemStatus.payrollProcessed ? 'Processed' : 'Pending',
+      icon: <Briefcase className="h-6 w-6 text-indigo-600" />,
+      bg: "bg-indigo-50",
+      trend: systemStatus.payrollActive ? 'Payroll active' : 'No records'
+    },
+    {
+      id: 'calendar',
+      moduleKey: 'calendar',
+      title: "Upcoming Events",
+      value: systemStatus.activeEvents,
+      icon: <Calendar className="h-6 w-6 text-cyan-600" />,
+      bg: "bg-cyan-50",
+      trend: `${systemStatus.activeEvents} scheduled event${systemStatus.activeEvents !== 1 ? 's' : ''}`
     }
   ];
 
-  const visibleStatCards = allStatCards.filter(card => config.metrics[card.id] !== false);
+  const visibleStatCards = allStatCards.filter(card => {
+    if (!hasModule(card.moduleKey)) return false;
+    return config.metrics[card.id] !== false;
+  });
 
   return (
     <div className="p-8 max-w-7xl mx-auto pb-24">
@@ -448,7 +500,7 @@ export default function AdminOverview() {
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
         {/* Pending Attendance Alerts */}
-        {pendingAttendanceAlerts.length > 0 && (
+        {pendingAttendanceAlerts.length > 0 && hasModule('attendance') && (
           <div className="col-span-1 rounded-xl bg-white dark:bg-slate-900 shadow-sm border border-red-200 overflow-hidden">
             <div className="border-b border-red-100 px-6 py-4 bg-red-50/55 flex items-center justify-between">
               <h2 className="text-base font-bold text-red-800 flex items-center gap-2">
@@ -480,7 +532,7 @@ export default function AdminOverview() {
         )}
 
         {/* Recent Notices */}
-        {config.widgets.recentNotices !== false && (
+        {config.widgets.recentNotices !== false && hasModule('noticeboard') && (
           <div className="col-span-1 rounded-xl bg-white dark:bg-slate-900 shadow-sm border border-slate-200 dark:border-slate-700">
             <div className="border-b border-slate-100 dark:border-slate-800 px-6 py-4">
               <h2 className="text-base font-semibold text-slate-900 dark:text-white">Recent Notices</h2>
@@ -602,33 +654,42 @@ export default function AdminOverview() {
             </div>
             <div className="p-6 flex-1 flex flex-col justify-center">
               <div className="grid grid-cols-2 gap-4 h-full">
-                <button onClick={() => navigate('/admin/students')} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
+                {hasModule('students') && (
+                  <button onClick={() => navigate('/admin/students')} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
                   <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                     <UserPlus size={20} />
                   </div>
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 text-center">Add Student</span>
                 </button>
-                <button onClick={() => navigate('/admin/staff')} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
+                )}
+                {hasModule('staff') && (
+                  <button onClick={() => navigate('/admin/staff')} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
                   <div className="w-10 h-10 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                     <Users size={20} />
                   </div>
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 text-center">Add Staff</span>
                 </button>
-                <button onClick={() => navigate('/admin/attendance')} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
+                )}
+                {hasModule('attendance') && (
+                  <button onClick={() => navigate('/admin/attendance')} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
                   <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                     <ClipboardCheck size={20} />
                   </div>
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 text-center">Mark Attendance</span>
                 </button>
-                <button onClick={() => navigate('/admin/notices')} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
+                )}
+                {hasModule('noticeboard') && (
+                  <button onClick={() => navigate('/admin/notices')} className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors group">
                   <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                     <FileEdit size={20} />
                   </div>
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 text-center">Create Notice</span>
                 </button>
-                <button 
-                  onClick={() => {
-                    setConfirmModal({
+                )}
+                {isUnrestricted && (
+                  <button 
+                    onClick={() => {
+                      setConfirmModal({
                       isOpen: true,
                       title: "Cleanup Audio Files",
                       message: "Are you sure you want to delete all chat audio messages older than 7 days? This action cannot be undone.",
@@ -654,13 +715,14 @@ export default function AdminOverview() {
                   </div>
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 text-center">{isCleaningAudio ? 'Cleaning...' : 'Cleanup DB Space'}</span>
                 </button>
+                )}
               </div>
             </div>
           </div>
         )}
 
         {/* Attendance Summary */}
-        {config.widgets.attendanceSummary !== false && (
+        {config.widgets.attendanceSummary !== false && hasModule('attendance') && (
           <div className="col-span-1 rounded-xl bg-white dark:bg-slate-900 shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col">
             <div className="border-b border-slate-100 dark:border-slate-800 px-6 py-4 shrink-0">
               <h2 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
