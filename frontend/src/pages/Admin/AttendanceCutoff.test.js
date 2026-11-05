@@ -57,7 +57,7 @@ describe('ATT-002: Dynamic Attendance Cutoff Configuration & Timezone Enforcemen
     });
 
     it('renders amber cutoff warning banner with dynamic cutoffTime in daily mode', () => {
-      expect(teacherContent).toContain("{viewMode === 'daily' && isPastCutoff && !hasExistingRecord && (");
+      expect(teacherContent).toMatch(/viewMode === 'daily' && (selectedSession !== 'AN' && )?isPastCutoff && !hasExistingRecord/);
       expect(teacherContent).toContain('Attendance not marked — past cutoff ({cutoffTime})');
     });
 
