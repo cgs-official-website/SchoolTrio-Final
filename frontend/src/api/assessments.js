@@ -145,6 +145,10 @@ export async function deleteAssessmentGrade(assessmentId, studentId) {
   });
 }
 
+export async function getMyAssessmentScope() {
+  return apiClient('/api/v1/assessments/my-scope', { method: 'GET' });
+}
+
 export const assessmentsApi = {
   listAssessments,
   getAssessment,
@@ -154,7 +158,8 @@ export const assessmentsApi = {
   getAssessmentGrades,
   getStudentAssessmentGrade,
   bulkUpsertAssessmentGrades,
-  deleteAssessmentGrade
+  deleteAssessmentGrade,
+  getMyAssessmentScope
 };
 
 export default assessmentsApi;

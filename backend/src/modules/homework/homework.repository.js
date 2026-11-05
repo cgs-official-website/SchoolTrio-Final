@@ -1,6 +1,28 @@
 import { prisma } from '../../database/prisma.client.js';
 
 /**
+ * HomeworkAssignment.subjectId is required (non-null), so drop the
+ * `{ subjectId: null }` branches that the shared scope filter emits.
+ */
+function toHomeworkScopeFilter(scopeFilter) {
+  return scopeFilter.map((entry) => {
+    if (!Array.isArray(entry.AND)) return entry;
+    return {
+      ...entry,
+      AND: entry.AND.map((clause) => {
+        if (Array.isArray(clause.OR)) {
+          const kept = clause.OR.filter((c) => !('subjectId' in c && c.subjectId === null));
+          if (kept.length !== clause.OR.length) {
+            return kept.length === 1 ? kept[0] : { OR: kept };
+          }
+        }
+        return clause;
+      })
+    };
+  });
+}
+
+/**
  * Homework Repository Layer
  *
  * Strict Multi-Tenant Rules:
@@ -27,6 +49,7 @@ export async function findStudentInTenant(schoolId, studentId, tx = prisma) {
       id: true,
       schoolId: true,
       classId: true,
+      sectionId: true,
       firstName: true,
       lastName: true,
       admissionNumber: true,
@@ -55,7 +78,8 @@ export async function findStudentsInClass(schoolId, classId, studentIds, tx = pr
       id: true,
       admissionNumber: true,
       firstName: true,
-      lastName: true
+      lastName: true,
+      sectionId: true,
     }
   });
 }
@@ -209,6 +233,18 @@ export async function findHomeworkList(schoolId, options = {}, tx = prisma) {
     ];
   }
 
+  const and = [];
+  if (options.sectionId) {
+    and.push({ OR: [{ sectionId: null }, { sectionId: options.sectionId }] });
+  }
+
+  if (options.scopeFilter) {
+    and.push({ OR: toHomeworkScopeFilter(options.scopeFilter) });
+  }
+
+  if (and.length) where.AND = and;
+
+
   const sortField = options.sort === 'dueDate' ? 'dueDate' : options.sort === 'title' ? 'title' : 'createdAt';
   const sortOrder = options.order === 'asc' ? 'asc' : 'desc';
 
@@ -225,6 +261,12 @@ export async function findHomeworkList(schoolId, options = {}, tx = prisma) {
             id: true,
             name: true
           }
+        },
+        section: { 
+          select: { 
+            id: true, 
+            name: true 
+          } 
         },
         subject: {
           select: {
@@ -269,6 +311,12 @@ export async function findHomeworkById(schoolId, homeworkId, tx = prisma) {
           classTeacherId: true
         }
       },
+      section: { 
+        select: { 
+          id: true, 
+          name: true 
+        } 
+      },
       subject: {
         select: {
           id: true,
@@ -308,7 +356,8 @@ export async function findHomeworkWithRoster(schoolId, homeworkId, tx = prisma) 
               firstName: true,
               lastName: true,
               admissionNumber: true,
-              rollNumber: true
+              rollNumber: true,
+              sectionId: true,
             },
             orderBy: [
               { rollNumber: 'asc' },
@@ -316,6 +365,12 @@ export async function findHomeworkWithRoster(schoolId, homeworkId, tx = prisma) 
             ]
           }
         }
+      },
+      section: { 
+        select: { 
+          id: true, 
+          name: true 
+        } 
       },
       subject: {
         select: {
@@ -357,6 +412,7 @@ export async function createHomework(schoolId, data, tx = prisma) {
       title: data.title,
       description: data.description || null,
       classId: data.classId,
+      sectionId: data.sectionId || null,
       subjectId: data.subjectId,
       dueDate: data.dueDate,
       attachments: data.attachments || null
@@ -367,6 +423,12 @@ export async function createHomework(schoolId, data, tx = prisma) {
           id: true,
           name: true
         }
+      },
+      section: { 
+        select: { 
+          id: true, 
+          name: true 
+        } 
       },
       subject: {
         select: {
@@ -401,6 +463,12 @@ export async function updateHomework(schoolId, homeworkId, data, tx = prisma) {
           id: true,
           name: true
         }
+      },
+      section: { 
+        select: { 
+          id: true, 
+          name: true 
+        } 
       },
       subject: {
         select: {
@@ -540,6 +608,10 @@ export async function findStudentHomeworkList(schoolId, classId, studentId, opti
     ];
   }
 
+  if (options.sectionId) {
+    where.AND = [{ OR: [{ sectionId: null }, { sectionId: options.sectionId }] }];
+  }
+
   const sortField = options.sort === 'createdAt' ? 'createdAt' : 'dueDate';
   const sortOrder = options.order === 'desc' ? 'desc' : 'asc';
 
@@ -556,6 +628,12 @@ export async function findStudentHomeworkList(schoolId, classId, studentId, opti
             id: true,
             name: true
           }
+        },
+        section: { 
+          select: { 
+            id: true, 
+            name: true 
+          } 
         },
         subject: {
           select: {
@@ -600,6 +678,10 @@ export async function countHomeworkSince(schoolId, options = {}, tx = prisma) {
 
   if (options.classIds && options.classIds.length > 0) {
     where.classId = { in: options.classIds };
+  }
+
+  if (options.scopeFilter) {
+    where.AND = [{ OR: toHomeworkScopeFilter(options.scopeFilter) }];
   }
 
   if (options.sinceDate) {

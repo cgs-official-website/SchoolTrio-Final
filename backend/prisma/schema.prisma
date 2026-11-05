@@ -355,6 +355,7 @@ model Section {
   students           Student[]
   timetablePeriods   TimetablePeriod[]
   attendanceSessions AttendanceSession[]
+  homeworkAssignments HomeworkAssignment[]
 
   @@unique([schoolId, id])
   @@unique([schoolId, classId, name])
@@ -788,6 +789,7 @@ model HomeworkAssignment {
   title       String   @db.VarChar(200)
   description String?  @db.Text
   classId     String   @map("class_id") @db.Uuid
+  sectionId   String?  @map("section_id") @db.Uuid
   subjectId   String   @map("subject_id") @db.Uuid
   dueDate     String   @map("due_date") @db.VarChar(10)
   attachments Json?
@@ -796,11 +798,13 @@ model HomeworkAssignment {
 
   class       Class                @relation(fields: [schoolId, classId], references: [schoolId, id], onDelete: Cascade)
   subject     Subject              @relation(fields: [schoolId, subjectId], references: [schoolId, id], onDelete: Cascade)
+  section     Section?             @relation(fields: [sectionId], references: [id], onDelete: SetNull)
   submissions HomeworkSubmission[]
 
   @@unique([schoolId, id])
   @@index([schoolId, classId])
   @@index([schoolId, classId, createdAt])
+  @@index([schoolId, classId, sectionId])
   @@map("homework_assignments")
 }
 

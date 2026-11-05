@@ -33,6 +33,11 @@ export async function findAssessments(schoolId, query = {}, pagination = {}) {
     ];
   }
 
+  if (query.scopeFilter) {
+    where.AND = [...(where.AND || []), { OR: query.scopeFilter }];
+  }
+
+
   if (query.subjectId) {
     where.subjectId = query.subjectId;
   }

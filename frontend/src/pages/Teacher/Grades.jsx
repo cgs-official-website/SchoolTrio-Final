@@ -6,12 +6,12 @@ import {
   createAssessment,
   getAssessmentGrades, 
   bulkUpsertAssessmentGrades, 
-  deleteAssessmentGrade 
+  deleteAssessmentGrade,
+  getMyAssessmentScope
 } from '../../api/assessments';
 import { publishReportCards } from '../../api/reportCards';
 import { getReportCardTemplate } from '../../api/reportCardTemplates';
 import { listExams } from '../../api/exams';
-import { listClasses } from '../../api/classes';
 import { listSubjects } from '../../api/subjects';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { notifyDataChanged } from '../../utils/liveData';
@@ -25,76 +25,41 @@ export default function Grades() {
   const { userProfile } = useAuth();
   const schoolId = userProfile?.schoolId;
 
-  // Extract all teacher assigned subjects
-  const teacherSubjectIds = useMemo(() => [
-    ...(Array.isArray(userProfile?.customData?.assignments?.assignedSubjectIds) ? userProfile.customData.assignments.assignedSubjectIds : []),
-    ...(Array.isArray(userProfile?.staffProfile?.customData?.assignments?.assignedSubjectIds) ? userProfile.staffProfile.customData.assignments.assignedSubjectIds : []),
-    ...(Array.isArray(userProfile?.assignedSubjectIds) ? userProfile.assignedSubjectIds : []),
-    ...(Array.isArray(userProfile?.customData?.assignedSubjectIds) ? userProfile.customData.assignedSubjectIds : [])
-  ].filter(Boolean), [userProfile]);
-
-  // Extract all teacher assigned classes
-  const teacherClassIds = useMemo(() => [
-    userProfile?.assignedClassId,
-    userProfile?.staffProfile?.assignedClassId,
-    userProfile?.customData?.assignments?.assignedClassId,
-    userProfile?.staffProfile?.customData?.assignments?.assignedClassId,
-    ...(Array.isArray(userProfile?.customData?.assignments?.subjectClassIds) ? userProfile.customData.assignments.subjectClassIds : []),
-    ...(Array.isArray(userProfile?.staffProfile?.customData?.assignments?.subjectClassIds) ? userProfile.staffProfile.customData.assignments.subjectClassIds : []),
-    ...(Array.isArray(userProfile?.customData?.subjectClassIds) ? userProfile.customData.subjectClassIds : []),
-    ...(Array.isArray(userProfile?.subjectClassIds) ? userProfile.subjectClassIds : [])
-  ].filter(Boolean), [userProfile]);
-
-  const [allClasses, setAllClasses] = useState([]);
+  const [scopeUnits, setScopeUnits] = useState([]);
+  const [scopeLoading, setScopeLoading] = useState(true);
   const [allSubjects, setAllSubjects] = useState([]);
   const [reportTemplate, setReportTemplate] = useState(null);
 
-  // Compute available classes for the teacher with proper names
-  const availableClasses = useMemo(() => {
-    if (allClasses.length > 0) {
-      if (teacherClassIds.length > 0) {
-        const filtered = allClasses.filter(c => teacherClassIds.includes(c.id));
-        if (filtered.length > 0) return filtered;
-      }
-      return allClasses;
-    }
+  const availableUnits = scopeUnits;
+  const [selectedUnitId, setSelectedUnitId] = useState(null);
 
-    // Fallback before classes list loads
-    const fallbackList = [
-      userProfile?.assignedClassId ? { id: userProfile.assignedClassId, name: userProfile.assignedClass?.name || 'Assigned Class' } : null,
-      ...(Array.isArray(userProfile?.customData?.assignments?.subjectClassIds) ? userProfile.customData.assignments.subjectClassIds.map(id => ({ id, name: `Class (${id.substring(0, 8)})` })) : []),
-      ...(Array.isArray(userProfile?.staffProfile?.customData?.assignments?.subjectClassIds) ? userProfile.staffProfile.customData.assignments.subjectClassIds.map(id => ({ id, name: `Class (${id.substring(0, 8)})` })) : [])
-    ].filter(Boolean);
-
-    return Array.from(new Map(fallbackList.map(c => [c.id, c])).values());
-  }, [allClasses, teacherClassIds, userProfile]);
-
-  const initialClassId = userProfile?.assignedClassId || 
-    userProfile?.customData?.assignments?.subjectClassIds?.[0] || 
-    userProfile?.staffProfile?.customData?.assignments?.subjectClassIds?.[0] || 
-    availableClasses[0]?.id || null;
-
-  const [selectedClassId, setSelectedClassId] = useState(initialClassId);
-  const classId = selectedClassId;
-
-  // Ensure selectedClassId stays valid when availableClasses populate
   useEffect(() => {
-    if (availableClasses.length > 0) {
-      if (!selectedClassId || !availableClasses.some(c => c.id === selectedClassId)) {
-        setSelectedClassId(availableClasses[0].id);
-      }
+    if (availableUnits.length === 0) return;
+    if (!selectedUnitId || !availableUnits.some((u) => u.id === selectedUnitId)) {
+      setSelectedUnitId((availableUnits.find((u) => u.canEnterMarks) || availableUnits[0]).id);
     }
-  }, [availableClasses, selectedClassId]);
+  }, [availableUnits, selectedUnitId]);
 
-  const isClassTeacher = Boolean(
-    (userProfile?.assignedClassId && userProfile?.assignedClassId === classId) ||
-    (userProfile?.customData?.assignments?.assignedClassId && userProfile.customData.assignments.assignedClassId === classId) ||
-    (userProfile?.staffProfile?.customData?.assignments?.assignedClassId && userProfile.staffProfile.customData.assignments.assignedClassId === classId)
+  const selectedUnit = useMemo(
+    () => availableUnits.find((u) => u.id === selectedUnitId) || null,
+    [availableUnits, selectedUnitId]
   );
+  const classId = selectedUnit?.classId || null;
+  const sectionId = selectedUnit?.sectionId || null;
+  const isClassTeacher = Boolean(selectedUnit?.isClassTeacher);
+  const canEnterMarksInClass = Boolean(selectedUnit?.canEnterMarks);
+  const subjectsForSelectedClass = useMemo(() => {
+    const ids = selectedUnit?.teachingSubjectIds;
+    return ids ? allSubjects.filter((s) => ids.includes(s.id)) : allSubjects;
+  }, [selectedUnit, allSubjects]);
 
   const [students, setStudents] = useState([]);
   const [assessments, setAssessments] = useState([]);
   const [exams, setExams] = useState([]);
+  const examsForSelectedClass = useMemo(
+    () => exams.filter((e) => !e.classId || e.classId === classId),
+    [exams, classId]
+  );
   const [loading, setLoading] = useState(true);
 
   // Active Assessment State
@@ -110,6 +75,7 @@ export default function Grades() {
   const [successMsg, setSuccessMsg] = useState('');
   const selectedAssessmentIdRef = useRef(null);
   const currentClassIdRef = useRef(classId);
+  const currentSectionIdRef = useRef(sectionId);
   const mountedRef = useRef(true);
 
   // Create Modal State
@@ -127,19 +93,15 @@ export default function Grades() {
 
   const fetchMetadata = useCallback(async () => {
     try {
-      const [examsRes, classesRes, subjectsRes, templateRes] = await Promise.all([
+      const [examsRes, scopeRes, subjectsRes, templateRes] = await Promise.all([
         listExams(),
-        listClasses({ limit: 100 }),
+        getMyAssessmentScope(),
         listSubjects({ limit: 100 }),
         getReportCardTemplate('report_card').catch(() => null)
       ]);
       if (mountedRef.current) {
         setExams(examsRes?.data || []);
-        if (classesRes?.data) {
-          setAllClasses(sortClassesAscending(classesRes.data));
-        } else if (Array.isArray(classesRes)) {
-          setAllClasses(sortClassesAscending(classesRes));
-        }
+        setScopeUnits(scopeRes?.data?.units || []);
         if (subjectsRes?.data) {
           setAllSubjects(subjectsRes.data);
         } else if (Array.isArray(subjectsRes)) {
@@ -152,6 +114,8 @@ export default function Grades() {
       }
     } catch (error) {
       console.error("Error fetching metadata for grades:", error);
+    } finally {
+      if (mountedRef.current) setScopeLoading(false);
     }
   }, []);
 
@@ -169,7 +133,8 @@ export default function Grades() {
   const fetchAssessments = useCallback(async (targetClassId) => {
     try {
       const res = await listAssessments({ classId: targetClassId, limit: 100 });
-      const items = res?.data || [];
+      const sec = currentSectionIdRef.current;
+      const items = (res?.data || []).filter((a) => !sec || !a.sectionId || a.sectionId === sec);
       if (mountedRef.current && currentClassIdRef.current === targetClassId) {
         setAssessments(items);
         setActiveAssessment(prev => {
@@ -203,12 +168,18 @@ export default function Grades() {
   useEffect(() => {
     mountedRef.current = true;
     currentClassIdRef.current = classId;
+    currentSectionIdRef.current = sectionId;
 
     if (!schoolId) return;
 
     fetchMetadata();
 
     if (!classId) return;
+
+    setActiveAssessment(null);
+    setAssessments([]);
+    setStudents([]);
+    selectedAssessmentIdRef.current = null;
 
     setLoading(true);
     fetchAssessments(classId);
@@ -218,7 +189,9 @@ export default function Grades() {
         const res = await listStudents({ classId: targetClassId, limit: 100 });
         if (!mountedRef.current || currentClassIdRef.current !== targetClassId) return;
         const studentsData = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
-        const sorted = [...studentsData].sort((a, b) => (a.firstName || '').localeCompare(b.firstName || ''));
+        const sorted = [...studentsData]
+          .filter((s) => !sectionId || !s.sectionId || s.sectionId === sectionId)
+          .sort((a, b) => (a.firstName || '').localeCompare(b.firstName || ''));
         setStudents(sorted);
       } catch (err) {
         console.error('Error fetching students in Grades:', err);
@@ -233,7 +206,7 @@ export default function Grades() {
     return () => {
       mountedRef.current = false;
     };
-  }, [schoolId, classId, fetchExams, fetchAssessments]);
+}, [schoolId, selectedUnitId, classId, sectionId, fetchExams, fetchAssessments]);
 
   // Derive active assessment components from assessment or template config (only manual mark entry components)
   const activeComponents = useMemo(() => {
@@ -384,15 +357,17 @@ export default function Grades() {
         totalMarks: Number(newAssessment.totalMarks),
         date: newAssessment.date || null,
         examId: newAssessment.examId ? newAssessment.examId : null,
-        subjectId: newAssessment.subjectId || (teacherSubjectIds.length === 1 ? teacherSubjectIds[0] : null)
+        subjectId: newAssessment.subjectId || (subjectsForSelectedClass.length === 1 ? subjectsForSelectedClass[0].id : null)
       };
       const res = await createAssessment(payload);
       const createdAssessment = res?.data;
       if (!createdAssessment || !createdAssessment.id) {
         throw new Error("Failed to create assessment on server");
       }
+
+      const withAccess = { ...createdAssessment, access: { canEdit: true, isClassTeacher, canView: true } };
       
-      setAssessments(prev => [createdAssessment, ...prev]);
+      setAssessments(prev => [withAccess, ...prev]);
       setShowCreateModal(false);
       setNewAssessment({ title: '', date: new Date().toISOString().split('T')[0], totalMarks: 100, examId: '', subjectId: '' });
       toast.success("Assessment created successfully!");
@@ -400,7 +375,7 @@ export default function Grades() {
       notifyDataChanged('marks');
       
       // Auto-select the newly created assessment
-      handleSelectAssessment(createdAssessment);
+      handleSelectAssessment(withAccess);
     } catch (error) {
       console.error("Error creating assessment:", error);
       toast.error("Failed to create assessment.");
@@ -678,8 +653,16 @@ export default function Grades() {
     }
   };
 
+  if (scopeLoading || (!classId && availableUnits.length > 0)) {
+    return (
+      <div className="flex justify-center items-center h-[80vh]">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent"></div>
+      </div>
+    );
+  }
+
   if (!classId) {
-    return <div className="p-8 text-center text-slate-500 dark:text-slate-400">You must be assigned to a class to manage grades.</div>;
+    return <div className="p-8 text-center text-slate-500 dark:text-slate-400">You are not assigned to any class or subject.</div>;
   }
 
   if (loading) {
@@ -700,17 +683,19 @@ export default function Grades() {
               ? 'Class Teacher View: Full class progress overview & subject mark entry.'
               : 'Subject Teacher View: Log student performance for your assigned subject.'}
           </p>
-          {availableClasses.length > 0 && (
+          {availableUnits.length > 0 && (
             <div className="mt-3 flex items-center gap-2">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Class:</label>
               <select
-                value={selectedClassId || ''}
-                onChange={(e) => setSelectedClassId(e.target.value)}
+                value={selectedUnitId || ''}
+                onChange={(e) => setSelectedUnitId(e.target.value)}
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
               >
-                {availableClasses.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} {userProfile?.assignedClassId === c.id ? '(Class Teacher)' : ''}
+                {availableUnits.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.className}{u.sectionName ? ` - ${u.sectionName}` : ''}
+                    {u.isClassTeacher ? ' (Class Teacher)' : ''}
+                    {u.canEnterMarks ? ' (Subject Teacher)' : ''}
                   </option>
                 ))}
               </select>
@@ -726,12 +711,15 @@ export default function Grades() {
               <Printer size={18} /> Print Report Cards
             </button>
           )}
-          <button 
+          {canEnterMarksInClass && (
+            <button 
             onClick={() => setShowCreateModal(true)}
             className="w-full sm:w-auto justify-center px-4 py-2 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 shadow-sm flex items-center gap-2 transition-colors"
           >
             <Plus size={18} /> New Assessment
           </button>
+          )}
+          
         </div>
       </div>
 
@@ -811,10 +799,8 @@ export default function Grades() {
                 const linkedExam = exams.find(e => e.id === activeAssessment.examId);
                 const isLocked = activeAssessment.status === 'LOCKED' || linkedExam?.status === 'FINALIZED';
 
-                const isSubjectTeacher = activeAssessment.subjectId ? teacherSubjectIds.includes(activeAssessment.subjectId) : false;
-                const isAdmin = ['admin', 'superadmin'].includes(userProfile?.role?.toLowerCase()) || ['ADMIN', 'SUPER_ADMIN', 'SCHOOL_ADMIN'].includes(userProfile?.systemRole);
-                const canEditMarks = isAdmin || isSubjectTeacher || (!activeAssessment.subjectId && isClassTeacher) || (teacherSubjectIds.length === 0 && isClassTeacher);
-                const isViewOnlyClassTeacher = isClassTeacher && !canEditMarks;
+                const canEditMarks = Boolean(activeAssessment.access?.canEdit);
+                const isViewOnlyClassTeacher = !canEditMarks && Boolean(activeAssessment.access?.isClassTeacher);
 
                 return (
                   <>
@@ -1174,10 +1160,7 @@ export default function Grades() {
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                   >
                     <option value="">-- Select Subject (Optional) --</option>
-                    {(teacherSubjectIds.length > 0 && allSubjects.length > 0
-                      ? allSubjects.filter(s => teacherSubjectIds.includes(s.id))
-                      : allSubjects
-                    ).map(sub => (
+                    {subjectsForSelectedClass.map(sub => (
                       <option key={sub.id} value={sub.id}>
                         {sub.name} {sub.code ? `(${sub.code})` : ''}
                       </option>
@@ -1193,7 +1176,7 @@ export default function Grades() {
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                   >
                     <option value="">-- No Exam Link --</option>
-                    {exams.map(exam => (
+                    {examsForSelectedClass.map(exam => (
                       <option key={exam.id} value={exam.id}>
                         {exam.name} {exam.term ? `(${exam.term})` : ''} 
                       </option>

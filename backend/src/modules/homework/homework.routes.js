@@ -63,6 +63,14 @@ homeworkRouter.get(
   homeworkController.getUnreadHomeworkCount
 );
 
+homeworkRouter.get(
+  '/my-scope',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('homework', 'read'),
+  homeworkController.getMyScope
+);
+
 /**
  * Create Homework Assignment
  * POST /api/v1/homework

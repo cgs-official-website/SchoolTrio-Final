@@ -8,6 +8,13 @@ import {
   ForbiddenError,
   ValidationError
 } from '../../utils/app-error.js';
+import {
+  isTeacherActor,
+  getTeacherScope,
+  getAssessmentAccess,
+  buildScopeFilter
+} from '../../utils/teacher-scope.js';
+import { getMyAssessmentScope } from '../assessments/assessment.service.js';
 
 /**
  * Normalizes input attachments, remarks, and maxMarks into standard JSON storage object.
@@ -71,35 +78,28 @@ export function extractAttachmentDetails(attachmentsJson) {
   return { files: [], remarks: '', maxMarks: 0 };
 }
 
-/**
- * Validates teacher authorization for target class.
- *
- * @param {string} schoolId - Tenant UUID
- * @param {string} classId - Class UUID
- * @param {Object} actor - Authenticated user context
- */
-async function authorizeTeacherClass(schoolId, classId, actor) {
-  if (!actor) return;
 
-  const role = (actor.systemRole || actor.role || '').toUpperCase();
-  if (role === SYSTEM_ROLES.SUPER_ADMIN || role === SYSTEM_ROLES.ADMIN || role === 'SUPER_ADMIN' || role === 'ADMIN') {
-    return;
+/**
+ * Teacher authorization on class + section + subject.
+ * mode 'view': class teacher (any subject) or subject teacher (own subject).
+ * mode 'edit': subject teacher for that class-section-subject only.
+ */
+async function authorizeTeacherHomework(schoolId, { classId, sectionId = null, subjectId = null }, actor, mode = 'edit') {
+  if (!actor || !isTeacherActor(actor)) return;
+
+  const scope = await getTeacherScope(schoolId, actor.id || actor.userId);
+  if (!scope) {
+    throw new ForbiddenError('Staff profile not found for authenticated teacher');
   }
 
-  if (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
-    const userId = actor.id || actor.userId;
-    const profile = await homeworkRepository.findStaffProfileByUserId(schoolId, userId);
-
-    if (!profile) {
-      throw new ForbiddenError('Staff profile not found for authenticated teacher');
-    }
-
-    const isAssigned = profile.assignedClassId === classId;
-    const isHeading = profile.headedClasses?.some((c) => c.id === classId);
-
-    if (!isAssigned && !isHeading) {
-      throw new ForbiddenError('Teachers are only authorized to manage homework for their assigned class');
-    }
+  const access = getAssessmentAccess(scope, { classId, sectionId, subjectId });
+  const allowed = mode === 'view' ? access.canView : access.canEdit;
+  if (!allowed) {
+    throw new ForbiddenError(
+      mode === 'view'
+        ? 'You are not assigned to this class, section or subject'
+        : 'You can only manage homework for the class, section and subject you teach'
+    );
   }
 }
 
@@ -206,6 +206,8 @@ export function formatHomeworkSummary(assignment) {
     classId: assignment.classId,
     className: assignment.class?.name || null,
     subjectId: assignment.subjectId,
+    sectionId: assignment.sectionId || null,
+    sectionName: assignment.section?.name || null,
     subjectName: assignment.subject?.name || null,
     subjectCode: assignment.subject?.code || null,
     dueDate: assignment.dueDate,
@@ -230,7 +232,9 @@ export function formatHomeworkSummary(assignment) {
  */
 export function formatHomeworkDetailWithRoster(assignment) {
   const { files, remarks, maxMarks } = extractAttachmentDetails(assignment.attachments);
-  const students = assignment.class?.students || [];
+  const students = (assignment.class?.students || []).filter(
+    (s) => !assignment.sectionId || s.sectionId === assignment.sectionId
+  );
   const submissionsMap = new Map();
 
   for (const sub of assignment.submissions || []) {
@@ -270,6 +274,8 @@ export function formatHomeworkDetailWithRoster(assignment) {
     description: assignment.description || null,
     classId: assignment.classId,
     className: assignment.class?.name || null,
+    sectionId: assignment.sectionId || null,
+    sectionName: assignment.section?.name || null,
     subjectId: assignment.subjectId,
     subjectName: assignment.subject?.name || null,
     subjectCode: assignment.subject?.code || null,
@@ -305,41 +311,31 @@ export async function listHomework(schoolId, query = {}, actor = null) {
     throw new TenantAccessError('Tenant context required to list homework');
   }
 
-  const role = (actor?.systemRole || actor?.role || '').toUpperCase();
-  let effectiveClassId = query.classId;
+  let scope = null;
+  let scopeFilter = null;
 
-  // If teacher, enforce assigned class scoping
-  if (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
-    const userId = actor.id || actor.userId;
-    const profile = await homeworkRepository.findStaffProfileByUserId(schoolId, userId);
-    if (!profile || !profile.assignedClassId) {
+  if (isTeacherActor(actor)) {
+    scope = await getTeacherScope(schoolId, actor.id || actor.userId);
+    scopeFilter = scope ? buildScopeFilter(scope) : null;
+    if (!scopeFilter) {
       return {
         homeworks: [],
-        pagination: {
-          page: 1,
-          limit: 20,
-          total: 0,
-          totalPages: 1,
-          hasNextPage: false,
-          hasPrevPage: false
-        }
+        pagination: { page: 1, limit: 20, total: 0, totalPages: 1, hasNextPage: false, hasPrevPage: false }
       };
     }
-    if (effectiveClassId && effectiveClassId !== profile.assignedClassId) {
-      throw new ForbiddenError('Teachers can only access homework for their assigned class');
-    }
-    effectiveClassId = profile.assignedClassId;
   }
 
   const page = Math.max(1, Number(query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
 
   const options = {
-    classId: effectiveClassId,
+    classId: query.classId,
+    sectionId: query.sectionId,
     subjectId: query.subjectId,
     startDate: query.startDate,
     endDate: query.endDate,
     search: query.search,
+    scopeFilter,
     page,
     limit,
     sort: query.sort,
@@ -350,7 +346,12 @@ export async function listHomework(schoolId, query = {}, actor = null) {
   const totalPages = Math.ceil(total / limit) || 1;
 
   return {
-    homeworks: homeworks.map(formatHomeworkSummary),
+    homeworks: homeworks.map((hw) => ({
+      ...formatHomeworkSummary(hw),
+      access: scope
+        ? getAssessmentAccess(scope, { classId: hw.classId, sectionId: hw.sectionId, subjectId: hw.subjectId })
+        : { isClassTeacher: false, canEdit: true, canView: true }
+    })),
     pagination: {
       page,
       limit,
@@ -380,7 +381,8 @@ export async function getHomeworkById(schoolId, homeworkId, actor = null) {
     throw new NotFoundError('Homework assignment');
   }
 
-  await authorizeTeacherClass(schoolId, assignment.classId, actor);
+  await authorizeTeacherHomework(schoolId, assignment, actor, 'view');
+
 
   return formatHomeworkDetailWithRoster(assignment);
 }
@@ -398,20 +400,28 @@ export async function createHomework(schoolId, data, actor = null) {
     throw new TenantAccessError('Tenant context required to create homework');
   }
 
-  // 1. Verify Class in tenant
+  const sectionId = data.sectionId || null;
+
   const targetClass = await homeworkRepository.findClassById(schoolId, data.classId);
-  if (!targetClass) {
-    throw new NotFoundError('Class');
+  if (!targetClass) throw new NotFoundError('Class');
+
+  if (sectionId) {
+    const sec = await prisma.section.findFirst({
+      where: { id: sectionId, schoolId, classId: data.classId },
+      select: { id: true }
+    });
+    if (!sec) throw new NotFoundError('Section');
   }
 
-  // 2. Authorize teacher for class
-  await authorizeTeacherClass(schoolId, data.classId, actor);
-
-  // 3. Verify Subject in tenant
   const targetSubject = await homeworkRepository.findSubjectById(schoolId, data.subjectId);
-  if (!targetSubject) {
-    throw new NotFoundError('Subject');
-  }
+  if (!targetSubject) throw new NotFoundError('Subject');
+
+  await authorizeTeacherHomework(
+    schoolId,
+    { classId: data.classId, sectionId, subjectId: data.subjectId },
+    actor,
+    'edit'
+  );
 
   // 4. Normalize attachments, remarks, maxMarks
   const structuredAttachments = normalizeAttachments(data.attachments, data.remarks, data.maxMarks);
@@ -421,6 +431,7 @@ export async function createHomework(schoolId, data, actor = null) {
     title: data.title,
     description: data.description,
     classId: data.classId,
+    sectionId,
     subjectId: data.subjectId,
     dueDate: data.dueDate,
     attachments: structuredAttachments
@@ -436,6 +447,7 @@ export async function createHomework(schoolId, data, actor = null) {
     metadata: {
       title: created.title,
       classId: created.classId,
+      sectionId,
       subjectId: created.subjectId,
       dueDate: created.dueDate
     }
@@ -462,37 +474,53 @@ export async function updateHomework(schoolId, homeworkId, data, actor = null) {
   if (!existing) {
     throw new NotFoundError('Homework assignment');
   }
-
-  await authorizeTeacherClass(schoolId, existing.classId, actor);
+  
+  await authorizeTeacherHomework(schoolId, existing, actor, 'edit');
 
   const updatePayload = {};
-
   if (data.title !== undefined) updatePayload.title = data.title;
   if (data.description !== undefined) updatePayload.description = data.description;
   if (data.dueDate !== undefined) updatePayload.dueDate = data.dueDate;
 
-  // Class modification protection
-  if (data.classId !== undefined && data.classId !== existing.classId) {
+  const newClassId = data.classId ?? existing.classId;
+  const newSectionId =
+    data.sectionId !== undefined
+      ? (data.sectionId || null)
+      : (data.classId && data.classId !== existing.classId ? null : existing.sectionId);
+  const newSubjectId = data.subjectId ?? existing.subjectId;
+  const placementChanged = newClassId !== existing.classId || newSectionId !== existing.sectionId;
+
+  if (placementChanged) {
     const submissionCount = await homeworkRepository.countSubmissionsByHomeworkId(schoolId, homeworkId);
     if (submissionCount > 0) {
-      throw new ValidationError('Cannot change class for a homework assignment with existing student submissions');
+      throw new ValidationError('Cannot change class or section for a homework assignment with existing student submissions');
     }
-
-    const newClass = await homeworkRepository.findClassById(schoolId, data.classId);
-    if (!newClass) {
-      throw new NotFoundError('Class');
+    const newClass = await homeworkRepository.findClassById(schoolId, newClassId);
+    if (!newClass) throw new NotFoundError('Class');
+    if (newSectionId) {
+      const sec = await prisma.section.findFirst({
+        where: { id: newSectionId, schoolId, classId: newClassId },
+        select: { id: true }
+      });
+      if (!sec) throw new NotFoundError('Section');
     }
-    await authorizeTeacherClass(schoolId, data.classId, actor);
-    updatePayload.classId = data.classId;
+    updatePayload.classId = newClassId;
+    updatePayload.sectionId = newSectionId;
   }
 
-  // Subject modification
   if (data.subjectId !== undefined) {
     const newSubject = await homeworkRepository.findSubjectById(schoolId, data.subjectId);
-    if (!newSubject) {
-      throw new NotFoundError('Subject');
-    }
+    if (!newSubject) throw new NotFoundError('Subject');
     updatePayload.subjectId = data.subjectId;
+  }
+
+  if (placementChanged || newSubjectId !== existing.subjectId) {
+    await authorizeTeacherHomework(
+      schoolId,
+      { classId: newClassId, sectionId: newSectionId, subjectId: newSubjectId },
+      actor,
+      'edit'
+    );
   }
 
   // Attachments / remarks / maxMarks preservation
@@ -539,7 +567,8 @@ export async function deleteHomework(schoolId, homeworkId, actor = null) {
     throw new NotFoundError('Homework assignment');
   }
 
-  await authorizeTeacherClass(schoolId, existing.classId, actor);
+  await authorizeTeacherHomework(schoolId, existing, actor, 'edit');
+
 
   await homeworkRepository.deleteHomework(schoolId, homeworkId);
 
@@ -578,10 +607,14 @@ export async function updateStaffSubmission(schoolId, homeworkId, studentId, dat
     throw new NotFoundError('Homework assignment');
   }
 
-  await authorizeTeacherClass(schoolId, assignment.classId, actor);
+  await authorizeTeacherHomework(schoolId, assignment, actor, 'edit');
 
   const student = await homeworkRepository.findStudentInTenant(schoolId, studentId);
-  if (!student || student.classId !== assignment.classId) {
+  if (
+    !student ||
+    student.classId !== assignment.classId ||
+    (assignment.sectionId && student.sectionId !== assignment.sectionId)
+  ) {
     throw new NotFoundError('Student in assignment class');
   }
 
@@ -660,12 +693,15 @@ export async function bulkUpdateStaffSubmissions(schoolId, homeworkId, submissio
     throw new NotFoundError('Homework assignment');
   }
 
-  await authorizeTeacherClass(schoolId, assignment.classId, actor);
+  await authorizeTeacherHomework(schoolId, assignment, actor, 'edit');
 
   const studentIds = submissions.map(s => s.studentId);
   const validStudents = await homeworkRepository.findStudentsInClass(schoolId, assignment.classId, studentIds);
-  const validStudentIdSet = new Set(validStudents.map(s => s.id));
-
+  const validStudentIdSet = new Set(
+    validStudents
+      .filter((s) => !assignment.sectionId || s.sectionId === assignment.sectionId)
+      .map((s) => s.id)
+  );
   for (const sub of submissions) {
     if (!validStudentIdSet.has(sub.studentId)) {
       throw new ValidationError(`Student ${sub.studentId} does not belong to the assigned class or tenant`);
@@ -774,6 +810,7 @@ export async function getStudentHomework(schoolId, studentId, query = {}, actor 
   const limit = Math.min(100, Math.max(1, Number(query.limit) || 50));
 
   const options = {
+    sectionId: student.sectionId || null,
     subjectId: query.subjectId,
     search: query.search,
     page,
@@ -861,6 +898,10 @@ export async function updateStudentHomeworkStatus(schoolId, studentId, homeworkI
     throw new NotFoundError('Homework assignment for student class');
   }
 
+  if (assignment.sectionId && student.sectionId && assignment.sectionId !== student.sectionId) {
+    throw new NotFoundError('Homework assignment for student class');
+  }
+
   // 4. Atomic upsert submission status
   const submissionPayload = {
     status: data.status
@@ -924,15 +965,12 @@ export async function getUnreadHomeworkCount(schoolId, since = null, actor = nul
   }
 
   let count = 0;
-
-  if (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
-    const userId = actor?.id || actor?.userId;
-    const profile = await homeworkRepository.findStaffProfileByUserId(schoolId, userId);
-    if (profile?.assignedClassId) {
-      count = await homeworkRepository.countHomeworkSince(schoolId, {
-        classIds: [profile.assignedClassId],
-        sinceDate
-      });
+  
+  if (isTeacherActor(actor)) {
+    const scope = await getTeacherScope(schoolId, actor?.id || actor?.userId);
+    const scopeFilter = scope ? buildScopeFilter(scope) : null;
+    if (scopeFilter) {
+      count = await homeworkRepository.countHomeworkSince(schoolId, { scopeFilter, sinceDate });
     }
   } else if (role === SYSTEM_ROLES.PARENT || role === 'PARENT') {
     const userId = actor?.id || actor?.userId;
@@ -961,4 +999,6 @@ export async function getUnreadHomeworkCount(schoolId, since = null, actor = nul
   return { count };
 }
 
-
+export async function getMyHomeworkScope(schoolId, actor = null) {
+  return getMyAssessmentScope(schoolId, actor);
+}

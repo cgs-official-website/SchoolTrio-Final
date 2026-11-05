@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
   listHomework,
@@ -6,7 +6,8 @@ import {
   createHomework,
   updateHomework,
   deleteHomework,
-  bulkUpdateSubmissions
+  bulkUpdateSubmissions,
+  getMyHomeworkScope
 } from '../../api/homework';
 import { listClasses } from '../../api/classes';
 import { listSubjects } from '../../api/subjects';
@@ -28,7 +29,7 @@ import * as XLSX from 'xlsx';
 import { TableSkeleton } from '../../components/Skeleton';
 import { uploadFileToCloudinaryOrFirebase } from '../../utils/cloudinary';
 import usePermissions from '../../hooks/usePermissions';
-import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
+import { sortClassesAscending } from '../../utils/classSorting';
 import { notifyDataChanged } from '../../utils/liveData';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
@@ -46,8 +47,9 @@ export default function HomeworkManagement() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedClassFilter, setSelectedClassFilter] = useState('');
-
+  const [scopeUnits, setScopeUnits] = useState([]);
+  const [isScoped, setIsScoped] = useState(false);
+  const [selectedUnitFilter, setSelectedUnitFilter] = useState('');
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -68,7 +70,7 @@ export default function HomeworkManagement() {
   const [newHomework, setNewHomework] = useState({
     title: '',
     description: '',
-    classId: '',
+    unitId: '',
     subjectId: '',
     dueDate: '',
     remarks: '',
@@ -99,6 +101,14 @@ export default function HomeworkManagement() {
     { key: 'lastUpdated', label: 'Last Updated' }
   ];
 
+  const unitLabel = (u) => `${u.className}${u.sectionName ? ` - ${u.sectionName}` : ''}`;
+  const createUnits = useMemo(() => scopeUnits.filter((u) => u.canEnterMarks), [scopeUnits]);
+  const subjectsForUnit = (unitId) => {
+    const u = scopeUnits.find((x) => x.id === unitId);
+    if (!u || !u.teachingSubjectIds) return subjects;
+    return subjects.filter((s) => u.teachingSubjectIds.includes(s.id));
+  };
+
   // ============================================================
   // DATA FETCHING (REST FOR HOMEWORK, CLASSES, AND SUBJECTS)
   // ============================================================
@@ -106,10 +116,13 @@ export default function HomeworkManagement() {
   const fetchMetadata = useCallback(async () => {
     if (!schoolId) return;
     try {
-      const [classesRes, subjectsRes] = await Promise.all([
-        listClasses({ limit: 100 }),
-        listSubjects({ limit: 100 })
+      const [classesRes, subjectsRes, scopeRes] = await Promise.all([
+      listClasses({ limit: 100 }),
+      listSubjects({ limit: 100 }),
+      getMyHomeworkScope()
       ]);
+      setScopeUnits(scopeRes?.data?.units || []);
+      setIsScoped(Boolean(scopeRes?.data?.scoped));
 
       if (classesRes?.data) {
         setClasses(sortClassesAscending(classesRes.data));
@@ -190,8 +203,9 @@ export default function HomeworkManagement() {
       toast.error('Please enter a homework title.');
       return;
     }
-    if (!newHomework.classId) {
-      toast.error('Please select a class.');
+    const unit = createUnits.find((u) => u.id === newHomework.unitId);
+    if (!unit) {
+      toast.error('Please select a class and section.');
       return;
     }
     if (!newHomework.subjectId) {
@@ -226,7 +240,8 @@ export default function HomeworkManagement() {
       await createHomework({
         title: newHomework.title.trim(),
         description: newHomework.description?.trim() || null,
-        classId: newHomework.classId,
+        classId: unit.classId,
+        sectionId: unit.sectionId || null,
         subjectId: newHomework.subjectId,
         dueDate: newHomework.dueDate,
         remarks: newHomework.remarks?.trim() || '',
@@ -240,7 +255,7 @@ export default function HomeworkManagement() {
       setNewHomework({
         title: '',
         description: '',
-        classId: '',
+        unitId: '',
         subjectId: '',
         dueDate: '',
         remarks: '',
@@ -267,7 +282,14 @@ export default function HomeworkManagement() {
       id: hw.id,
       title: hw.title || '',
       description: hw.description || '',
-      classId: hw.classId || '',
+      unitId: (
+        createUnits.find((u) => u.classId === hw.classId && u.sectionId === (hw.sectionId || null)) ||
+        createUnits.find((u) => u.classId === hw.classId)
+      )?.id || '',
+      originalUnitId: (
+        createUnits.find((u) => u.classId === hw.classId && u.sectionId === (hw.sectionId || null)) ||
+        createUnits.find((u) => u.classId === hw.classId)
+      )?.id || '',
       subjectId: hw.subjectId || '',
       dueDate: hw.dueDate || '',
       remarks: hw.remarks || '',
@@ -285,8 +307,9 @@ export default function HomeworkManagement() {
       toast.error('Please enter a homework title.');
       return;
     }
-    if (!editingHomework.classId) {
-      toast.error('Please select a class.');
+    const unit = createUnits.find((u) => u.id === editingHomework.unitId);
+    if (!unit) {
+      toast.error('Please select a class and section.');
       return;
     }
     if (!editingHomework.subjectId) {
@@ -324,7 +347,9 @@ export default function HomeworkManagement() {
       await updateHomework(editingHomework.id, {
         title: editingHomework.title.trim(),
         description: editingHomework.description?.trim() || null,
-        classId: editingHomework.classId,
+        ...(editingHomework.unitId !== editingHomework.originalUnitId
+          ? { classId: unit.classId, sectionId: unit.sectionId || null }
+          : {}),
         subjectId: editingHomework.subjectId,
         dueDate: editingHomework.dueDate,
         remarks: editingHomework.remarks?.trim() || '',
@@ -603,7 +628,11 @@ export default function HomeworkManagement() {
       hw.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       hw.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       hw.subjectName?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesClass = !selectedClassFilter || hw.classId === selectedClassFilter;
+    const unitFilter = scopeUnits.find((u) => u.id === selectedUnitFilter);
+    const matchesClass =
+      !unitFilter ||
+      (hw.classId === unitFilter.classId &&
+        (!hw.sectionId || !unitFilter.sectionId || hw.sectionId === unitFilter.sectionId));
     return matchesSearch && matchesClass;
   });
 
@@ -636,7 +665,7 @@ export default function HomeworkManagement() {
           >
             <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
           </button>
-          {hasCreatePermission && (
+          {hasCreatePermission && (!isScoped || createUnits.length > 0) && (
             <button
               onClick={() => setShowExcelModal(true)}
               className="w-full sm:w-auto justify-center flex items-center gap-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 px-4 py-2.5 rounded-xl hover:bg-emerald-200 dark:hover:bg-emerald-900 transition-colors font-semibold"
@@ -645,7 +674,7 @@ export default function HomeworkManagement() {
               Evaluate via Excel
             </button>
           )}
-          {hasCreatePermission && (
+          {hasCreatePermission && (!isScoped || createUnits.length > 0) && (
             <button
               onClick={() => setShowCreateModal(true)}
               className="w-full sm:w-auto justify-center flex items-center gap-2 bg-primary-600 text-white px-4 py-2.5 rounded-xl hover:bg-primary-700 transition-colors font-semibold shadow-sm shadow-primary-600/20"
@@ -669,16 +698,18 @@ export default function HomeworkManagement() {
             className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none text-sm font-semibold text-slate-800 dark:text-slate-100"
           />
         </div>
-        {classes.length > 0 && (
+        {scopeUnits.length > 0 && (
           <select
-            value={selectedClassFilter}
-            onChange={(e) => setSelectedClassFilter(e.target.value)}
+            value={selectedUnitFilter}
+            onChange={(e) => setSelectedUnitFilter(e.target.value)}
             className="px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none text-sm font-semibold text-slate-800 dark:text-slate-100"
           >
             <option value="">All Classes</option>
-            {classes.map(c => (
-              <option key={c.id} value={c.id}>
-                {formatClassSection(c)}
+            {scopeUnits.map((u) => (
+              <option key={u.id} value={u.id}>
+                {unitLabel(u)}
+                {isScoped && u.isClassTeacher ? ' (Class Teacher)' : ''}
+                {isScoped && u.canEnterMarks ? ' (Subject Teacher)' : ''}
               </option>
             ))}
           </select>
@@ -692,7 +723,7 @@ export default function HomeworkManagement() {
             <FileText size={48} className="mx-auto text-slate-300 mb-4" />
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">No homework assigned yet</h3>
             <p className="text-slate-500 dark:text-slate-400 mt-1">
-              {searchQuery || selectedClassFilter
+              {searchQuery || selectedUnitFilter
                 ? 'No assignments match the selected filters.'
                 : 'Click the button above to assign your first homework.'}
             </p>
@@ -700,7 +731,9 @@ export default function HomeworkManagement() {
         ) : (
           filteredHomeworks.map(hw => {
             const cls = classes.find(c => c.id === hw.classId);
-            const classNameDisplay = hw.className || (cls ? `${cls.name}${cls.section ? ` - ${cls.section}` : ''}` : 'Assigned Class');
+            const classNameDisplay = hw.className
+              ? `${hw.className}${hw.sectionName ? ` - ${hw.sectionName}` : ''}`
+              : (cls ? `${cls.name}${cls.section ? ` - ${cls.section}` : ''}` : 'Assigned Class');
             const sub = subjects.find(s => s.id === hw.subjectId);
             const subjectDisplay = hw.subjectName || (sub ? sub.name : (hw.subjectCode || 'General Subject'));
             const firstAttachmentUrl = hw.attachments?.[0]?.url || hw.attachmentUrl;
@@ -757,7 +790,7 @@ export default function HomeworkManagement() {
                     <CheckCircle size={16} /> Active
                   </span>
                   <div className="flex items-center gap-3">
-                    {hasEditPermission && (
+                    {hasEditPermission && hw.access?.canEdit !== false && (
                       <button
                         onClick={(e) => { e.stopPropagation(); openEditModal(hw); }}
                         className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1"
@@ -765,7 +798,7 @@ export default function HomeworkManagement() {
                         <Edit size={13} /> Edit
                       </button>
                     )}
-                    {hasDeletePermission && (
+                    {hasDeletePermission && hw.access?.canEdit !== false && (
                       <button
                         onClick={(e) => { e.stopPropagation(); confirmDelete(hw.id); }}
                         className="text-xs font-bold text-red-500 hover:text-red-700 flex items-center gap-1"
@@ -824,17 +857,15 @@ export default function HomeworkManagement() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-sm font-bold text-slate-700 dark:text-slate-200">Class *</label>
-                    <select
+                      <select
                       required
-                      value={newHomework.classId}
-                      onChange={(e) => setNewHomework({ ...newHomework, classId: e.target.value })}
+                      value={newHomework.unitId}
+                      onChange={(e) => setNewHomework({ ...newHomework, unitId: e.target.value, subjectId: '' })}
                       className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none bg-white dark:bg-slate-800 text-sm font-semibold text-slate-800 dark:text-slate-100"
                     >
                       <option value="">Select a Class</option>
-                      {classes.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {formatClassSection(c)}
-                        </option>
+                      {createUnits.map((u) => (
+                        <option key={u.id} value={u.id}>{unitLabel(u)}</option>
                       ))}
                     </select>
                   </div>
@@ -844,11 +875,12 @@ export default function HomeworkManagement() {
                     <select
                       required
                       value={newHomework.subjectId}
+                      disabled={!newHomework.unitId}
                       onChange={(e) => setNewHomework({ ...newHomework, subjectId: e.target.value })}
-                      className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none bg-white dark:bg-slate-800 text-sm font-semibold text-slate-800 dark:text-slate-100"
+                      className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none bg-white dark:bg-slate-800 text-sm font-semibold text-slate-800 dark:text-slate-100 disabled:opacity-50"
                     >
                       <option value="">Select a Subject</option>
-                      {subjects.map(s => (
+                      {subjectsForUnit(newHomework.unitId).map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name}{s.code ? ` (${s.code})` : ''}
                         </option>
@@ -982,15 +1014,13 @@ export default function HomeworkManagement() {
                     <label className="text-sm font-bold text-slate-700 dark:text-slate-200">Class *</label>
                     <select
                       required
-                      value={editingHomework.classId}
-                      onChange={(e) => setEditingHomework({ ...editingHomework, classId: e.target.value })}
+                      value={editingHomework.unitId}
+                      onChange={(e) => setEditingHomework({ ...editingHomework, unitId: e.target.value, subjectId: '' })}
                       className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none bg-white dark:bg-slate-800 text-sm font-semibold text-slate-800 dark:text-slate-100"
                     >
                       <option value="">Select a Class</option>
-                      {classes.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {formatClassSection(c)}
-                        </option>
+                      {createUnits.map((u) => (
+                        <option key={u.id} value={u.id}>{unitLabel(u)}</option>
                       ))}
                     </select>
                   </div>
@@ -999,12 +1029,13 @@ export default function HomeworkManagement() {
                     <label className="text-sm font-bold text-slate-700 dark:text-slate-200">Subject *</label>
                     <select
                       required
+                      disabled={!editingHomework.unitId}
                       value={editingHomework.subjectId}
                       onChange={(e) => setEditingHomework({ ...editingHomework, subjectId: e.target.value })}
                       className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none bg-white dark:bg-slate-800 text-sm font-semibold text-slate-800 dark:text-slate-100"
                     >
-                      <option value="">Select a Subject</option>
-                      {subjects.map(s => (
+                    <option value="">Select a Subject</option>
+                      {subjectsForUnit(editingHomework.unitId).map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name}{s.code ? ` (${s.code})` : ''}
                         </option>
@@ -1240,7 +1271,7 @@ export default function HomeworkManagement() {
                   )}
                 </h2>
                 <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                  {selectedHomework.className} • {selectedHomework.subjectName || 'Subject'} • Due: {selectedHomework.dueDate}
+                  {selectedHomework.className}{selectedHomework.sectionName ? ` - ${selectedHomework.sectionName}` : ''} • {selectedHomework.subjectName || 'Subject'} • Due: {selectedHomework.dueDate}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">

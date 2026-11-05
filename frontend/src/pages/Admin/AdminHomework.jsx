@@ -203,8 +203,9 @@ export default function AdminHomework() {
           homeworks.map((hw) => {
             const dueDateObj = hw.dueDate ? new Date(hw.dueDate) : null;
             const subjectLabel = hw.subjectName || hw.subjectCode || 'General';
-            const classLabel = hw.className || 'Unknown Class';
-
+            const classLabel = hw.className
+              ? `${hw.className}${hw.sectionName ? ` - ${hw.sectionName}` : ''}`
+              : 'Unknown Class';
             return (
               <div
                 key={hw.id}
@@ -290,7 +291,7 @@ export default function AdminHomework() {
                   {selectedHomework.title}
                 </h2>
                 <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                  Student Progress Tracking • {selectedHomework.className || 'Class'}
+                  Student Progress Tracking • {selectedHomework.className || 'Class'}{selectedHomework.sectionName ? ` - ${selectedHomework.sectionName}` : ''}
                 </p>
               </div>
               <button

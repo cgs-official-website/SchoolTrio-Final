@@ -80,3 +80,12 @@ export async function deleteAssessment(req, res, next) {
     return next(error);
   }
 }
+
+export async function getMyScope(req, res, next) {
+  try {
+    const data = await assessmentService.getMyAssessmentScope(req.tenant.schoolId, req.user || req.auth);
+    return ApiResponse.success(res, data, 'Assessment scope retrieved successfully');
+  } catch (error) {
+    return next(error);
+  }
+}

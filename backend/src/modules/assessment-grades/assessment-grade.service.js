@@ -13,6 +13,7 @@ import {
 } from '../../utils/app-error.js';
 import { parsePagination, buildPaginationMetadata } from '../../utils/pagination.js';
 import { logger } from '../../utils/logger.js';
+import { isTeacherActor, getTeacherScope, getAssessmentAccess } from '../../utils/teacher-scope.js';
 
 /**
  * Assessment Grade Service
@@ -117,49 +118,12 @@ export function isClassTeacherOf(profile, classId) {
  * - Class teacher: can view all marks/subjects of their class students.
  * - Subject teacher: can view marks for their assigned subject.
  */
-async function authorizeTeacherGradeReadAccess(schoolId, assessmentClassId, subjectIdOrActor = null, sectionId = null, actorObj = null) {
-  let assessmentSubjectId = null;
-  let assessmentSectionId = null;
-  let actor = null;
-
-  if (subjectIdOrActor && typeof subjectIdOrActor === 'object' && ('role' in subjectIdOrActor || 'systemRole' in subjectIdOrActor || 'id' in subjectIdOrActor || 'userId' in subjectIdOrActor)) {
-    actor = subjectIdOrActor;
-  } else {
-    assessmentSubjectId = subjectIdOrActor;
-    assessmentSectionId = sectionId;
-    actor = actorObj;
-  }
-
-  if (!actor) return;
-
-  const role = (actor.systemRole || actor.role || '').toUpperCase();
-  if (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
-    const userId = actor.id || actor.userId;
-    const profile = await assessmentGradeRepository.findStaffProfileByUserId(schoolId, userId);
-
-    if (!profile) {
-      throw new ForbiddenError('Staff profile not found for authenticated teacher');
-    }
-
-    // Class Teacher can view all subjects/assessments in their assigned class
-    if (isClassTeacherOf(profile, assessmentClassId)) {
-      return;
-    }
-
-    // Subject Teacher can view assessments for their assigned subject in classes they teach
-    const teacherSubjectIds = getTeacherAssignedSubjectIds(profile);
-    const teacherClassIds = getTeacherAssignedClassIds(profile);
-
-    const matchesSubject = !assessmentSubjectId || teacherSubjectIds.length === 0 || teacherSubjectIds.includes(assessmentSubjectId);
-    const matchesClassOrSection = teacherClassIds.length === 0 || 
-      teacherClassIds.includes(assessmentClassId) || 
-      (assessmentSectionId && teacherClassIds.includes(assessmentSectionId));
-
-    if (matchesSubject && matchesClassOrSection) {
-      return;
-    }
-
-    throw new ForbiddenError('You are only authorized to view marks for subjects and classes assigned to you');
+async function authorizeTeacherGradeReadAccess(schoolId, classId, subjectId, sectionId, actor) {
+  if (!isTeacherActor(actor)) return;
+  const scope = await getTeacherScope(schoolId, actor.id || actor.userId);
+  if (!scope) throw new ForbiddenError('Staff profile not found for authenticated teacher');
+  if (!getAssessmentAccess(scope, { classId, sectionId, subjectId }).canView) {
+    throw new ForbiddenError('You are only authorized to view marks for classes you teach or lead');
   }
 }
 
@@ -168,51 +132,17 @@ async function authorizeTeacherGradeReadAccess(schoolId, assessmentClassId, subj
  * - Subject teacher: can update their subject mark only.
  * - Class teacher: can only update marks if they are ALSO the assigned subject teacher for that subject.
  */
-async function authorizeTeacherGradeMutationAccess(schoolId, assessmentClassId, subjectIdOrActor = null, sectionId = null, actorObj = null) {
-  let assessmentSubjectId = null;
-  let assessmentSectionId = null;
-  let actor = null;
-
-  if (subjectIdOrActor && typeof subjectIdOrActor === 'object' && ('role' in subjectIdOrActor || 'systemRole' in subjectIdOrActor || 'id' in subjectIdOrActor || 'userId' in subjectIdOrActor)) {
-    actor = subjectIdOrActor;
-  } else {
-    assessmentSubjectId = subjectIdOrActor;
-    assessmentSectionId = sectionId;
-    actor = actorObj;
-  }
-
-  if (!actor) return;
-
-  const role = (actor.systemRole || actor.role || '').toUpperCase();
-  if (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
-    const userId = actor.id || actor.userId;
-    const profile = await assessmentGradeRepository.findStaffProfileByUserId(schoolId, userId);
-
-    if (!profile) {
-      throw new ForbiddenError('Staff profile not found for authenticated teacher');
-    }
-
-    const isClassTeacher = isClassTeacherOf(profile, assessmentClassId);
-    const teacherSubjectIds = getTeacherAssignedSubjectIds(profile);
-    const teacherClassIds = getTeacherAssignedClassIds(profile);
-    const teachesInClass = isClassTeacher || teacherClassIds.length === 0 || 
-      teacherClassIds.includes(assessmentClassId) || 
-      (assessmentSectionId && teacherClassIds.includes(assessmentSectionId));
-
-    if (!teachesInClass) {
-      throw new ForbiddenError('You are only authorized to enter marks for subjects and classes assigned to you');
-    }
-
-    // If assessment has a specific subject and teacher has assigned subjects configured:
-    if (assessmentSubjectId && teacherSubjectIds.length > 0) {
-      const isSubjectTeacher = teacherSubjectIds.includes(assessmentSubjectId);
-      if (!isSubjectTeacher) {
-        if (isClassTeacher) {
-          throw new ForbiddenError('Only the assigned subject teacher or school administrator can update marks for this subject');
-        }
-        throw new ForbiddenError('You are only authorized to enter marks for subjects assigned to you');
-      }
-    }
+async function authorizeTeacherGradeMutationAccess(schoolId, classId, subjectId, sectionId, actor) {
+  if (!isTeacherActor(actor)) return;
+  const scope = await getTeacherScope(schoolId, actor.id || actor.userId);
+  if (!scope) throw new ForbiddenError('Staff profile not found for authenticated teacher');
+  const access = getAssessmentAccess(scope, { classId, sectionId, subjectId });
+  if (!access.canEdit) {
+    throw new ForbiddenError(
+      access.isClassTeacher
+        ? 'Class teachers have read-only access to marks. Only the assigned subject teacher or an administrator can change them.'
+        : 'You are only authorized to enter marks for subjects and classes assigned to you'
+    );
   }
 }
 

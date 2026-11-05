@@ -10,6 +10,10 @@ import {
 import { SYSTEM_ROLES } from '../../config/constants.js';
 import { parsePagination, buildPaginationMetadata } from '../../utils/pagination.js';
 import { logger } from '../../utils/logger.js';
+import { prisma } from '../../database/prisma.client.js';
+import {
+  isTeacherActor, getTeacherScope, getAssessmentAccess, buildScopeFilter, summarizeClasses
+} from '../../utils/teacher-scope.js';
 
 /**
  * Assessment Service
@@ -69,31 +73,12 @@ export function isClassTeacherOf(profile, classId) {
  * @param {Object} actor - Authenticated user identity ({ id, userId, systemRole, role })
  * @param {string|null} [subjectId=null] - Optional subject UUID
  */
-async function authorizeClassAccess(schoolId, classId, actor, subjectId = null) {
-  if (!actor) return;
-
-  const role = (actor.systemRole || actor.role || '').toUpperCase();
-  if (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
-    const userId = actor.id || actor.userId;
-    const profile = await assessmentRepository.findStaffProfileByUserId(schoolId, userId);
-
-    if (!profile) {
-      throw new ForbiddenError('Staff profile not found for authenticated teacher');
-    }
-
-    const isClassTeacher = isClassTeacherOf(profile, classId);
-    const teacherSubjectIds = getTeacherAssignedSubjectIds(profile);
-    const teacherClassIds = getTeacherAssignedClassIds(profile);
-    const teachesInClass = isClassTeacher || teacherClassIds.length === 0 || teacherClassIds.includes(classId);
-
-    if (!teachesInClass) {
-      throw new ForbiddenError('Teachers are only authorized to manage assessments for their assigned class or subjects');
-    }
-
-    // If teacher has assigned subjects configured and subjectId is specified:
-    if (subjectId && teacherSubjectIds.length > 0 && !teacherSubjectIds.includes(subjectId)) {
-      throw new ForbiddenError('You are only authorized to manage assessments for your assigned subject');
-    }
+async function authorizeTeacherEdit(schoolId, { classId, sectionId = null, subjectId = null }, actor) {
+  if (!isTeacherActor(actor)) return;
+  const scope = await getTeacherScope(schoolId, actor.id || actor.userId);
+  if (!scope) throw new ForbiddenError('Staff profile not found for authenticated teacher');
+  if (!getAssessmentAccess(scope, { classId, sectionId, subjectId }).canEdit) {
+    throw new ForbiddenError('You can only manage assessments for the classes and subjects you teach. Class teachers have read-only access to other subjects.');
   }
 }
 
@@ -118,54 +103,16 @@ export async function listAssessments(schoolId, query = {}, actor = null) {
   let effectiveClassId = query.classId;
   let effectiveSubjectId = query.subjectId;
 
-  if (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
-    const userId = actor.id || actor.userId;
-    const profile = await assessmentRepository.findStaffProfileByUserId(schoolId, userId);
-    if (!profile) {
-      return {
-        assessments: [],
-        pagination: buildPaginationMetadata(0, 1, 20)
-      };
+  let scope = null;
+  let scopeFilter = null;
+  if (isTeacherActor(actor)) {
+    scope = await getTeacherScope(schoolId, actor.id || actor.userId);
+    scopeFilter = scope ? buildScopeFilter(scope) : null;
+    if (!scopeFilter) {
+      return { assessments: [], pagination: buildPaginationMetadata(0, 1, 20) };
     }
-
-    const teacherSubjectIds = getTeacherAssignedSubjectIds(profile);
-    const teacherClasses = getTeacherAssignedClassIds(profile);
-
-    if (teacherClasses.length === 0 && teacherSubjectIds.length === 0 && !profile.assignedClassId) {
-      return {
-        assessments: [],
-        pagination: buildPaginationMetadata(0, 1, 20)
-      };
-    }
-
-    // Restrict teacher querying to their assigned classes if explicit classes are assigned
-    if (teacherClasses.length > 0) {
-      if (effectiveClassId) {
-        if (!teacherClasses.includes(effectiveClassId)) {
-          throw new ForbiddenError('Teachers can only access assessments for classes assigned to them');
-        }
-      } else if (teacherClasses.length === 1) {
-        effectiveClassId = teacherClasses[0];
-      } else {
-        effectiveClassId = { in: teacherClasses };
-      }
-    }
-
-    // Check if teacher is class teacher of the target class
-    const isClassTeacher = typeof effectiveClassId === 'string'
-      ? isClassTeacherOf(profile, effectiveClassId)
-      : false;
-
-    // Subject teacher only: other subjects should NOT get visible to them!
-    if (!isClassTeacher && teacherSubjectIds.length > 0) {
-      if (query.subjectId) {
-        if (!teacherSubjectIds.includes(query.subjectId)) {
-          throw new ForbiddenError('You are not authorized to view assessments for this subject');
-        }
-        effectiveSubjectId = query.subjectId;
-      } else {
-        effectiveSubjectId = { in: teacherSubjectIds };
-      }
+    if (query.classId && !getAssessmentAccess(scope, { classId: query.classId }).canView) {
+      throw new ForbiddenError('Teachers can only access assessments for classes assigned to them');
     }
   }
 
@@ -226,7 +173,8 @@ export async function listAssessments(schoolId, query = {}, actor = null) {
     subjectId: effectiveSubjectId,
     search: query.search ? query.search.trim() : undefined,
     date: query.date,
-    publishedExamsOnly: isStudentOrParent
+    publishedExamsOnly: isStudentOrParent,
+    scopeFilter
   };
 
   const paginationOptions = {
@@ -240,10 +188,14 @@ export async function listAssessments(schoolId, query = {}, actor = null) {
   const result = await assessmentRepository.findAssessments(schoolId, filterOptions, paginationOptions);
   const pagination = buildPaginationMetadata(result.total, paginationParams.page, paginationParams.limit);
 
-  return {
-    assessments: result.items,
-    pagination
-  };
+  const items = result.items.map((a) => ({
+    ...a,
+    access: scope
+      ? getAssessmentAccess(scope, a)
+      : { canEdit: !isStudentOrParent, isClassTeacher: false, canView: true }
+  }));
+  return { assessments: items, pagination };
+
 }
 
 /**
@@ -267,24 +219,11 @@ export async function getAssessmentById(schoolId, id, actor = null) {
   if (actor) {
     const role = (actor.systemRole || actor.role || '').toUpperCase();
     if (role === SYSTEM_ROLES.TEACHER || role === 'TEACHER') {
-      const userId = actor.id || actor.userId;
-      const profile = await assessmentRepository.findStaffProfileByUserId(schoolId, userId);
-      if (!profile) {
-        throw new ForbiddenError('Staff profile not found');
-      }
-
-      const isClassTeacher = isClassTeacherOf(profile, assessment.classId);
-      const teacherSubjectIds = getTeacherAssignedSubjectIds(profile);
-      const isSubjectTeacher = assessment.subjectId ? teacherSubjectIds.includes(assessment.subjectId) : false;
-
-      // Subject teacher only: cannot view other subjects' assessments
-      if (!isClassTeacher && teacherSubjectIds.length > 0 && !isSubjectTeacher) {
-        throw new ForbiddenError('Subject teachers can only view assessments for their assigned subject');
-      }
-
-      const teacherClasses = getTeacherAssignedClassIds(profile);
-      if (teacherClasses.length > 0 && !teacherClasses.includes(assessment.classId)) {
-        throw new ForbiddenError('Teachers are only authorized to manage assessments for their assigned class');
+      if (isTeacherActor(actor)) {
+        const scope = await getTeacherScope(schoolId, actor.id || actor.userId);
+        if (!scope || !getAssessmentAccess(scope, assessment).canView) {
+          throw new ForbiddenError('You are not authorized to view this assessment');
+        }
       }
     }
     if (role === SYSTEM_ROLES.PARENT || role === 'PARENT') {
@@ -314,8 +253,7 @@ export async function createAssessment(schoolId, data, actor = null) {
   }
 
   // 1. Authorize class access for teachers
-  await authorizeClassAccess(schoolId, data.classId, actor);
-
+  await authorizeTeacherEdit(schoolId, { classId: data.classId, subjectId: data.subjectId || null }, actor);
   // 2. Verify Class exists and belongs to school
   const classObj = await assessmentRepository.verifyClassExists(schoolId, data.classId);
   if (!classObj) {
@@ -396,7 +334,14 @@ export async function updateAssessment(schoolId, id, data, actor = null) {
   }
 
   // Authorize teacher access
-  await authorizeClassAccess(schoolId, existing.classId, actor);
+  await authorizeTeacherEdit(schoolId, existing, actor);
+  if (data.subjectId) {
+    await authorizeTeacherEdit(
+      schoolId,
+      { classId: existing.classId, sectionId: existing.sectionId, subjectId: data.subjectId },
+      actor
+    );
+  }
 
   // Safety check: if grades exist, block changes to totalMarks, examId, subjectId
   const gradesCount = await assessmentRepository.countAssessmentGrades(schoolId, id);
@@ -487,8 +432,7 @@ export async function deleteAssessment(schoolId, id, actor = null) {
   }
 
   // Authorize teacher access
-  await authorizeClassAccess(schoolId, existing.classId, actor);
-
+  await authorizeTeacherEdit(schoolId, existing, actor);
   // Safety check: ensure no student grades are recorded
   const gradesCount = await assessmentRepository.countAssessmentGrades(schoolId, id);
   if (gradesCount > 0) {
@@ -524,4 +468,71 @@ export async function deleteAssessment(schoolId, id, actor = null) {
     message: 'Assessment deleted successfully',
     id
   };
+}
+
+export async function getMyAssessmentScope(schoolId, actor = null) {
+  if (!schoolId) throw new TenantAccessError('Tenant context required');
+
+  const classSelect = {
+    id: true,
+    name: true,
+    gradeLevel: true,
+    sections: { select: { id: true, name: true }, orderBy: { name: 'asc' } }
+  };
+  const orderBy = [{ gradeLevel: 'asc' }, { name: 'asc' }];
+  const matches = (u, classId, sectionId) =>
+    u.classId === classId && (!u.sectionId || !sectionId || u.sectionId === sectionId);
+
+  let classes;
+  let scope = null;
+
+  if (!isTeacherActor(actor)) {
+    classes = await prisma.class.findMany({ where: { schoolId }, select: classSelect, orderBy });
+  } else {
+    scope = await getTeacherScope(schoolId, actor.id || actor.userId);
+    if (!scope) return { scoped: true, units: [] };
+    const classIds = [...new Set([
+      ...scope.headedUnits.map((u) => u.classId),
+      ...scope.teachingUnits.map((u) => u.classId)
+    ])];
+    classes = await prisma.class.findMany({
+      where: { schoolId, id: { in: classIds } }, select: classSelect, orderBy
+    });
+  }
+
+  const units = [];
+  for (const c of classes) {
+    const sections = c.sections.length ? c.sections : [{ id: null, name: null }];
+    for (const s of sections) {
+      const sectionId = s.id;
+      let isClassTeacher = false;
+      let canEnterMarks = true;
+      let teachingSubjectIds = null;
+
+      if (scope) {
+        const headed = scope.headedUnits.some((u) => matches(u, c.id, sectionId));
+        const teaching = scope.teachingUnits.filter((u) => matches(u, c.id, sectionId));
+        if (!headed && teaching.length === 0) continue;
+        isClassTeacher = headed;
+        canEnterMarks = teaching.length > 0;
+        teachingSubjectIds = teaching.some((u) => !u.subjectId)
+          ? null
+          : [...new Set(teaching.map((u) => u.subjectId))];
+      }
+
+      units.push({
+        id: `${c.id}:${sectionId || 'all'}`,
+        classId: c.id,
+        sectionId,
+        className: c.name,
+        sectionName: s.name,
+        gradeLevel: c.gradeLevel,
+        isClassTeacher,
+        canEnterMarks,
+        teachingSubjectIds
+      });
+    }
+  }
+
+  return { scoped: Boolean(scope), units };
 }

@@ -179,6 +179,10 @@ export async function getUnreadHomeworkCount(query = {}) {
   });
 }
 
+export async function getMyHomeworkScope() {
+  return apiClient('/api/v1/homework/my-scope', { method: 'GET' });
+}
+
 export const homeworkApi = {
   listHomework,
   getHomework,
@@ -188,7 +192,8 @@ export const homeworkApi = {
   updateSubmission,
   getStudentHomework,
   updateStudentHomeworkStatus,
-  getUnreadHomeworkCount
+  getUnreadHomeworkCount,
+  getMyHomeworkScope
 };
 
 export default homeworkApi;

@@ -23,6 +23,8 @@ export async function findAssessmentForGradeOperation(schoolId, assessmentId, tx
       id: true,
       schoolId: true,
       classId: true,
+      sectionId: true,
+      status: true,
       title: true,
       totalMarks: true,
       passingMarks: true,

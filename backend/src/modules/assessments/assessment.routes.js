@@ -39,6 +39,14 @@ router.get(
   assessmentController.listAssessments
 );
 
+router.get(
+  '/my-scope',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('exams', 'read'),
+  assessmentController.getMyScope
+);
+
 // Get single assessment by ID
 router.get(
   '/:id',

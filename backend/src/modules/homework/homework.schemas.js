@@ -59,6 +59,7 @@ export const getUnreadHomeworkCountSchema = {
 export const listHomeworkSchema = {
   query: z.object({
     classId: z.string().regex(REGEX.UUID, 'Invalid class ID format').optional(),
+    sectionId: z.string().regex(REGEX.UUID, 'Invalid section ID format').optional(),
     subjectId: z.string().regex(REGEX.UUID, 'Invalid subject ID format').optional(),
     startDate: z.string().regex(REGEX.DATE_ISO, 'Invalid start date').optional(),
     endDate: z.string().regex(REGEX.DATE_ISO, 'Invalid end date').optional(),
@@ -87,6 +88,8 @@ export const createHomeworkSchema = {
     classId: z
       .string({ required_error: 'Class ID is required' })
       .regex(REGEX.UUID, 'Invalid class ID format'),
+    sectionId: z
+    .string().regex(REGEX.UUID, 'Invalid section ID format').nullable().optional(),
     subjectId: z
       .string({ required_error: 'Subject ID is required' })
       .regex(REGEX.UUID, 'Invalid subject ID format'),
@@ -105,6 +108,7 @@ export const updateHomeworkSchema = {
     title: z.string().trim().min(1, 'Title cannot be empty').max(200, 'Title cannot exceed 200 characters').optional(),
     description: z.string().trim().max(5000, 'Description cannot exceed 5000 characters').nullable().optional(),
     classId: z.string().regex(REGEX.UUID, 'Invalid class ID format').optional(),
+    sectionId: z.string().regex(REGEX.UUID, 'Invalid section ID format').nullable().optional(),
     subjectId: z.string().regex(REGEX.UUID, 'Invalid subject ID format').optional(),
     dueDate: dateStringSchema.optional(),
     remarks: z.string().trim().max(2000, 'Remarks cannot exceed 2000 characters').nullable().optional(),

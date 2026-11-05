@@ -242,3 +242,14 @@ export async function updateStudentHomeworkStatus(req, res, next) {
     next(err);
   }
 }
+
+export async function getMyScope(req, res, next) {
+  try {
+    const schoolId = req.tenant?.schoolId || req.auth?.schoolId || req.schoolId;
+    const actor = req.auth || req.user;
+    const data = await homeworkService.getMyHomeworkScope(schoolId, actor);
+    return ApiResponse.success(res, data, 'Homework scope retrieved successfully');
+  } catch (err) {
+    next(err);
+  }
+}
