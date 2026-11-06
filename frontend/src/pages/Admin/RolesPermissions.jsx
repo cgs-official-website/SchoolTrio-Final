@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getRoles, createRole, updateRole, updateRolePermissions, deleteRole } from '../../api/rbac.js';
+import { getRoles, createRole, updateRole, updateRolePermissions, deleteRole, suggestRolePermissions } from '../../api/rbac.js';
 import { notifyDataChanged } from '../../utils/liveData.js';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { LuShield, LuSave, LuCheck, LuX, LuPlus, LuTrash2 } from 'react-icons/lu';
@@ -108,6 +108,8 @@ export default function RolesPermissions() {
   const [displayModules] = useState(UNIFIED_MODULES_LIST);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [suggestingAi, setSuggestingAi] = useState(false);
+  const [aiSuggestionDetails, setAiSuggestionDetails] = useState(null);
 
   const fetchRolesData = useCallback(async () => {
     if (!schoolId) {
@@ -180,6 +182,53 @@ export default function RolesPermissions() {
   // Live data synchronization for RBAC roles list and permissions
   useLiveDataRefresh(fetchRolesData, [fetchRolesData], 'rbac');
 
+  const handleAiSuggest = async () => {
+    if (!activeRole) return;
+    setSuggestingAi(true);
+    try {
+      const res = await suggestRolePermissions(activeRole);
+      if (res && res.data && res.data.permissions) {
+        const suggestedPerms = res.data.permissions;
+        setPermissions(prev => ({
+          ...prev,
+          [activeRole]: suggestedPerms
+        }));
+        if (res.data.loginPanel) {
+          setLoginPanels(prev => ({
+            ...prev,
+            [activeRole]: res.data.loginPanel
+          }));
+        }
+
+        const grantedList = Object.entries(suggestedPerms)
+          .filter(([_, p]) => p.read || p.create || p.edit || p.delete)
+          .map(([mod, p]) => {
+            const actions = [];
+            if (p.read) actions.push('Read');
+            if (p.create) actions.push('Create');
+            if (p.edit) actions.push('Edit');
+            if (p.delete) actions.push('Delete');
+            return { module: mod, actions: actions.join('/') };
+          });
+
+        setAiSuggestionDetails({
+          roleName: activeRole,
+          grantedList,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        });
+
+        toast.success(`AI permissions suggested for "${activeRole}"! Click "Save Permissions" to confirm.`);
+      } else {
+        toast.error('AI was unable to generate suggestions for this role.');
+      }
+    } catch (err) {
+      console.error('Error fetching AI permission suggestions:', err);
+      toast.error(err.message || 'Failed to fetch AI suggestions.');
+    } finally {
+      setSuggestingAi(false);
+    }
+  };
+
   const handleAddRole = async (e) => {
     e.preventDefault();
     const role = newRoleName.trim();
@@ -190,23 +239,55 @@ export default function RolesPermissions() {
     }
 
     try {
+      let initialPerms = {};
+      let initialPanel = 'admin';
+      try {
+        const aiRes = await suggestRolePermissions(role);
+        if (aiRes && aiRes.data && aiRes.data.permissions) {
+          initialPerms = aiRes.data.permissions;
+          initialPanel = aiRes.data.loginPanel || 'admin';
+        }
+      } catch (_aiErr) {
+        // Fallback to empty if AI is offline
+      }
+
       const res = await createRole({
         name: role,
-        loginPanel: 'admin',
-        permissions: {}
+        loginPanel: initialPanel,
+        permissions: initialPerms
       });
 
       if (res && res.success && res.data) {
         const createdRole = res.data;
         setRolesMap(prev => ({ ...prev, [role]: createdRole }));
         setRolesList(prev => [...prev, role]);
-        setLoginPanels(prev => ({ ...prev, [role]: createdRole.loginPanel || 'admin' }));
-        setPermissions(prev => ({ ...prev, [role]: {} }));
+        setLoginPanels(prev => ({ ...prev, [role]: createdRole.loginPanel || initialPanel }));
+        setPermissions(prev => ({ ...prev, [role]: initialPerms }));
         setActiveRole(role);
         setNewRoleName('');
         setIsAddingRole(false);
+
+        const grantedList = Object.entries(initialPerms)
+          .filter(([_, p]) => p.read || p.create || p.edit || p.delete)
+          .map(([mod, p]) => {
+            const actions = [];
+            if (p.read) actions.push('Read');
+            if (p.create) actions.push('Create');
+            if (p.edit) actions.push('Edit');
+            if (p.delete) actions.push('Delete');
+            return { module: mod, actions: actions.join('/') };
+          });
+
+        if (grantedList.length > 0) {
+          setAiSuggestionDetails({
+            roleName: role,
+            grantedList,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          });
+        }
+
         notifyDataChanged('rbac');
-        toast.success(`Role "${role}" created successfully!`);
+        toast.success(`Role "${role}" created with AI suggested permissions!`);
       }
     } catch (error) {
       console.error('Error creating role:', error);
@@ -365,14 +446,26 @@ export default function RolesPermissions() {
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1">Configure fine-grained access control for your staff members.</p>
         </div>
-        <button 
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full sm:w-auto px-4 py-2 bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 rounded-xl shadow-sm disabled:opacity-50 transition-colors flex justify-center items-center gap-2"
-        >
-          <LuSave size={18} />
-          {saving ? 'Saving...' : 'Save Permissions'}
-        </button>
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+          <button 
+            type="button"
+            onClick={handleAiSuggest}
+            disabled={suggestingAi || saving}
+            title="Auto-configure least-privilege permissions"
+            className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-primary-600 via-primary-700 to-primary-800 hover:from-primary-700 hover:to-primary-900 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow disabled:opacity-50 transition-all flex justify-center items-center gap-2 cursor-pointer border border-primary-500/20"
+          >
+            {suggestingAi && <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+            {suggestingAi ? 'AI Analyzing...' : 'AI Auto-Suggest'}
+          </button>
+          <button 
+            onClick={handleSave}
+            disabled={saving || suggestingAi}
+            className="w-full sm:w-auto px-4 py-2 bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 rounded-xl shadow-sm disabled:opacity-50 transition-colors flex justify-center items-center gap-2 cursor-pointer"
+          >
+            <LuSave size={18} />
+            {saving ? 'Saving...' : 'Save Permissions'}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
@@ -382,7 +475,7 @@ export default function RolesPermissions() {
             <span className="font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider text-xs">Select Role</span>
             <button 
               onClick={() => setIsAddingRole(true)}
-              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-600 rounded text-slate-500 dark:text-slate-400 hover:text-primary-600 transition-colors"
+              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-600 rounded text-slate-500 dark:text-slate-400 hover:text-primary-600 transition-colors cursor-pointer"
               title="Add New Role"
             >
               <LuPlus size={16} />
@@ -390,17 +483,22 @@ export default function RolesPermissions() {
           </div>
           <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
             {isAddingRole && (
-              <form onSubmit={handleAddRole} className="mb-2 p-2 border border-primary-200 bg-primary-50 rounded-xl flex items-center gap-2">
-                <input 
-                  type="text"
-                  autoFocus
-                  value={newRoleName}
-                  onChange={e => setNewRoleName(e.target.value)}
-                  placeholder="Role Name"
-                  className="w-full bg-white dark:bg-slate-900 px-2 py-1.5 rounded-lg text-sm border border-primary-200 focus:outline-none focus:border-primary-500"
-                />
-                <button type="submit" className="p-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700"><LuCheck size={14}/></button>
-                <button type="button" onClick={() => setIsAddingRole(false)} className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300"><LuX size={14}/></button>
+              <form onSubmit={handleAddRole} className="mb-2 p-2.5 border border-primary-200 bg-primary-50/70 dark:bg-primary-950/20 dark:border-primary-800 rounded-xl flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="text"
+                    autoFocus
+                    value={newRoleName}
+                    onChange={e => setNewRoleName(e.target.value)}
+                    placeholder="e.g. Librarian, Hostel Warden"
+                    className="w-full bg-white dark:bg-slate-900 px-2 py-1.5 rounded-lg text-sm border border-primary-200 dark:border-primary-800 focus:outline-none focus:border-primary-500"
+                  />
+                  <button type="submit" className="p-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 cursor-pointer" title="Add Role"><LuCheck size={14}/></button>
+                  <button type="button" onClick={() => setIsAddingRole(false)} className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"><LuX size={14}/></button>
+                </div>
+                <div className="text-[11px] text-primary-700 dark:text-primary-300 font-medium">
+                  <span>AI will auto-suggest least-privilege permissions</span>
+                </div>
               </form>
             )}
             
@@ -417,7 +515,7 @@ export default function RolesPermissions() {
                 <span className="truncate pr-2">{role}</span>
                 <button 
                   onClick={(e) => handleDeleteRole(e, role)}
-                  className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ${
+                  className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 cursor-pointer ${
                     activeRole === role ? 'text-primary-600 hover:bg-primary-100 dark:hover:bg-slate-700' : 'text-slate-400 dark:text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800'
                   }`}
                   title="Delete Role"
@@ -433,23 +531,66 @@ export default function RolesPermissions() {
         <div className="flex-1 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col overflow-hidden">
           <div className="p-4 md:p-6 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row justify-between sm:items-center gap-4 shrink-0">
             <div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">{activeRole} Permissions</h2>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <span>{activeRole} Permissions</span>
+              </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Select the modules and actions this role can access.</p>
             </div>
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-semibold text-slate-600 dark:text-slate-300">Target Login Panel:</label>
-              <select
-                value={loginPanels[activeRole] || 'admin'}
-                onChange={e => setLoginPanels(prev => ({ ...prev, [activeRole]: e.target.value }))}
-                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-medium focus:ring-2 focus:ring-primary-500"
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={handleAiSuggest}
+                disabled={suggestingAi || saving}
+                title="Re-run AI permission suggestion for this role"
+                className="px-3 py-1.5 rounded-xl bg-primary-50 dark:bg-primary-950/40 border border-primary-200 dark:border-primary-800 text-primary-700 dark:text-primary-300 text-xs font-semibold hover:bg-primary-100 dark:hover:bg-primary-900/60 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
               >
-                <option value="admin">Admin Panel</option>
-                <option value="teacher">Teacher Panel</option>
-              </select>
+                {suggestingAi && <span className="w-3 h-3 border-2 border-primary-600/30 border-t-primary-600 rounded-full animate-spin" />}
+                {suggestingAi ? 'Analyzing...' : 'Suggest with AI'}
+              </button>
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-semibold text-slate-600 dark:text-slate-300">Login Panel:</label>
+                <select
+                  value={loginPanels[activeRole] || 'admin'}
+                  onChange={e => setLoginPanels(prev => ({ ...prev, [activeRole]: e.target.value }))}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-medium focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="admin">Admin Panel</option>
+                  <option value="teacher">Teacher Panel</option>
+                </select>
+              </div>
             </div>
           </div>
+
+          {/* AI Suggestion Feedback Banner */}
+          {aiSuggestionDetails && aiSuggestionDetails.roleName === activeRole && (
+            <div className="mx-4 md:mx-6 mt-4 p-3.5 rounded-2xl bg-gradient-to-r from-primary-50 via-primary-100/40 to-white dark:from-primary-950/40 dark:via-primary-900/20 dark:to-slate-900 border border-primary-200/80 dark:border-primary-800/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in shrink-0 shadow-xs">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-primary-600 text-white shadow-sm shrink-0 mt-0.5 sm:mt-0">
+                  <LuShield size={16} className="text-primary-100" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-primary-800 dark:text-primary-200">
+                      Gemini AI Least-Privilege Suggestion
+                    </span>
+                    <span className="text-[10px] text-primary-600 dark:text-primary-400 font-medium">({aiSuggestionDetails.timestamp})</span>
+                  </div>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 mt-0.5">
+                    Recommended for <strong>{activeRole}</strong>: {aiSuggestionDetails.grantedList.map(g => `${g.module} (${g.actions})`).join(', ') || 'Minimal Noticeboard/Calendar access'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAiSuggestionDetails(null)}
+                className="text-xs text-primary-700 dark:text-primary-300 hover:text-primary-900 dark:hover:text-primary-100 font-semibold px-2 py-1 rounded-lg hover:bg-primary-100 dark:hover:bg-primary-900/50 transition-colors self-end sm:self-center cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
           
-          <div className="flex-1 overflow-auto custom-scrollbar p-0">
+          <div className="flex-1 overflow-auto custom-scrollbar p-0 mt-2">
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead className="sticky top-0 bg-white dark:bg-slate-900 shadow-sm z-10">
                 <tr className="border-b border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider font-semibold">
@@ -532,7 +673,7 @@ export default function RolesPermissions() {
                         <td className="p-4 pr-6 text-right">
                           <button 
                             onClick={() => handleToggleAll(module.id, !isAll)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                               isAll 
                                 ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600' 
                                 : 'bg-primary-50 text-primary-700 hover:bg-primary-100 dark:hover:bg-slate-700 border border-primary-200'

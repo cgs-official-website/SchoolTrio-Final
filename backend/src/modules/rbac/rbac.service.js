@@ -1,3 +1,5 @@
+import { generateStructuredJson } from '../../services/openrouter.service.js';
+import { logger } from '../../utils/logger.js';
 import * as rbacRepository from './rbac.repository.js';
 import { prisma } from '../../database/prisma.client.js';
 import {
@@ -869,4 +871,522 @@ export async function getUserEffectivePermissions(schoolId, userId) {
   }
 
   return effectivePermissions;
+}
+
+// ============================================================================
+// AI-Assisted Role Permissions Suggestion (Least Privilege Non-Teaching Roles)
+// ============================================================================
+
+const ALLOWED_AI_MODULE_KEYS = new Set([
+  'billing', 'classes', 'subjects', 'students', 'staff', 'attendance', 'leaves', 'fees',
+  'timetables', 'calendar', 'exams', 'homework', 'noticeboard', 'transport', 'library',
+  'inventory', 'hr-payroll', 'reports', 'leads', 'canteen', 'hostel', 'lesson_plans',
+  'resources', 'ptm', 'performance', 'complaints', 'health', 'documents'
+]);
+
+const FORBIDDEN_AI_MODULE_KEYS = new Set([
+  'form-builder', 'setup', 'roles', 'api', 'links', 'upgrade'
+]);
+
+const REFERENCE_PRESETS = {
+  correspondent: {
+    loginPanel: 'admin',
+    permissions: {
+      students: { read: true, create: true, edit: true, delete: false },
+      staff: { read: true, create: true, edit: true, delete: false },
+      classes: { read: true, create: true, edit: true, delete: false },
+      subjects: { read: true, create: true, edit: true, delete: false },
+      fees: { read: true, create: true, edit: true, delete: false },
+      billing: { read: true, create: true, edit: true, delete: false },
+      'hr-payroll': { read: true, create: true, edit: true, delete: false },
+      reports: { read: true, create: false, edit: false, delete: false },
+      calendar: { read: true, create: true, edit: true, delete: false },
+      noticeboard: { read: true, create: true, edit: true, delete: true },
+      transport: { read: true, create: false, edit: false, delete: false },
+      inventory: { read: true, create: false, edit: false, delete: false },
+      hostel: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  principal: {
+    loginPanel: 'admin',
+    permissions: {
+      students: { read: true, create: true, edit: true, delete: false },
+      staff: { read: true, create: true, edit: true, delete: false },
+      classes: { read: true, create: true, edit: true, delete: false },
+      subjects: { read: true, create: true, edit: true, delete: false },
+      attendance: { read: true, create: true, edit: true, delete: false },
+      leaves: { read: true, create: true, edit: true, delete: false },
+      exams: { read: true, create: true, edit: true, delete: true },
+      homework: { read: true, create: true, edit: true, delete: false },
+      timetables: { read: true, create: true, edit: true, delete: false },
+      calendar: { read: true, create: true, edit: true, delete: false },
+      noticeboard: { read: true, create: true, edit: true, delete: true },
+      reports: { read: true, create: false, edit: false, delete: false },
+      complaints: { read: true, create: false, edit: true, delete: false },
+      library: { read: true, create: false, edit: false, delete: false },
+      transport: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  'vice principal': {
+    loginPanel: 'admin',
+    permissions: {
+      students: { read: true, create: false, edit: true, delete: false },
+      staff: { read: true, create: false, edit: true, delete: false },
+      classes: { read: true, create: false, edit: true, delete: false },
+      subjects: { read: true, create: false, edit: true, delete: false },
+      attendance: { read: true, create: false, edit: true, delete: false },
+      leaves: { read: true, create: false, edit: true, delete: false },
+      exams: { read: true, create: true, edit: true, delete: false },
+      homework: { read: true, create: true, edit: true, delete: false },
+      timetables: { read: true, create: true, edit: true, delete: false },
+      calendar: { read: true, create: true, edit: true, delete: false },
+      noticeboard: { read: true, create: true, edit: true, delete: false },
+      reports: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  'vice-principal': {
+    loginPanel: 'admin',
+    permissions: {
+      students: { read: true, create: false, edit: true, delete: false },
+      staff: { read: true, create: false, edit: true, delete: false },
+      classes: { read: true, create: false, edit: true, delete: false },
+      subjects: { read: true, create: false, edit: true, delete: false },
+      attendance: { read: true, create: false, edit: true, delete: false },
+      leaves: { read: true, create: false, edit: true, delete: false },
+      exams: { read: true, create: true, edit: true, delete: false },
+      homework: { read: true, create: true, edit: true, delete: false },
+      timetables: { read: true, create: true, edit: true, delete: false },
+      calendar: { read: true, create: true, edit: true, delete: false },
+      noticeboard: { read: true, create: true, edit: true, delete: false },
+      reports: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  'subject wise head': {
+    loginPanel: 'teacher',
+    permissions: {
+      classes: { read: true, create: false, edit: false, delete: false },
+      subjects: { read: true, create: true, edit: true, delete: false },
+      students: { read: true, create: false, edit: false, delete: false },
+      homework: { read: true, create: true, edit: true, delete: false },
+      attendance: { read: true, create: true, edit: true, delete: false },
+      exams: { read: true, create: true, edit: true, delete: false },
+      lesson_plans: { read: true, create: true, edit: true, delete: false },
+      resources: { read: true, create: true, edit: true, delete: false },
+      timetables: { read: true, create: false, edit: false, delete: false },
+      calendar: { read: true, create: false, edit: false, delete: false },
+      noticeboard: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  'class incharge': {
+    loginPanel: 'teacher',
+    permissions: {
+      classes: { read: true, create: false, edit: false, delete: false },
+      subjects: { read: true, create: false, edit: false, delete: false },
+      students: { read: true, create: false, edit: false, delete: false },
+      attendance: { read: true, create: true, edit: true, delete: false },
+      homework: { read: true, create: true, edit: true, delete: false },
+      exams: { read: true, create: true, edit: true, delete: false },
+      lesson_plans: { read: true, create: true, edit: true, delete: false },
+      resources: { read: true, create: true, edit: true, delete: false },
+      timetables: { read: true, create: false, edit: false, delete: false },
+      calendar: { read: true, create: false, edit: false, delete: false },
+      noticeboard: { read: true, create: true, edit: false, delete: false },
+      ptm: { read: true, create: true, edit: true, delete: false }
+    }
+  },
+  staffs: {
+    loginPanel: 'teacher',
+    permissions: {
+      classes: { read: true, create: false, edit: false, delete: false },
+      subjects: { read: true, create: false, edit: false, delete: false },
+      students: { read: true, create: false, edit: false, delete: false },
+      homework: { read: true, create: true, edit: true, delete: false },
+      attendance: { read: true, create: true, edit: true, delete: false },
+      exams: { read: true, create: true, edit: true, delete: false },
+      lesson_plans: { read: true, create: true, edit: true, delete: false },
+      resources: { read: true, create: true, edit: true, delete: false },
+      timetables: { read: true, create: false, edit: false, delete: false },
+      calendar: { read: true, create: false, edit: false, delete: false },
+      noticeboard: { read: true, create: false, edit: false, delete: false },
+      leaves: { read: true, create: true, edit: false, delete: false }
+    }
+  },
+  teacher: {
+    loginPanel: 'teacher',
+    permissions: {
+      classes: { read: true, create: false, edit: false, delete: false },
+      subjects: { read: true, create: false, edit: false, delete: false },
+      students: { read: true, create: false, edit: false, delete: false },
+      homework: { read: true, create: true, edit: true, delete: false },
+      attendance: { read: true, create: true, edit: true, delete: false },
+      exams: { read: true, create: true, edit: true, delete: false },
+      lesson_plans: { read: true, create: true, edit: true, delete: false },
+      resources: { read: true, create: true, edit: true, delete: false },
+      timetables: { read: true, create: false, edit: false, delete: false },
+      calendar: { read: true, create: false, edit: false, delete: false },
+      noticeboard: { read: true, create: false, edit: false, delete: false },
+      leaves: { read: true, create: true, edit: false, delete: false }
+    }
+  },
+  'administrative officer': {
+    loginPanel: 'admin',
+    permissions: {
+      staff: { read: true, create: true, edit: true, delete: false },
+      students: { read: true, create: true, edit: true, delete: false },
+      attendance: { read: true, create: true, edit: true, delete: false },
+      classes: { read: true, create: false, edit: false, delete: false },
+      timetables: { read: true, create: false, edit: false, delete: false },
+      calendar: { read: true, create: true, edit: true, delete: false },
+      noticeboard: { read: true, create: true, edit: true, delete: false },
+      transport: { read: true, create: false, edit: false, delete: false },
+      inventory: { read: true, create: true, edit: true, delete: false },
+      leaves: { read: true, create: true, edit: true, delete: false },
+      reports: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  'finance department': {
+    loginPanel: 'admin',
+    permissions: {
+      fees: { read: true, create: true, edit: true, delete: false },
+      billing: { read: true, create: true, edit: true, delete: false },
+      'hr-payroll': { read: true, create: true, edit: true, delete: false },
+      reports: { read: true, create: false, edit: false, delete: false },
+      students: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  accountant: {
+    loginPanel: 'admin',
+    permissions: {
+      fees: { read: true, create: true, edit: true, delete: false },
+      billing: { read: true, create: true, edit: true, delete: false },
+      'hr-payroll': { read: true, create: true, edit: true, delete: false },
+      reports: { read: true, create: false, edit: false, delete: false },
+      students: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  'fee clerk': {
+    loginPanel: 'admin',
+    permissions: {
+      fees: { read: true, create: true, edit: true, delete: false },
+      billing: { read: true, create: true, edit: true, delete: false },
+      reports: { read: true, create: false, edit: false, delete: false },
+      students: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  librarian: {
+    loginPanel: 'admin',
+    permissions: {
+      library: { read: true, create: true, edit: true, delete: true },
+      students: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  library: {
+    loginPanel: 'admin',
+    permissions: {
+      library: { read: true, create: true, edit: true, delete: true },
+      students: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  'transport in-charge': {
+    loginPanel: 'admin',
+    permissions: {
+      transport: { read: true, create: true, edit: true, delete: true },
+      students: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  transport: {
+    loginPanel: 'admin',
+    permissions: {
+      transport: { read: true, create: true, edit: true, delete: true },
+      students: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  'canteen manager': {
+    loginPanel: 'admin',
+    permissions: {
+      canteen: { read: true, create: true, edit: true, delete: false }
+    }
+  },
+  canteen: {
+    loginPanel: 'admin',
+    permissions: {
+      canteen: { read: true, create: true, edit: true, delete: false }
+    }
+  },
+  'inventory keeper': {
+    loginPanel: 'admin',
+    permissions: {
+      inventory: { read: true, create: true, edit: true, delete: false }
+    }
+  },
+  'store keeper': {
+    loginPanel: 'admin',
+    permissions: {
+      inventory: { read: true, create: true, edit: true, delete: false }
+    }
+  },
+  inventory: {
+    loginPanel: 'admin',
+    permissions: {
+      inventory: { read: true, create: true, edit: true, delete: false }
+    }
+  },
+  hostel: {
+    loginPanel: 'admin',
+    permissions: {
+      hostel: { read: true, create: true, edit: true, delete: true },
+      students: { read: true, create: false, edit: false, delete: false },
+      attendance: { read: true, create: true, edit: true, delete: false },
+      noticeboard: { read: true, create: false, edit: false, delete: false },
+      calendar: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  'hostel warden': {
+    loginPanel: 'admin',
+    permissions: {
+      hostel: { read: true, create: true, edit: true, delete: true },
+      students: { read: true, create: false, edit: false, delete: false },
+      attendance: { read: true, create: true, edit: true, delete: false },
+      noticeboard: { read: true, create: false, edit: false, delete: false },
+      calendar: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  'front office': {
+    loginPanel: 'admin',
+    permissions: {
+      students: { read: true, create: true, edit: true, delete: false },
+      classes: { read: true, create: false, edit: false, delete: false },
+      calendar: { read: true, create: false, edit: false, delete: false },
+      noticeboard: { read: true, create: true, edit: false, delete: false },
+      timetables: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  'office admin': {
+    loginPanel: 'admin',
+    permissions: {
+      students: { read: true, create: true, edit: true, delete: false },
+      classes: { read: true, create: false, edit: false, delete: false },
+      calendar: { read: true, create: false, edit: false, delete: false },
+      noticeboard: { read: true, create: true, edit: false, delete: false },
+      timetables: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  'admission counselor': {
+    loginPanel: 'admin',
+    permissions: {
+      leads: { read: true, create: true, edit: true, delete: true },
+      students: { read: true, create: true, edit: false, delete: false }
+    }
+  },
+  'hr executive': {
+    loginPanel: 'admin',
+    permissions: {
+      staff: { read: true, create: true, edit: true, delete: false },
+      'hr-payroll': { read: true, create: true, edit: true, delete: false },
+      leaves: { read: true, create: true, edit: true, delete: false }
+    }
+  },
+  'attendance clerk': {
+    loginPanel: 'admin',
+    permissions: {
+      attendance: { read: true, create: true, edit: true, delete: false },
+      students: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  security: {
+    loginPanel: 'admin',
+    permissions: {
+      transport: { read: true, create: false, edit: false, delete: false },
+      noticeboard: { read: true, create: false, edit: false, delete: false },
+      calendar: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  janitors: {
+    loginPanel: 'admin',
+    permissions: {
+      noticeboard: { read: true, create: false, edit: false, delete: false },
+      calendar: { read: true, create: false, edit: false, delete: false }
+    }
+  },
+  janitor: {
+    loginPanel: 'admin',
+    permissions: {
+      noticeboard: { read: true, create: false, edit: false, delete: false },
+      calendar: { read: true, create: false, edit: false, delete: false }
+    }
+  }
+};
+
+const DEFAULT_MINIMAL_PERMISSIONS = {
+  noticeboard: { read: true, create: false, edit: false, delete: false },
+  calendar: { read: true, create: false, edit: false, delete: false }
+};
+
+function findMatchingPreset(roleName) {
+  if (!roleName) return null;
+  const trimmed = roleName.trim().toLowerCase();
+  if (REFERENCE_PRESETS[trimmed]) {
+    return REFERENCE_PRESETS[trimmed];
+  }
+  const matchingKeys = Object.keys(REFERENCE_PRESETS).filter(key => {
+    return trimmed.startsWith(key) || key.startsWith(trimmed) || trimmed.includes(key);
+  });
+  if (matchingKeys.length === 0) return null;
+  matchingKeys.sort((a, b) => b.length - a.length);
+  return REFERENCE_PRESETS[matchingKeys[0]];
+}
+
+const AI_PERMISSION_SYSTEM_PROMPT = `You are an expert permission-configuration assistant for a School Management System.
+Given ANY school staff or faculty role name, return the minimum permissions that role needs
+based on the Principle of Least Privilege and determine the appropriate login panel ("admin" or "teacher").
+Output ONLY valid JSON, no explanation, no markdown.
+
+OUTPUT FORMAT:
+{
+  "loginPanel": "admin" | "teacher",
+  "permissions": {
+    "<moduleKey>": {
+      "read": true/false,
+      "create": true/false,
+      "edit": true/false,
+      "delete": true/false
+    }
+  }
+}
+
+ALLOWED MODULE KEYS (use only these canonical modules):
+classes, subjects, students, staff, attendance, leaves, fees, timetables,
+calendar, exams, homework, noticeboard, transport, library, inventory, hr-payroll,
+reports, leads, canteen, hostel, lesson_plans, resources, ptm, performance,
+complaints, health, documents, billing
+
+NEVER GRANT (system administrator only): form-builder, setup, roles, api, links, upgrade
+
+RULES:
+1. LOGIN PANEL:
+   - "teacher" for teaching roles: Teacher, Staffs, Subject Wise Head, Class Incharge, Faculty, Instructor, Tutor.
+   - "admin" for leadership, administrative, finance, and operational non-teaching roles: Correspondent, Principal, Vice Principal, Administrative Officer, Finance, Accountant, Library, Transport, Canteen, Hostel, Inventory, Security, Janitor, Office Admin, etc.
+2. Each module has 4 booleans: read, create, edit, delete.
+3. create/edit/delete = true only if the role's daily job needs it. read-only is the default.
+4. delete = true ONLY for the role's own core module (e.g., library for Librarian, transport for Transport In-charge, hostel for Hostel Warden, leads for Admission Counselor). Never delete on fees, students, hr-payroll, attendance, inventory.
+5. Include only modules the role needs. Omit everything else.
+6. If a role needs to act on students (issue books, assign routes, take attendance), give students: read only (unless admissions/admin).
+7. If the role name is unclear or unrelated to school operations, return minimal permissions: noticeboard read, calendar read with loginPanel "admin".
+
+REFERENCE PRESETS:
+- Correspondent: loginPanel admin; broad oversight on students, staff, fees, billing, reports, calendar, noticeboard.
+- Principal: loginPanel admin; academic and administrative oversight across students, staff, classes, subjects, attendance, leaves, exams, homework, timetables, calendar, noticeboard, reports.
+- Vice Principal: loginPanel admin; academic management across students, staff, classes, subjects, attendance, leaves, exams, homework, timetables, calendar, noticeboard, reports.
+- Teaching Staff / Teacher / Staffs: loginPanel teacher; classes R, subjects R, students R, homework R/C/E, attendance R/C/E, exams R/C/E, lesson_plans R/C/E, resources R/C/E, timetables R, calendar R, noticeboard R, leaves R/C.
+- Class Incharge: loginPanel teacher; classes R, subjects R, students R, homework R/C/E, attendance R/C/E, exams R/C/E, lesson_plans R/C/E, resources R/C/E, timetables R/C/E, calendar R, noticeboard R/C, ptm R/C/E.
+- Subject Wise Head: loginPanel teacher; classes R, subjects R/C/E, students R, homework R/C/E, exams R/C/E, lesson_plans R/C/E, resources R/C/E, timetables R, calendar R, noticeboard R.
+- Administrative Officer: loginPanel admin; staff R/C/E, students R/C/E, attendance R/C/E, classes R, timetables R, calendar R, noticeboard R/C/E, transport R, inventory R/C/E, leaves R/C/E, reports R.
+- Finance Department / Accountant / Fee Clerk: loginPanel admin; fees R/C/E, billing R/C/E, hr-payroll R/C/E, reports R, students R.
+- Library / Librarian: loginPanel admin; library R/C/E/D, students R.
+- Transport / Transport In-charge: loginPanel admin; transport R/C/E/D, students R.
+- Canteen / Canteen Manager: loginPanel admin; canteen R/C/E.
+- Inventory / Store Keeper: loginPanel admin; inventory R/C/E.
+- Hostel / Hostel Warden: loginPanel admin; hostel R/C/E/D, students R, attendance R/C/E, noticeboard R, calendar R.
+- Front Office / Office Admin: loginPanel admin; students R/C/E, classes R, calendar R, noticeboard R/C, timetables R.
+- Admission Counselor: loginPanel admin; leads R/C/E/D, students R/C.
+- HR Executive: loginPanel admin; staff R/C/E, hr-payroll R/C/E, leaves R/C/E.
+- Attendance Clerk: loginPanel admin; attendance R/C/E, students R.
+- Security Guard: loginPanel admin; transport R, noticeboard R, calendar R.
+- Janitors: loginPanel admin; noticeboard R, calendar R.`;
+
+export async function suggestRolePermissions(roleName) {
+  if (typeof roleName !== 'string' || !roleName.trim()) {
+    throw new ValidationError('Role name is required');
+  }
+
+  const trimmedRole = roleName.trim();
+  const lowerRole = trimmedRole.toLowerCase();
+  const isTeachingRole = /teacher|teaching|instructor|tutor|incharge|educator|faculty|staffs/i.test(`${trimmedRole} ${lowerRole}`);
+
+  const matchedPreset = findMatchingPreset(trimmedRole);
+
+  let rawResult = null;
+
+  try {
+    rawResult = await generateStructuredJson({
+      prompt: `Role Name: "${trimmedRole}"`,
+      systemPrompt: AI_PERMISSION_SYSTEM_PROMPT
+    });
+  } catch (aiErr) {
+    logger.warn({ role: trimmedRole, error: aiErr.message }, 'AI permission suggestion call failed, checking preset fallback');
+  }
+
+  // Extract candidate permissions and loginPanel from AI output
+  let candidatePerms = null;
+  let candidateLoginPanel = null;
+
+  if (rawResult && typeof rawResult === 'object') {
+    if (rawResult.loginPanel === 'admin' || rawResult.loginPanel === 'teacher') {
+      candidateLoginPanel = rawResult.loginPanel;
+    }
+    candidatePerms = rawResult.permissions && typeof rawResult.permissions === 'object'
+      ? rawResult.permissions
+      : rawResult;
+  }
+
+  // Determine final target login panel
+  const finalLoginPanel = isTeachingRole 
+    ? 'teacher' 
+    : (candidateLoginPanel || matchedPreset?.loginPanel || 'admin');
+
+  // Check if AI output is empty or only returned minimal fallback for a known standard role
+  const isMinimalPerms = candidatePerms && 
+    Object.keys(candidatePerms).length <= 2 && 
+    Object.keys(candidatePerms).every(k => k === 'noticeboard' || k === 'calendar');
+
+  if (!candidatePerms || Object.keys(candidatePerms).length === 0 || (isMinimalPerms && matchedPreset)) {
+    candidatePerms = matchedPreset ? matchedPreset.permissions : DEFAULT_MINIMAL_PERMISSIONS;
+  }
+
+  // Sanitize and enforce least privilege rules on the permissions
+  const sanitizedPermissions = {};
+
+  for (const [key, val] of Object.entries(candidatePerms)) {
+    if (key === 'loginPanel' || key === 'role' || key === 'roleName') continue;
+    if (FORBIDDEN_AI_MODULE_KEYS.has(key)) continue;
+    if (!ALLOWED_AI_MODULE_KEYS.has(key)) continue;
+
+    if (!val || typeof val !== 'object') continue;
+
+    const read = Boolean(val.read || val.canRead);
+    let create = Boolean(val.create || val.canCreate);
+    let edit = Boolean(val.edit || val.canEdit);
+    let del = Boolean(val.delete || val.canDelete);
+
+    // Rule 3: Never delete on fees, students, hr-payroll, attendance, inventory (unless executive admin)
+    const isExecutiveAdmin = lowerRole.includes('principal') || lowerRole.includes('correspondent');
+    if (!isExecutiveAdmin && ['fees', 'students', 'hr-payroll', 'attendance', 'inventory'].includes(key)) {
+      del = false;
+    }
+
+    // Rule 5: If a role needs to act on students (unless admissions counselor or admin), students is read-only
+    if (key === 'students' && !lowerRole.includes('admission') && !lowerRole.includes('counselor') && !isExecutiveAdmin && !lowerRole.includes('office') && !lowerRole.includes('administrative')) {
+      create = false;
+      edit = false;
+      del = false;
+    }
+
+    sanitizedPermissions[key] = {
+      read: read || create || edit || del,
+      create: (read || create || edit || del) ? create : false,
+      edit: (read || create || edit || del) ? edit : false,
+      delete: (read || create || edit || del) ? del : false
+    };
+  }
+
+  // If no allowed modules were included, apply preset or default minimal
+  if (Object.keys(sanitizedPermissions).length === 0) {
+    Object.assign(sanitizedPermissions, matchedPreset ? matchedPreset.permissions : DEFAULT_MINIMAL_PERMISSIONS);
+  }
+
+  return {
+    roleName: trimmedRole,
+    loginPanel: finalLoginPanel,
+    permissions: sanitizedPermissions
+  };
 }

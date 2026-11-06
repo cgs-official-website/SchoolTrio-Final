@@ -186,3 +186,24 @@ export async function removeUserRole(userId, roleId) {
     method: 'DELETE'
   });
 }
+
+/**
+ * Asks AI to suggest least-privilege permissions for a non-teaching role.
+ * Calls POST /api/v1/rbac/suggest-permissions.
+ *
+ * @param {string} roleName - Name of the non-teaching role
+ * @returns {Promise<{
+ *   success: boolean,
+ *   data: {
+ *     roleName: string,
+ *     loginPanel: string,
+ *     permissions: Record<string, { read: boolean, create: boolean, edit: boolean, delete: boolean }>
+ *   }
+ * }>}
+ */
+export async function suggestRolePermissions(roleName) {
+  return apiClient('/api/v1/rbac/suggest-permissions', {
+    method: 'POST',
+    body: JSON.stringify({ roleName })
+  });
+}

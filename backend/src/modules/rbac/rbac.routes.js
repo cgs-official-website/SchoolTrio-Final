@@ -132,4 +132,14 @@ router.delete(
   rbacController.removeUserRole
 );
 
+// AI-assisted role permissions suggestion
+router.post(
+  '/suggest-permissions',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requireRole(SYSTEM_ROLES.SCHOOL_ADMIN, SYSTEM_ROLES.SUPER_ADMIN),
+  validate(rbacSchemas.suggestRolePermissionsSchema),
+  rbacController.suggestRolePermissions
+);
+
 export default router;

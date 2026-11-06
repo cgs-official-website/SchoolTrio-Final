@@ -175,3 +175,17 @@ export async function getMyPermissions(req, res, next) {
     next(err);
   }
 }
+
+/**
+ * POST /api/v1/rbac/suggest-permissions
+ * Asks AI to suggest least-privilege permissions for a non-teaching role.
+ */
+export async function suggestRolePermissions(req, res, next) {
+  try {
+    const { roleName } = req.body;
+    const result = await rbacService.suggestRolePermissions(roleName);
+    return ApiResponse.success(res, result, 'Suggested permissions generated successfully');
+  } catch (err) {
+    next(err);
+  }
+}

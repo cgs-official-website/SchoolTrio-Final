@@ -50,6 +50,11 @@ export const envSchema = z.object({
   SMTP_FROM: z.string().optional(),
   FRONTEND_URL: z.string().default('https://school-trio-final-frontend.vercel.app'),
 
+  // AI Services Configuration (Google Gemini & OpenRouter)
+  GEMINI_API_KEY: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
+  OPENROUTER_MODEL: z.string().optional(),
+
   // Temporary Resend HTTPS API Configuration (Password Reset Delivery)
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().optional()

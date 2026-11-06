@@ -192,3 +192,16 @@ export const removeUserRoleParamsSchema = {
       .regex(REGEX.UUID, 'Invalid role ID format')
   })
 };
+
+/**
+ * Schema for POST /api/v1/rbac/suggest-permissions
+ */
+export const suggestRolePermissionsSchema = {
+  body: z.object({
+    roleName: z
+      .string({ required_error: 'Role name is required' })
+      .trim()
+      .min(1, 'Role name cannot be empty')
+      .max(100, 'Role name must not exceed 100 characters')
+  })
+};
