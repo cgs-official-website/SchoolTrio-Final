@@ -702,12 +702,18 @@ export default function ExamManagement() {
       }
 
       const students = previewData.students || [];
+      const examTitle = previewData.examName || '';
       const assessments = students[0]?.marks
-        ? Object.entries(students[0].marks).map(([id, m]) => ({
-          id,
-          title: m.title || 'Assessment',
-          totalMarks: m.max
-        }))
+        ? Object.entries(students[0].marks).map(([id, m]) => {
+          const subjectName = allSubjects.find((s) => s.id === m.subjectId)?.name;
+          const isExamSubjectRow = m.title && m.title.startsWith(`${examTitle} - `);
+          let label = m.title || 'Assessment';
+          if (subjectName) {
+            // Auto-created exam rows show just the subject; extra quizzes keep their title
+            label = isExamSubjectRow ? subjectName : `${subjectName} (${m.title})`;
+          }
+          return { id, title: label, totalMarks: m.max };
+        })
         : [];
 
       if (previewData.template) {
