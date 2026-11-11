@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import format from 'date-fns/format';
 import parse from 'date-fns/parse';
@@ -72,6 +72,8 @@ export default function AcademicCalendar({ isAdmin }) {
 
   const [events, setEvents] = useState([]);
   const [showModal, setShowModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, message: '', title: '' });
   const [newEvent, setNewEvent] = useState({ title: '', start: '', end: '', type: 'event', isCustomDates: false, customDates: [] });
@@ -145,7 +147,11 @@ export default function AcademicCalendar({ isAdmin }) {
   const handleAddEvent = async (e) => {
     e.preventDefault();
     if (!isAdmin) return;
-    
+    // Block double-click / double-submit while a save is already running
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setIsSaving(true);
+
     try {
       if (selectedEvent && !selectedEvent.isVirtual) {
         if (!hasEditPermission) {
@@ -216,7 +222,7 @@ export default function AcademicCalendar({ isAdmin }) {
           notifyDataChanged('calendar');
         }
       }
-      
+
       setShowModal(false);
       setSelectedEvent(null);
       setNewEvent({ title: '', start: '', end: '', type: 'event', isCustomDates: false, customDates: [] });
@@ -224,6 +230,9 @@ export default function AcademicCalendar({ isAdmin }) {
     } catch (error) {
       console.error("Error saving event:", error);
       toast.error(error.message || "Failed to save event.");
+    } finally {
+      savingRef.current = false;
+      setIsSaving(false);
     }
   };
 
@@ -292,7 +301,7 @@ export default function AcademicCalendar({ isAdmin }) {
           Academic Calendar
         </h2>
         {isAdmin && hasCreatePermission && (
-          <button 
+          <button
             onClick={openNewEventModal}
             className="px-4 py-2 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 transition-colors flex items-center gap-2 text-sm"
           >
@@ -364,23 +373,23 @@ export default function AcademicCalendar({ isAdmin }) {
                 <X size={20} />
               </button>
             </div>
-            
+
             <form onSubmit={handleAddEvent} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Event Title</label>
-                <input 
+                <input
                   type="text" required
-                  value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})}
+                  value={newEvent.title} onChange={e => setNewEvent({ ...newEvent, title: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500"
                 />
               </div>
-              
+
               <div className="flex items-center gap-2 mt-4 mb-2">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   id="customDatesToggle"
                   checked={newEvent.isCustomDates}
-                  onChange={e => setNewEvent({...newEvent, isCustomDates: e.target.checked})}
+                  onChange={e => setNewEvent({ ...newEvent, isCustomDates: e.target.checked })}
                   className="w-4 h-4 text-primary-600 rounded border-slate-300 dark:border-slate-600 focus:ring-primary-500"
                 />
                 <label htmlFor="customDatesToggle" className="text-sm font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">Add multiple custom dates</label>
@@ -390,17 +399,17 @@ export default function AcademicCalendar({ isAdmin }) {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Start Date</label>
-                    <input 
+                    <input
                       type="date" required={!newEvent.isCustomDates}
-                      value={newEvent.start} onChange={e => setNewEvent({...newEvent, start: e.target.value})}
+                      value={newEvent.start} onChange={e => setNewEvent({ ...newEvent, start: e.target.value })}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">End Date</label>
-                    <input 
+                    <input
                       type="date" required={!newEvent.isCustomDates}
-                      value={newEvent.end} onChange={e => setNewEvent({...newEvent, end: e.target.value})}
+                      value={newEvent.end} onChange={e => setNewEvent({ ...newEvent, end: e.target.value })}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500"
                     />
                   </div>
@@ -409,18 +418,18 @@ export default function AcademicCalendar({ isAdmin }) {
                 <div className="space-y-3">
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Dates</label>
                   <div className="flex gap-2">
-                    <input 
-                      type="date" 
+                    <input
+                      type="date"
                       id="customDateInput"
                       className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                     />
-                    <button 
+                    <button
                       type="button"
                       onClick={() => {
                         const dateInput = document.getElementById('customDateInput');
                         const dateVal = dateInput?.value;
                         if (dateVal && !newEvent.customDates.includes(dateVal)) {
-                          setNewEvent({...newEvent, customDates: [...newEvent.customDates, dateVal].sort()});
+                          setNewEvent({ ...newEvent, customDates: [...newEvent.customDates, dateVal].sort() });
                           if (dateInput) dateInput.value = '';
                         }
                       }}
@@ -434,9 +443,9 @@ export default function AcademicCalendar({ isAdmin }) {
                       {newEvent.customDates.map((date, idx) => (
                         <span key={idx} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 text-sm font-semibold rounded-lg shadow-sm">
                           {parseLocalDate(date).toLocaleDateString('en-GB')}
-                          <button 
+                          <button
                             type="button"
-                            onClick={() => setNewEvent({...newEvent, customDates: newEvent.customDates.filter(d => d !== date)})}
+                            onClick={() => setNewEvent({ ...newEvent, customDates: newEvent.customDates.filter(d => d !== date) })}
                             className="p-0.5 hover:bg-indigo-200 rounded-full transition-colors text-indigo-500 hover:text-indigo-800"
                           >
                             <X size={14} />
@@ -450,8 +459,8 @@ export default function AcademicCalendar({ isAdmin }) {
 
               <div>
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Event Type</label>
-                <select 
-                  value={newEvent.type} onChange={e => setNewEvent({...newEvent, type: e.target.value})}
+                <select
+                  value={newEvent.type} onChange={e => setNewEvent({ ...newEvent, type: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500"
                 >
                   <option value="event">General Event</option>
@@ -462,31 +471,32 @@ export default function AcademicCalendar({ isAdmin }) {
 
               <div className="pt-4 flex justify-end gap-3 border-t border-slate-100 dark:border-slate-800">
                 {selectedEvent && (
-                  <button 
+                  <button
                     type="button" onClick={handleDeleteEvent}
                     className="px-5 py-2.5 text-red-600 font-medium hover:bg-red-50 dark:hover:bg-slate-800 flex items-center gap-2 rounded-xl transition-colors mr-auto"
                   >
                     <Trash2 size={18} /> Delete
                   </button>
                 )}
-                <button 
+                <button
                   type="button" onClick={() => setShowModal(false)}
                   className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   type="submit"
-                  className="px-6 py-2.5 bg-primary-600 text-white font-bold hover:bg-primary-700 rounded-xl shadow-sm transition-colors"
+                  disabled={isSaving}
+                  className="px-6 py-2.5 bg-primary-600 text-white font-bold hover:bg-primary-700 rounded-xl shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Save Event
+                  {isSaving ? 'Saving...' : 'Save Event'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={confirmModal.isOpen}
         onClose={() => setConfirmModal({ ...confirmModal, isOpen: false })}
         onConfirm={confirmModal.onConfirm}

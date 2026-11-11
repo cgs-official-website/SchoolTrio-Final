@@ -179,7 +179,8 @@ export default function ParentAttendance() {
   const absentCount = attendanceRecords.filter(r => normalizeStatus(r.status) === 'Absent').length;
   const lateCount = attendanceRecords.filter(r => normalizeStatus(r.status) === 'Late').length;
   const totalCount = attendanceRecords.length;
-  const percentage = totalCount === 0 ? 100 : Math.round(((presentCount + lateCount) / totalCount) * 100);
+  // No records yet -> no percentage (null) instead of a misleading 100%
+  const percentage = totalCount === 0 ? null : Math.round(((presentCount + lateCount) / totalCount) * 100);
 
   if (loading) {
     return (
@@ -196,9 +197,9 @@ export default function ParentAttendance() {
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight truncate">Detailed Attendance</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1">View your child's daily attendance records.</p>
         </div>
-        
+
         <div className="w-full sm:w-48">
-          <select 
+          <select
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900"
@@ -219,7 +220,7 @@ export default function ParentAttendance() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
-          <div className="text-3xl font-black text-slate-900 dark:text-white mb-1">{percentage}%</div>
+          <div className="text-3xl font-black text-slate-900 dark:text-white mb-1">{percentage === null ? '--' : `${percentage}%`}</div>
           <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Overall</div>
         </div>
         <div className="bg-green-50 p-6 rounded-2xl border border-green-100 shadow-sm text-center">

@@ -255,6 +255,12 @@ export default function TimetableManagement() {
   const getUnitTimetable = (unit) =>
     allTimetables[timetableKey(unit.classId, unit.sectionId)] || allTimetables[timetableKey(unit.classId, null)] || null;
 
+  // allTimetables keys look like "classId:sectionId". The class/section being edited must never be treated
+  // as an "other class" when checking teacher clashes (otherwise its own periods show a false conflict).
+  const isCurrentUnitKey = (key) =>
+    key === timetableKey(selectedClassId, selectedSectionId) || key === timetableKey(selectedClassId, null);
+  const classIdFromKey = (key) => String(key).split(':')[0];
+
   const fetchAllTimetables = useCallback(async () => {
     try {
       const res = await listTimetables();
@@ -420,7 +426,7 @@ export default function TimetableManagement() {
 
     // 1. Conflict Detection: Overlapping periods within the same class on activeDay
     const currentDaySlots = schedule[activeDay] || [];
-    const conflictingClassSlot = currentDaySlots.find(s => 
+    const conflictingClassSlot = currentDaySlots.find(s =>
       s.id !== editingSlotId && areTimeIntervalsOverlapping(newSlot.startTime, newSlot.endTime, s.startTime, s.endTime)
     );
     if (conflictingClassSlot) {
@@ -455,14 +461,14 @@ export default function TimetableManagement() {
 
       // 2b. Check across all other classes in allTimetables
       for (const [classId, classGrid] of Object.entries(allTimetables)) {
-        if (classId === selectedClassId) continue;
+        if (isCurrentUnitKey(classId)) continue;
         const otherSlots = classGrid?.[activeDay] || [];
         const conflictingOther = otherSlots.find(s =>
           (s.teacherId === resolvedTeacherId || (s.teacher && s.teacher === teacherDisplayName)) &&
           areTimeIntervalsOverlapping(newSlot.startTime, newSlot.endTime, s.startTime, s.endTime)
         );
         if (conflictingOther) {
-          const conflictingClassObj = classes.find(c => c.id === classId);
+          const conflictingClassObj = classes.find(c => c.id === classIdFromKey(classId));
           const conflictingClassName = conflictingClassObj ? formatClassSection(conflictingClassObj) : 'another class';
           toast.error(
             `Teacher conflict: ${teacherDisplayName || 'Teacher'} is already assigned to ${conflictingClassName} on ${activeDay} from ${formatTime12hr(conflictingOther.startTime)} to ${formatTime12hr(conflictingOther.endTime)}. A teacher cannot be assigned to two different classes in the same time slot.`
@@ -587,7 +593,7 @@ export default function TimetableManagement() {
       }
       // In other classes
       for (const [otherClassId, classGrid] of Object.entries(allTimetables)) {
-        if (otherClassId === selectedClassId) continue;
+        if (isCurrentUnitKey(otherClassId)) continue;
         const otherSlots = classGrid?.[day] || [];
         const tc = otherSlots.find(os => {
           const osTId = os.teacherId || (teachers.find(t => t.name === os.teacher || t.id === os.teacher)?.id);
@@ -595,7 +601,7 @@ export default function TimetableManagement() {
             areTimeIntervalsOverlapping(slot.startTime, slot.endTime, os.startTime, os.endTime);
         });
         if (tc) {
-          const clsObj = classes.find(c => c.id === otherClassId);
+          const clsObj = classes.find(c => c.id === classIdFromKey(otherClassId));
           const clsName = clsObj ? formatClassSection(clsObj) : 'another class';
           return {
             type: 'teacher',
@@ -605,7 +611,7 @@ export default function TimetableManagement() {
       }
     }
     return null;
-  }, [schedule, allTimetables, selectedClassId, teachers, classes]);
+  }, [schedule, allTimetables, selectedClassId, selectedSectionId, teachers, classes]);
 
   const handleSaveTimetable = async () => {
     if (!selectedClassId) return;
@@ -645,7 +651,7 @@ export default function TimetableManagement() {
         const slotTeacherId = slot.teacherId || (teachers.find(t => t.name === slot.teacher || t.id === slot.teacher)?.id);
         if (!slotTeacherId) continue;
         for (const [otherClassId, classGrid] of Object.entries(allTimetables)) {
-          if (otherClassId === selectedClassId) continue;
+          if (isCurrentUnitKey(otherClassId)) continue;
           const otherSlots = classGrid?.[day] || [];
           const conflicting = otherSlots.find(os => {
             const osTId = os.teacherId || (teachers.find(t => t.name === os.teacher || t.id === os.teacher)?.id);
@@ -653,7 +659,7 @@ export default function TimetableManagement() {
               areTimeIntervalsOverlapping(slot.startTime, slot.endTime, os.startTime, os.endTime);
           });
           if (conflicting) {
-            const conflictingClassObj = classes.find(c => c.id === otherClassId);
+            const conflictingClassObj = classes.find(c => c.id === classIdFromKey(otherClassId));
             const conflictingClassName = conflictingClassObj ? formatClassSection(conflictingClassObj) : 'another class';
             const teacherName = slot.teacher || 'Teacher';
             toast.error(
@@ -910,56 +916,56 @@ export default function TimetableManagement() {
                     (schedule[day] || []).map(slot => {
                       const conflictInfo = getSlotConflict(day, slot);
                       return (
-                      <div key={slot.id} className={`bg-white dark:bg-slate-900 rounded-2xl border ${conflictInfo ? 'border-rose-400 dark:border-rose-600 ring-1 ring-rose-300/50 dark:ring-rose-800/50' : 'border-slate-200 dark:border-slate-700'} p-3 shadow-sm hover:shadow-md transition-shadow group relative`}>
-                        
-                        <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
-                          <Clock size={12} className="text-primary-500" />
-                          {formatTime12hr(slot.startTime)} - {formatTime12hr(slot.endTime)}
-                        </div>
+                        <div key={slot.id} className={`bg-white dark:bg-slate-900 rounded-2xl border ${conflictInfo ? 'border-rose-400 dark:border-rose-600 ring-1 ring-rose-300/50 dark:ring-rose-800/50' : 'border-slate-200 dark:border-slate-700'} p-3 shadow-sm hover:shadow-md transition-shadow group relative`}>
 
-                        <div className="font-bold text-slate-900 dark:text-white mb-2 flex items-start gap-1.5 leading-tight">
-                          <BookOpen size={14} className="text-primary-500 shrink-0 mt-0.5" />
-                          {formatDisplayValue(slot.subject, 'Subject')}
-                        </div>
-
-                        <div className="text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded-lg inline-flex items-center gap-1.5 border border-slate-100 dark:border-slate-800">
-                          <User size={12} className="text-slate-400 dark:text-slate-300" />
-                          {formatTeacherDisplay(slot.teacher, 'Not Assigned')}
-                        </div>
-
-                        {conflictInfo && (
-                          <div
-                            className="text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-lg px-2 py-1 flex items-center gap-1.5 mt-2 shadow-xs"
-                            title={conflictInfo.message}
-                          >
-                            <AlertCircle size={13} className="text-rose-500 shrink-0" />
-                            <span className="truncate">{conflictInfo.message}</span>
+                          <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
+                            <Clock size={12} className="text-primary-500" />
+                            {formatTime12hr(slot.startTime)} - {formatTime12hr(slot.endTime)}
                           </div>
-                        )}
 
-                        {/* Edit and Delete Buttons (visible on hover) */}
-                        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                          {hasEditPermission && (
-                            <button
-                              onClick={() => handleEditSlot(day, slot)}
-                              className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-800 rounded-lg"
-                              title="Edit Period"
+                          <div className="font-bold text-slate-900 dark:text-white mb-2 flex items-start gap-1.5 leading-tight">
+                            <BookOpen size={14} className="text-primary-500 shrink-0 mt-0.5" />
+                            {formatDisplayValue(slot.subject, 'Subject')}
+                          </div>
+
+                          <div className="text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded-lg inline-flex items-center gap-1.5 border border-slate-100 dark:border-slate-800">
+                            <User size={12} className="text-slate-400 dark:text-slate-300" />
+                            {formatTeacherDisplay(slot.teacher, 'Not Assigned')}
+                          </div>
+
+                          {conflictInfo && (
+                            <div
+                              className="text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-lg px-2 py-1 flex items-center gap-1.5 mt-2 shadow-xs"
+                              title={conflictInfo.message}
                             >
-                              <Edit2 size={14} />
-                            </button>
+                              <AlertCircle size={13} className="text-rose-500 shrink-0" />
+                              <span className="truncate">{conflictInfo.message}</span>
+                            </div>
                           )}
-                          {hasDeletePermission && (
-                            <button
-                              onClick={() => handleDeleteClick(day, slot.id)}
-                              className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg"
-                              title="Delete Period"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
+
+                          {/* Edit and Delete Buttons (visible on hover) */}
+                          <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                            {hasEditPermission && (
+                              <button
+                                onClick={() => handleEditSlot(day, slot)}
+                                className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-800 rounded-lg"
+                                title="Edit Period"
+                              >
+                                <Edit2 size={14} />
+                              </button>
+                            )}
+                            {hasDeletePermission && (
+                              <button
+                                onClick={() => handleDeleteClick(day, slot.id)}
+                                className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg"
+                                title="Delete Period"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
+                      );
                     })
                   )}
                 </div>

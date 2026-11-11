@@ -4,6 +4,17 @@
  * Server-side rules live in backend/src/modules/staff/staff.schemas.js (kept in sync).
  */
 
+/**
+ * Teaching vs non-teaching staff share one profile form. Fields that only make sense for teachers
+ * are hidden (and never validated / counted) for non-teaching staff and admins.
+ * A missing staffType is treated as teaching so existing teacher behaviour is unchanged.
+ */
+export const TEACHING_ONLY_FIELDS = ['subjectSpecialization', 'gradesClassesHandled', 'professionalCertifications'];
+
+export function isTeachingStaff(staffType) {
+    return String(staffType || 'teaching').toLowerCase().replace(/[^a-z]/g, '') !== 'nonteaching';
+}
+
 export const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 export const GOVT_ID_TYPES = ['Aadhaar', 'PAN', 'Voter ID', 'Passport', 'Driving License'];
 
@@ -71,7 +82,8 @@ const isBlank = (v) => v === undefined || v === null || String(v).trim() === '';
 /**
  * Validates the whole profile form. Returns { fieldName: 'message' } - empty object means valid.
  */
-export function validateProfile(f) {
+export function validateProfile(f, opts = {}) {
+    const teaching = isTeachingStaff(opts.staffType);
     const e = {};
     const req = (key, msg) => { if (isBlank(f[key])) e[key] = msg; };
 
@@ -124,8 +136,8 @@ export function validateProfile(f) {
     }
 
     // ---- Education ----
-    req('highestQualification', 'Highest qualification is required');
-    if (!e.highestQualification && !TEXT_RE.test(f.highestQualification.trim())) e.highestQualification = 'Enter a valid qualification (e.g. M.Sc, B.Ed)';
+    if (teaching) req('highestQualification', 'Highest qualification is required');
+    if (!e.highestQualification && !isBlank(f.highestQualification) && !TEXT_RE.test(f.highestQualification.trim())) e.highestQualification = 'Enter a valid qualification (e.g. M.Sc, B.Ed)';
     if (!isBlank(f.degreeSpecialization) && !TEXT_RE.test(f.degreeSpecialization.trim())) e.degreeSpecialization = 'Enter a valid specialization';
     if (!isBlank(f.universityName) && !TEXT_RE.test(f.universityName.trim())) e.universityName = 'Enter a valid university / college name';
     if (!isBlank(f.yearOfPassing)) {
@@ -140,8 +152,8 @@ export function validateProfile(f) {
         if (Number.isNaN(n) || n < 0 || n > 50) e.previousExperience = 'Enter experience between 0 and 50 years';
     }
     if (!isBlank(f.previousOrganization) && !TEXT_RE.test(f.previousOrganization.trim())) e.previousOrganization = 'Enter a valid organization name';
-    if (!isBlank(f.subjectSpecialization) && !TEXT_RE.test(f.subjectSpecialization.trim())) e.subjectSpecialization = 'Enter a valid subject';
-    if (!isBlank(f.gradesClassesHandled) && !TEXT_RE.test(f.gradesClassesHandled.trim())) e.gradesClassesHandled = 'Enter valid classes (e.g. Class 8 - 10)';
+    if (teaching && !isBlank(f.subjectSpecialization) && !TEXT_RE.test(f.subjectSpecialization.trim())) e.subjectSpecialization = 'Enter a valid subject';
+    if (teaching && !isBlank(f.gradesClassesHandled) && !TEXT_RE.test(f.gradesClassesHandled.trim())) e.gradesClassesHandled = 'Enter valid classes (e.g. Class 8 - 10)';
 
     // ---- Government IDs ----
     if (!isBlank(f.aadharNumber) && !AADHAAR_RE.test(f.aadharNumber)) e.aadharNumber = 'Aadhaar must be 12 digits and cannot start with 0 or 1';
@@ -188,6 +200,13 @@ export const COMPLETION_FIELDS = [
     'bankAccountNumber', 'bankName', 'branchName', 'ifscCode'
 ];
 
+/** Completion fields for a staff type (non-teaching staff are not asked for teaching-only details). */
+export function getCompletionFields(staffType) {
+    return isTeachingStaff(staffType)
+        ? COMPLETION_FIELDS
+        : COMPLETION_FIELDS.filter((f) => !TEACHING_ONLY_FIELDS.includes(f));
+}
+
 const obj = (v) => (typeof v === 'object' && v !== null ? v : {});
 
 /**
@@ -227,10 +246,11 @@ export function computeProfileCompletion(doc) {
     const asStrings = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v == null ? '' : String(v)]));
 
     // Validate only the fields that are present, then count those that are filled AND valid
-    const errs = validateProfile({ ...asStrings, govtIdType: 'Aadhaar' });
+    const errs = validateProfile({ ...asStrings, govtIdType: 'Aadhaar' }, { staffType: doc.staffType });
+    const fields = getCompletionFields(doc.staffType);
     let filled = 0;
-    COMPLETION_FIELDS.forEach((f) => {
+    fields.forEach((f) => {
         if (!isBlank(asStrings[f]) && !errs[f]) filled++;
     });
-    return Math.round((filled / COMPLETION_FIELDS.length) * 100);
+    return Math.round((filled / fields.length) * 100);
 }

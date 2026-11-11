@@ -78,6 +78,7 @@ export default function Performance() {
               const score = Number(gradeData.marksObtained);
               const totalMarks = Number(a.totalMarks) || 100;
               return {
+                isAbsent: Boolean(gradeData.isAbsent),
                 id: a.id,
                 title: a.title,
                 date: a.date || a.assessmentDate || a.createdAt,
@@ -243,7 +244,7 @@ export default function Performance() {
   }
 
   const getStatusColor = (status) => {
-    switch(status?.toLowerCase()) {
+    switch (status?.toLowerCase()) {
       case 'excellent': return 'text-purple-700 bg-purple-100';
       case 'improving': return 'text-green-700 bg-green-100';
       case 'stable': return 'text-blue-700 bg-blue-100';
@@ -310,8 +311,17 @@ export default function Performance() {
                     <p className="text-sm font-medium text-slate-500 dark:text-slate-400 truncate">{new Date(assessment.date).toLocaleDateString('en-GB')}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="font-black text-lg text-slate-900 dark:text-white">{assessment.score} <span className="text-slate-400 dark:text-slate-300 text-sm font-bold">/ {assessment.totalMarks}</span></p>
-                    <p className="text-xs font-bold text-primary-600">{assessment.perc}%</p>
+                    {assessment.isAbsent ? (
+                      <>
+                        <p className="font-black text-lg text-red-600 dark:text-red-400">AB <span className="text-slate-400 dark:text-slate-300 text-sm font-bold">/ {assessment.totalMarks}</span></p>
+                        <p className="text-xs font-bold text-red-600 dark:text-red-400">Absent</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-black text-lg text-slate-900 dark:text-white">{assessment.score} <span className="text-slate-400 dark:text-slate-300 text-sm font-bold">/ {assessment.totalMarks}</span></p>
+                        <p className="text-xs font-bold text-primary-600">{assessment.perc}%</p>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}

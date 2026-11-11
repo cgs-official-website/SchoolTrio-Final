@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import usePermissions from './hooks/usePermissions';
 
 // Loading Fallback (Sleek futuristic spinner)
 const GlobalLoader = () => (
@@ -77,7 +78,16 @@ const SchoolAdminAuditLogs = lazy(() => import('./pages/Admin/AuditLogs'));
 // Teacher
 const TeacherRegistration = lazy(() => import('./pages/TeacherRegistration'));
 const TeacherDashboard = lazy(() => import('./pages/TeacherDashboard'));
-const ProfileSetup = lazy(() => import('./pages/Teacher/ProfileSetup'));
+const ProfileSetupPage = lazy(() => import('./pages/Teacher/ProfileSetup'));
+
+// School Administrator accounts have no staff profile; everyone else (teachers, non-teaching staff,
+// grade co-ordinators...) shares the same Profile page.
+function ProfileSetup() {
+  const { isSchoolAdmin, loading } = usePermissions();
+  if (loading) return null;
+  if (isSchoolAdmin) return <Navigate to="/admin" replace />;
+  return <ProfileSetupPage />;
+}
 const ClassRoster = lazy(() => import('./pages/Teacher/ClassRoster'));
 const Attendance = lazy(() => import('./pages/Teacher/Attendance'));
 const Grades = lazy(() => import('./pages/Teacher/Grades'));
@@ -240,6 +250,7 @@ function App() {
                 <Route path="resources" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="resources"><ResourceSharing /></ProtectedRoute>} />
                 <Route path="performance" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="performance"><PerformanceTracking /></ProtectedRoute>} />
                 <Route path="ptm" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="ptm"><PTMScheduler /></ProtectedRoute>} />
+                <Route path="profile" element={<ProfileSetup />} />
                 <Route path="custom/:moduleId" element={<CustomModuleView />} />
                 <Route path="leaves" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="leaves"><AdminLeaves /></ProtectedRoute>} />
                 <Route path="leads" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="leads"><LeadsManagement /></ProtectedRoute>} />

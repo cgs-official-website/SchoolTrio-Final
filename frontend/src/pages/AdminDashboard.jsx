@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useCallback, Suspense } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { LuBookOpen as BookOpen, LuUsers as Users, LuLogOut as LogOut, LuLayoutDashboard as LayoutDashboard, LuLink as LinkIcon, LuSettings as Settings, LuCreditCard as CreditCard, LuGraduationCap as GraduationCap, LuCalendar as Calendar, LuBus as Bus, LuLibrary as Library, LuFileText as FileText, LuBell as Bell, LuKey as Key, LuMenu as Menu, LuX as X, LuBuilding2 as Building2, LuCheck as CheckSquare, LuHouse as Home, LuPackage as PackageIcon, LuBriefcase as Briefcase, LuChartBar as BarChart2, LuHeartPulse as HeartPulse, LuCircleAlert as AlertCircle, LuFiles as Files, LuChevronDown as ChevronDown, LuChevronRight as ChevronRight, LuShield as Shield, LuLayoutGrid as LayoutGrid, LuMessageSquare as MessageSquare, LuCoffee as Coffee, LuClipboardList as ClipboardList, LuLock as Lock } from 'react-icons/lu';
+import { LuBookOpen as BookOpen, LuUsers as Users, LuLogOut as LogOut, LuLayoutDashboard as LayoutDashboard, LuLink as LinkIcon, LuSettings as Settings, LuCreditCard as CreditCard, LuGraduationCap as GraduationCap, LuCalendar as Calendar, LuBus as Bus, LuLibrary as Library, LuFileText as FileText, LuBell as Bell, LuKey as Key, LuMenu as Menu, LuX as X, LuBuilding2 as Building2, LuCheck as CheckSquare, LuHouse as Home, LuPackage as PackageIcon, LuBriefcase as Briefcase, LuChartBar as BarChart2, LuHeartPulse as HeartPulse, LuCircleAlert as AlertCircle, LuFiles as Files, LuChevronDown as ChevronDown, LuChevronRight as ChevronRight, LuShield as Shield, LuLayoutGrid as LayoutGrid, LuMessageSquare as MessageSquare, LuCoffee as Coffee, LuClipboardList as ClipboardList, LuLock as Lock, LuUser as UserIcon } from 'react-icons/lu';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../api/auth';
 import usePermissions from '../hooks/usePermissions';
 import { getSchoolSettings, getSidebarSettings } from '../api/settings';
 import { listCustomModules } from '../api/customModules';
 import TopNavbar from '../components/TopNavbar';
+import ProfileCompletionBanner from '../components/ProfileCompletionBanner';
 import useSchoolBranding from '../hooks/useSchoolBranding';
 import { useLiveDataRefresh } from '../hooks/useLiveDataRefresh';
 
@@ -56,6 +57,8 @@ export const allNavItems = [
   { name: 'Audit Logs', path: '/admin/audit-logs', icon: ClipboardList, moduleKey: 'audit' },
 ];
 
+const profileNavItem = { name: 'Profile', path: '/admin/profile', icon: UserIcon, alwaysShow: true };
+
 export default function AdminDashboard() {
   const { userProfile, logoutUser, updateProfileData } = useAuth();
   const {
@@ -63,6 +66,7 @@ export default function AdminDashboard() {
     canRead,
     roles: assignedRoles,
     isUnrestricted,
+    isSchoolAdmin,
     loading: permsLoading,
     error: permsError,
     refreshPermissions
@@ -312,6 +316,13 @@ export default function AdminDashboard() {
     navItems = []; // hide Dashboard link too: nothing to open
   }
 
+  // Every staff account in this portal (grade co-ordinator, principal, other non-teaching staff) gets a Profile page,
+  // always last. The School Administrator account has no staff profile, so it never sees one.
+  const showProfile = !isSchoolAdmin;
+  if (!(hasNoAccess || permissionsUnverified) && showProfile) {
+    navItems = [...navItems, profileNavItem];
+  }
+
   const noAccessMessage = permissionsUnverified ? (
     <div className="flex flex-col items-center justify-center text-center gap-4 h-full min-h-[50vh] p-6">
       <div className="rounded-full bg-amber-100 p-4 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
@@ -495,6 +506,7 @@ export default function AdminDashboard() {
         />
 
         <main className="flex-1 overflow-y-auto custom-scrollbar">
+          {!(hasNoAccess || permissionsUnverified) && showProfile && <ProfileCompletionBanner profilePath="/admin/profile" />}
           <Suspense fallback={
             <div className="flex-1 flex justify-center items-center h-[50vh]">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent"></div>
