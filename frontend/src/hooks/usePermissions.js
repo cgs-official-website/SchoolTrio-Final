@@ -228,7 +228,8 @@ export default function usePermissions() {
   }, [fetchPermissions, currentUser, userProfile]);
 
   // Canonical live-data synchronization for RBAC permissions
-  useLiveDataRefresh(() => fetchPermissions(true), [fetchPermissions], ['rbac', 'permissions']);
+  // silent=true: background refresh must never flip `loading` and unmount the whole portal
+  useLiveDataRefresh(() => fetchPermissions(true, true), [fetchPermissions], ['rbac', 'permissions']);
 
   const canRead = useCallback((moduleKey) => {
     if (permissions === 'ALL' || isUnrestricted) return true;

@@ -51,6 +51,9 @@ export default function TeacherChat() {
   const [showCreateChannelModal, setShowCreateChannelModal] = useState(false);
 
   const [messages, setMessages] = useState([]);
+  const messagesRef = useRef([]);
+  const messagesCacheRef = useRef(new Map()); // roomId -> last loaded messages
+  messagesRef.current = messages;
   const [parentLinked, setParentLinked] = useState(null);
   const messagesEndRef = useRef(null);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, message: '' });
@@ -195,9 +198,9 @@ export default function TeacherChat() {
   }, [fetchStudentsAndChats, scopeLoading]);
 
   // Fetch Channels via REST API
-  const fetchChannels = useCallback(async () => {
+  const fetchChannels = useCallback(async ({ silent = false } = {}) => {
     if (schoolId) {
-      setLoadingChannels(true);
+      if (!silent) setLoadingChannels(true);
       try {
         const res = await chatsApi.listChatChannels({ limit: 50 });
         const channelsData = Array.isArray(res?.data) ? res.data : [];
@@ -242,42 +245,58 @@ export default function TeacherChat() {
 
     const setupChat = async () => {
       if (activeStudent && schoolId) {
-        setMessages([]);
-        setParentName('');
-        setChatRoomData(null);
+        setParentName(activeStudent.parentName || 'Parent');
+        setLinkedParentId(activeStudent.parentId || null);
+        setParentLinked(Boolean(activeStudent.parentId));
         setRoomError('');
-        setLoadingMessages(true);
+
+        // Show cached messages instantly when re-opening a chat (no spinner)
+        const cached = (activeStudent.roomId ? messagesCacheRef.current.get(activeStudent.roomId) : null);
+        setMessages(cached || []);
+        setLoadingMessages(!cached);
 
         try {
-          // 1. Resolve or get canonical chat room
-          const roomRes = await chatsApi.resolveChatRoom({ studentId: activeStudent.id });
-          const room = roomRes?.data || roomRes;
-
-          if (isCancelled) return;
-
-          setChatRoomData(room);
-          setParentName(room.parentName || (activeStudent.parentName || 'Parent'));
-          setLinkedParentId(room.parentId || activeStudent.parentId || null);
-          setParentLinked(Boolean(room.parentId || activeStudent.parentId));
-
-          // 2. Fetch messages for the room
-          const messagesRes = await chatsApi.listChatMessages(room.id, { limit: 100 });
-          if (!isCancelled) {
-            setMessages(Array.isArray(messagesRes?.data) ? messagesRes.data : []);
+          // 1. Room: reuse the roomId we already have from the rooms list (skips the slow
+          //    resolve call = several DB queries + scope check + upsert + audit log).
+          let room;
+          if (activeStudent.roomId) {
+            room = {
+              id: activeStudent.roomId,
+              parentName: activeStudent.parentName,
+              parentId: activeStudent.parentId,
+              status: activeStudent.status || 'active',
+              unreadCountTeacher: activeStudent.unreadCount || 0
+            };
+            setChatRoomData(room);
+          } else {
+            setChatRoomData(null);
+            const roomRes = await chatsApi.resolveChatRoom({ studentId: activeStudent.id });
+            room = roomRes?.data || roomRes;
+            if (isCancelled) return;
+            setChatRoomData(room);
+            setParentName(room.parentName || (activeStudent.parentName || 'Parent'));
+            setLinkedParentId(room.parentId || activeStudent.parentId || null);
+            setParentLinked(Boolean(room.parentId || activeStudent.parentId));
           }
 
-          // 3. Mark chat as read if unread count > 0
-          if (room.unreadCountTeacher > 0 || activeStudent.unreadCount > 0) {
-            try {
-              await chatsApi.markChatRoomRead(room.id);
+          // 2. Messages + mark-read in parallel (mark-read no longer waits for messages)
+          const needsRead = (room.unreadCountTeacher > 0 || activeStudent.unreadCount > 0);
+          const readPromise = needsRead
+            ? chatsApi.markChatRoomRead(room.id).then(() => {
               if (!isCancelled) {
                 setStudents(prev => prev.map(s => s.id === activeStudent.id ? { ...s, unreadCount: 0 } : s));
                 setChatRoomData(prev => prev ? { ...prev, unreadCountTeacher: 0, unreadCount_teacher: 0 } : prev);
               }
-            } catch (err) {
-              console.error("Failed to mark chat as read:", err);
-            }
+            }).catch(err => console.error("Failed to mark chat as read:", err))
+            : null;
+
+          const messagesRes = await chatsApi.listChatMessages(room.id, { limit: 100 });
+          if (!isCancelled) {
+            const msgs = Array.isArray(messagesRes?.data) ? messagesRes.data : [];
+            messagesCacheRef.current.set(room.id, msgs);
+            setMessages(prev => areMessagesEqual(prev, msgs) ? prev : msgs);
           }
+          await readPromise;
         } catch (error) {
           if (!isCancelled) {
             console.error("Error setting up chat room:", error);
@@ -302,7 +321,7 @@ export default function TeacherChat() {
   // Auto-refresh via live data broadcast
   useLiveDataRefresh(useCallback(() => {
     fetchStudentsAndChats();
-    fetchChannels();
+    fetchChannels({ silent: true });
     if (activeTab === 'dms' && chatRoomData?.id) {
       chatsApi.listChatMessages(chatRoomData.id, { limit: 100 })
         .then(res => {
@@ -318,22 +337,36 @@ export default function TeacherChat() {
     if (activeTab !== 'dms' || !chatRoomData?.id || !schoolId) return;
 
     let isCancelled = false;
+    let inFlight = false;
+    const roomId = chatRoomData.id;
     const pollMessages = async () => {
-      if (document.visibilityState !== 'visible') return;
+      if (inFlight || document.visibilityState !== 'visible') return;
+      inFlight = true;
       try {
-        const messagesRes = await chatsApi.listChatMessages(chatRoomData.id, { limit: 100 });
+        const messagesRes = await chatsApi.listChatMessages(roomId, { limit: 100 });
         if (isCancelled) return;
         const newMsgs = Array.isArray(messagesRes?.data) ? messagesRes.data : [];
-        setMessages(prev => areMessagesEqual(prev, newMsgs) ? prev : newMsgs);
-      } catch (err) { }
+        const prevMsgs = messagesRef.current;
+        if (areMessagesEqual(prevMsgs, newMsgs)) return;
+        const prevIds = new Set(prevMsgs.map(m => m.id));
+        const hasIncoming = newMsgs.some(m => !prevIds.has(m.id) && !(m.senderRole === 'teacher' || m.senderId === currentUserId));
+        messagesCacheRef.current.set(roomId, newMsgs);
+        setMessages(newMsgs);
+        // New message from parent while this chat is open -> mark read immediately
+        if (hasIncoming) {
+          chatsApi.markChatRoomRead(roomId).catch(() => { });
+          setStudents(prev => prev.map(s => s.roomId === roomId ? { ...s, unreadCount: 0 } : s));
+        }
+      } catch (err) { /* ignore transient poll errors */ } finally { inFlight = false; }
     };
 
-    const interval = setInterval(pollMessages, 3000);
+    // ~2s polling = near real-time (backend has no websocket/SSE)
+    const interval = setInterval(pollMessages, 2000);
     return () => {
       isCancelled = true;
       clearInterval(interval);
     };
-  }, [activeTab, chatRoomData?.id, schoolId]);
+  }, [activeTab, chatRoomData?.id, schoolId, currentUserId, activeStudent?.id]);
 
   // Periodic polling for active Channel posts
   useEffect(() => {
@@ -350,7 +383,7 @@ export default function TeacherChat() {
       } catch (err) { }
     };
 
-    const interval = setInterval(pollChannelPosts, 4000);
+    const interval = setInterval(pollChannelPosts, 2000);
     return () => {
       isCancelled = true;
       clearInterval(interval);
@@ -364,14 +397,15 @@ export default function TeacherChat() {
       if (document.visibilityState === 'visible') {
         fetchStudentsAndChats();
       }
-    }, 8000);
+    }, 6000);
     return () => clearInterval(interval);
   }, [schoolId, fetchStudentsAndChats]);
 
   // Auto-scroll to bottom of messages
+  const lastMessageId = messages.length ? messages[messages.length - 1]?.id : null;
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [lastMessageId, chatRoomData?.id, activeChannel?.id]);
 
   const handleSendMessage = async (text, mediaUrl, mediaType) => {
     if (!schoolId) return;
@@ -385,7 +419,7 @@ export default function TeacherChat() {
         };
         const res = await chatsApi.createChannelPost(activeChannel.id, payload);
         const createdPost = res?.data || res;
-        setMessages(prev => [...prev, createdPost]);
+        setMessages(prev => (prev.some(m => m.id === createdPost?.id) ? prev : [...prev, createdPost]));
         notifyDataChanged('chats');
       } else if (activeTab === 'dms' && activeStudent) {
         let roomId = chatRoomData?.id;
@@ -404,7 +438,7 @@ export default function TeacherChat() {
         const res = await chatsApi.sendChatMessage(roomId, payload);
         const createdMsg = res?.data || res;
 
-        setMessages(prev => [...prev, createdMsg]);
+        setMessages(prev => (prev.some(m => m.id === createdMsg.id) ? prev : [...prev, createdMsg]));
         notifyDataChanged('chats');
 
         // Update local room metadata & student ordering
@@ -605,8 +639,8 @@ export default function TeacherChat() {
                     key={student.id}
                     onClick={() => setActiveStudent(student)}
                     className={`w-full text-left p-3 rounded-2xl flex items-center gap-3 transition-colors ${activeStudent?.id === student.id
-                        ? 'bg-primary-50 dark:bg-slate-800 border-l-4 border-l-primary-600 border-y-transparent border-r-transparent shadow-sm'
-                        : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
+                      ? 'bg-primary-50 dark:bg-slate-800 border-l-4 border-l-primary-600 border-y-transparent border-r-transparent shadow-sm'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
                       }`}
                   >
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${activeStudent?.id === student.id ? 'bg-primary-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
@@ -638,8 +672,8 @@ export default function TeacherChat() {
                     key={channel.id}
                     onClick={() => setActiveChannel(channel)}
                     className={`w-full text-left p-3 rounded-2xl flex items-center gap-3 transition-colors ${activeChannel?.id === channel.id
-                        ? 'bg-primary-50 dark:bg-slate-800 border-l-4 border-l-primary-600 border-y-transparent border-r-transparent shadow-sm'
-                        : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
+                      ? 'bg-primary-50 dark:bg-slate-800 border-l-4 border-l-primary-600 border-y-transparent border-r-transparent shadow-sm'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
                       }`}
                   >
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${activeChannel?.id === channel.id ? 'bg-primary-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
@@ -700,8 +734,8 @@ export default function TeacherChat() {
                       toast.success(`Chat marked as ${newStatus}`);
                     }}
                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${chatRoomData?.status === 'completed'
-                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                        : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                      : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                       }`}
                   >
                     {chatRoomData?.status === 'completed' ? (
@@ -758,8 +792,8 @@ export default function TeacherChat() {
                             )}
 
                             <div className={`max-w-[85%] md:max-w-[75%] rounded-2xl p-4 ${isMe
-                                ? (msg.isDeletedForEveryone ? 'bg-primary-500 text-white/80 rounded-tr-sm' : 'bg-gradient-to-br from-primary-500 to-primary-600 text-white rounded-tr-sm shadow-md shadow-primary-500/20')
-                                : (msg.isDeletedForEveryone ? 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-tl-sm shadow-sm' : 'bg-white dark:bg-slate-900 border-0 text-slate-800 dark:text-slate-100 rounded-tl-sm shadow-md shadow-slate-200/50 dark:shadow-none')
+                              ? (msg.isDeletedForEveryone ? 'bg-primary-500 text-white/80 rounded-tr-sm' : 'bg-gradient-to-br from-primary-500 to-primary-600 text-white rounded-tr-sm shadow-md shadow-primary-500/20')
+                              : (msg.isDeletedForEveryone ? 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-tl-sm shadow-sm' : 'bg-white dark:bg-slate-900 border-0 text-slate-800 dark:text-slate-100 rounded-tl-sm shadow-md shadow-slate-200/50 dark:shadow-none')
                               } relative`}>
 
                               {renderMessageContent(msg, isMe)}
@@ -851,8 +885,8 @@ export default function TeacherChat() {
                           {msg.senderName || 'Sender'}
                         </div>
                         <div className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 shadow-sm ${isTeacher
-                            ? 'bg-gradient-to-br from-primary-600 to-primary-700 text-white rounded-tr-none'
-                            : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-tl-none'
+                          ? 'bg-gradient-to-br from-primary-600 to-primary-700 text-white rounded-tr-none'
+                          : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-tl-none'
                           }`}>
                           {msg.text && <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.text}</p>}
                           {msg.mediaUrl && (

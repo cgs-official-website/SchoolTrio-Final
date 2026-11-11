@@ -47,6 +47,8 @@ export default function ParentChat() {
   const [loadingChannels, setLoadingChannels] = useState(true);
 
   const [messages, setMessages] = useState([]);
+  const messagesRef = useRef([]);
+  messagesRef.current = messages;
   const [loadingMessages, setLoadingMessages] = useState(false);
   const messagesEndRef = useRef(null);
   const [previewFile, setPreviewFile] = useState(null); // { url, type }
@@ -84,7 +86,9 @@ export default function ParentChat() {
   };
 
   // Fetch Rooms & Conversations for the active student
-  const fetchConversations = useCallback(async (targetStudentId) => {
+  // `silent` = background refresh (polling / live-data): never show the full-page
+  // spinner and never wipe existing UI on a transient error.
+  const fetchConversations = useCallback(async (targetStudentId, { silent = false } = {}) => {
     if (!targetStudentId) {
       setConversations([]);
       setActiveConversation(null);
@@ -92,7 +96,7 @@ export default function ParentChat() {
       return;
     }
 
-    setLoadingConversations(true);
+    if (!silent) setLoadingConversations(true);
     try {
       const res = await chatsApi.listChatRooms();
       if (!mountedRef.current || currentStudentRef.current !== targetStudentId) return;
@@ -145,12 +149,17 @@ export default function ParentChat() {
       setConversations(formatted);
 
       setActiveConversation(prev => {
-        if (prev && formatted.some(c => c.roomId === prev.roomId)) {
-          return formatted.find(c => c.roomId === prev.roomId);
+        if (prev) {
+          const match = formatted.find(c => c.roomId === prev.roomId);
+          if (match) {
+            // Keep the same object when nothing changed -> no needless re-render
+            return JSON.stringify(match) === JSON.stringify(prev) ? prev : match;
+          }
         }
         return formatted.length > 0 ? formatted[0] : null;
       });
     } catch (err) {
+      if (silent) return; // keep current UI on background-refresh failure
       if (mountedRef.current && currentStudentRef.current === targetStudentId) {
         console.error("Error fetching conversations:", err);
         toast.error(err?.message || "Failed to load conversations");
@@ -158,21 +167,21 @@ export default function ParentChat() {
         setActiveConversation(null);
       }
     } finally {
-      if (mountedRef.current && currentStudentRef.current === targetStudentId) {
+      if (!silent && mountedRef.current && currentStudentRef.current === targetStudentId) {
         setLoadingConversations(false);
       }
     }
   }, []);
 
   // Fetch Channels
-  const fetchChannels = useCallback(async () => {
-    setLoadingChannels(true);
+  const fetchChannels = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoadingChannels(true);
     try {
       const res = await chatsApi.listChatChannels();
       if (!mountedRef.current) return;
       setChannels(Array.isArray(res?.data) ? res.data : []);
     } catch (err) {
-      if (mountedRef.current) {
+      if (mountedRef.current && !silent) {
         console.error("Error fetching broadcast channels:", err);
         setChannels([]);
       }
@@ -279,8 +288,8 @@ export default function ParentChat() {
 
   // Auto-refresh via live data broadcast
   useLiveDataRefresh(useCallback(() => {
-    if (studentId) fetchConversations(studentId);
-    fetchChannels();
+    if (studentId) fetchConversations(studentId, { silent: true });
+    fetchChannels({ silent: true });
     if (activeTab === 'dms' && activeConversation?.roomId) {
       chatsApi.listChatMessages(activeConversation.roomId)
         .then(res => {
@@ -297,22 +306,35 @@ export default function ParentChat() {
     if (activeTab !== 'dms' || !activeConversation?.roomId) return;
 
     let isCancelled = false;
+    let inFlight = false;
+    const roomId = activeConversation.roomId;
     const pollMessages = async () => {
-      if (document.visibilityState !== 'visible' || !mountedRef.current) return;
+      if (inFlight || document.visibilityState !== 'visible' || !mountedRef.current) return;
+      inFlight = true;
       try {
-        const res = await chatsApi.listChatMessages(activeConversation.roomId);
+        const res = await chatsApi.listChatMessages(roomId);
         if (isCancelled || !mountedRef.current) return;
         const newMsgs = Array.isArray(res?.data) ? res.data : [];
-        setMessages(prev => areMessagesEqual(prev, newMsgs) ? prev : newMsgs);
-      } catch (err) { }
+        const prevMsgs = messagesRef.current;
+        if (areMessagesEqual(prevMsgs, newMsgs)) return;
+        const prevIds = new Set(prevMsgs.map(m => m.id));
+        const hasIncoming = newMsgs.some(m => !prevIds.has(m.id) && !(m.senderRole === 'parent' || m.senderId === currentUserId));
+        setMessages(newMsgs);
+        // New message from teacher while this chat is open -> mark it read right away
+        if (hasIncoming) {
+          chatsApi.markChatRoomRead(roomId).catch(() => { });
+          setConversations(prev => prev.map(c => c.roomId === roomId ? { ...c, unreadCount: 0 } : c));
+        }
+      } catch (err) { /* ignore transient poll errors */ } finally { inFlight = false; }
     };
 
-    const interval = setInterval(pollMessages, 3000);
+    // ~2s polling = near real-time (backend has no websocket/SSE)
+    const interval = setInterval(pollMessages, 2000);
     return () => {
       isCancelled = true;
       clearInterval(interval);
     };
-  }, [activeTab, activeConversation?.roomId]);
+  }, [activeTab, activeConversation?.roomId, currentUserId]);
 
   // Periodic polling for active Channel posts
   useEffect(() => {
@@ -329,7 +351,7 @@ export default function ParentChat() {
       } catch (err) { }
     };
 
-    const interval = setInterval(pollChannelPosts, 4000);
+    const interval = setInterval(pollChannelPosts, 2000);
     return () => {
       isCancelled = true;
       clearInterval(interval);
@@ -341,16 +363,17 @@ export default function ParentChat() {
     if (!studentId) return;
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible' && mountedRef.current) {
-        fetchConversations(studentId);
+        fetchConversations(studentId, { silent: true });
       }
-    }, 8000);
+    }, 6000);
     return () => clearInterval(interval);
   }, [studentId, fetchConversations]);
 
   // Auto-scroll to bottom on message change
+  const lastMessageId = messages.length ? messages[messages.length - 1]?.id : null;
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [lastMessageId, activeConversation?.roomId, activeChannel?.id]);
 
   const handleSendMessage = async (text, mediaUrl, mediaType) => {
     if (!studentId) return;
@@ -370,7 +393,7 @@ export default function ParentChat() {
 
         const createdMsg = await chatsApi.sendChatMessage(activeConversation.roomId, payload);
         if (createdMsg) {
-          setMessages(prev => [...prev, createdMsg]);
+          setMessages(prev => (prev.some(m => m.id === createdMsg.id) ? prev : [...prev, createdMsg]));
           notifyDataChanged('chats');
           // Update last message in conversation list
           const previewText = text || (mediaType ? `[${mediaType}]` : '[Attachment]');
@@ -503,8 +526,8 @@ export default function ParentChat() {
                     key={conv.roomId}
                     onClick={() => setActiveConversation(conv)}
                     className={`w-full text-left p-3 rounded-2xl flex items-center gap-3 transition-colors ${activeConversation?.roomId === conv.roomId
-                        ? 'bg-primary-50 dark:bg-slate-800 border-l-4 border-l-primary-600 border-y-transparent border-r-transparent shadow-sm'
-                        : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
+                      ? 'bg-primary-50 dark:bg-slate-800 border-l-4 border-l-primary-600 border-y-transparent border-r-transparent shadow-sm'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
                       }`}
                   >
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${activeConversation?.roomId === conv.roomId ? 'bg-primary-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
@@ -536,8 +559,8 @@ export default function ParentChat() {
                     key={channel.id}
                     onClick={() => setActiveChannel(channel)}
                     className={`w-full text-left p-3 rounded-2xl flex items-center gap-3 transition-colors ${activeChannel?.id === channel.id
-                        ? 'bg-primary-50 dark:bg-slate-800 border-l-4 border-l-primary-600 border-y-transparent border-r-transparent shadow-sm'
-                        : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
+                      ? 'bg-primary-50 dark:bg-slate-800 border-l-4 border-l-primary-600 border-y-transparent border-r-transparent shadow-sm'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
                       }`}
                   >
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg shrink-0 ${activeChannel?.id === channel.id ? 'bg-primary-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
@@ -641,8 +664,8 @@ export default function ParentChat() {
                             )}
 
                             <div className={`max-w-[85%] md:max-w-[75%] rounded-2xl p-4 ${isMe
-                                ? (msg.isDeletedForEveryone ? 'bg-primary-500 text-white/80 rounded-tr-sm' : 'bg-gradient-to-br from-primary-500 to-primary-600 text-white rounded-tr-sm shadow-md shadow-primary-500/20')
-                                : (msg.isDeletedForEveryone ? 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-tl-sm shadow-sm' : 'bg-white dark:bg-slate-900 border-0 text-slate-800 dark:text-slate-100 rounded-tl-sm shadow-md shadow-slate-200/50 dark:shadow-none')
+                              ? (msg.isDeletedForEveryone ? 'bg-primary-500 text-white/80 rounded-tr-sm' : 'bg-gradient-to-br from-primary-500 to-primary-600 text-white rounded-tr-sm shadow-md shadow-primary-500/20')
+                              : (msg.isDeletedForEveryone ? 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-tl-sm shadow-sm' : 'bg-white dark:bg-slate-900 border-0 text-slate-800 dark:text-slate-100 rounded-tl-sm shadow-md shadow-slate-200/50 dark:shadow-none')
                               } relative`}>
 
                               {renderMessageContent(msg, isMe)}
@@ -736,8 +759,8 @@ export default function ParentChat() {
                           {msg.senderName || (isTeacher ? 'Teacher' : 'Staff')}
                         </div>
                         <div className={`max-w-[85%] md:max-w-[75%] rounded-2xl p-4 ${isMe
-                            ? 'bg-gradient-to-br from-primary-500 to-primary-600 text-white rounded-tr-sm shadow-md shadow-primary-500/20'
-                            : (isTeacher ? 'bg-primary-50 text-slate-900 dark:text-white rounded-tl-sm shadow-sm' : 'bg-white dark:bg-slate-900 border-0 text-slate-800 dark:text-slate-100 rounded-tl-sm shadow-md shadow-slate-200/50 dark:shadow-none')
+                          ? 'bg-gradient-to-br from-primary-500 to-primary-600 text-white rounded-tr-sm shadow-md shadow-primary-500/20'
+                          : (isTeacher ? 'bg-primary-50 text-slate-900 dark:text-white rounded-tl-sm shadow-sm' : 'bg-white dark:bg-slate-900 border-0 text-slate-800 dark:text-slate-100 rounded-tl-sm shadow-md shadow-slate-200/50 dark:shadow-none')
                           } relative`}>
                           {renderMessageContent(msg, isMe)}
 

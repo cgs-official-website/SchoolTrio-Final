@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { registerTeacher } from '../api/registration';
 import { getPublicSchoolMeta } from '../api/settings';
-import { LuUser as UserIcon, LuLock as LockIcon, LuMail as MailIcon, LuBriefcase as BriefcaseIcon, LuPhone as PhoneIcon, LuHash as HashIcon, LuBuilding2 } from 'react-icons/lu';
+import { LuUser as UserIcon, LuLock as LockIcon, LuMail as MailIcon, LuBriefcase as BriefcaseIcon, LuPhone as PhoneIcon, LuHash as HashIcon, LuBuilding2, LuEye, LuEyeOff } from 'react-icons/lu';
 import Captcha from '../components/Captcha';
 
 export default function TeacherRegistration() {
@@ -25,7 +25,8 @@ export default function TeacherRegistration() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [error, setError] = useState(null);
   const [captchaValid, setCaptchaValid] = useState(false);
-  
+  const [showPassword, setShowPassword] = useState(false);
+
   const captchaRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -110,14 +111,14 @@ export default function TeacherRegistration() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-sans selection:bg-primary-500 selection:text-white flex flex-col items-center justify-center p-4 sm:p-8">
       <div className="w-full max-w-5xl bg-white dark:bg-slate-900 rounded-3xl shadow-xl overflow-hidden flex flex-col md:flex-row h-auto md:h-[90vh] max-h-[800px] min-h-[600px] border border-slate-100 dark:border-slate-800">
-        
+
         {/* Left Gradient Panel */}
         <div className="w-full md:w-1/2 p-4 hidden md:flex flex-col relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-primary-500 via-indigo-600 to-cyan-400 rounded-2xl m-4 z-0">
-             <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-white/20 blur-[60px] rounded-full mix-blend-screen animate-pulse pointer-events-none"></div>
-             <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-blue-300/30 blur-[80px] rounded-full mix-blend-screen animate-[pulse_4s_ease-in-out_infinite_reverse] pointer-events-none"></div>
+            <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-white/20 blur-[60px] rounded-full mix-blend-screen animate-pulse pointer-events-none"></div>
+            <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-blue-300/30 blur-[80px] rounded-full mix-blend-screen animate-[pulse_4s_ease-in-out_infinite_reverse] pointer-events-none"></div>
           </div>
-          
+
           <div className="relative z-10 flex flex-col h-full justify-between p-8 text-white">
             <Link to="/" className="inline-flex items-center gap-2 group focus:outline-none focus:ring-2 focus:ring-white/50 rounded-lg w-max">
               <img src="/logo.png" alt="School Logo" className="w-auto h-10 object-contain drop-shadow-sm filter brightness-0 invert" />
@@ -134,7 +135,7 @@ export default function TeacherRegistration() {
 
         {/* Right Form Panel */}
         <div className="w-full md:w-1/2 p-6 sm:p-8 lg:p-12 flex flex-col bg-white dark:bg-slate-900 relative overflow-y-auto overflow-x-hidden custom-scrollbar">
-          
+
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20">
               <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary-500 border-t-transparent mb-4"></div>
@@ -205,7 +206,7 @@ export default function TeacherRegistration() {
                       placeholder="you@example.com"
                     />
                   </div>
-                  
+
                   <div className="space-y-1">
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-200">Employee ID</label>
                     <input
@@ -222,15 +223,25 @@ export default function TeacherRegistration() {
 
                   <div className="space-y-1">
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-200">Password</label>
-                    <input
-                      name="password"
-                      type="password"
-                      required
-                      value={formData.password}
-                      onChange={handleChange}
-                      className="w-full px-4 py-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all outline-none text-slate-900 dark:text-white disabled:opacity-50 placeholder-slate-400 dark:placeholder-slate-500"
-                      placeholder="••••••••"
-                    />
+                    <div className="relative">
+                      <input
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        required
+                        value={formData.password}
+                        onChange={handleChange}
+                        className="no-native-reveal w-full px-4 py-3 pr-12 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all outline-none text-slate-900 dark:text-white disabled:opacity-50 placeholder-slate-400 dark:placeholder-slate-500"
+                        placeholder="••••••••"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(v => !v)}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-100 focus:outline-none"
+                      >
+                        {showPassword ? <LuEyeOff size={18} /> : <LuEye size={18} />}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
