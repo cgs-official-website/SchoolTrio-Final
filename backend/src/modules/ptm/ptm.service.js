@@ -10,6 +10,7 @@ import {
   TenantAccessError
 } from '../../utils/app-error.js';
 import { PTM_STATUS, PTM_TYPES } from './ptm.schema.js';
+import { hasAdminPanelScope } from '../../utils/access-scope.js';
 
 /**
  * Normalizes and formats a raw PtmAppointment record into a safe, rich client DTO.
@@ -60,6 +61,8 @@ export function formatPtm(ptm) {
  * Validates whether an actor role is an Administrative role.
  */
 function isAdministrator(actor) {
+  // Admin-panel roles (set in Roles & Permissions) see school-wide PTMs like an administrator
+  if (hasAdminPanelScope(actor)) return true;
   const role = (actor?.systemRole || actor?.role || '').toUpperCase();
   return (
     role === SYSTEM_ROLES.SUPER_ADMIN ||

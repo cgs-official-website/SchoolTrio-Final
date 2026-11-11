@@ -66,6 +66,35 @@ export const CANONICAL_MODULE_KEYS = Object.freeze([
 
 export const CANONICAL_MODULE_SET = new Set(CANONICAL_MODULE_KEYS);
 
+/**
+ * READ-ONLY LOOKUP DEPENDENCIES
+ *
+ * Many pages need to read another module's list just to render (dropdowns, filters, name look-ups).
+ * Example: Student Directory needs the Classes list for its class filter, Reports needs students,
+ * staff, fees and attendance numbers.
+ *
+ * Shape:  { <lookupModule>: [<modules whose pages need to READ it>] }
+ *
+ * Meaning: a user who has READ on any listed module may also READ <lookupModule> data.
+ * - Applies to the 'read' operation ONLY. Create / edit / delete are never implied.
+ * - Does NOT change the permission matrix saved in Roles & Permissions, and does NOT change what
+ *   /rbac/my-permissions returns, so the sidebar still shows only the modules that were ticked.
+ * - Not role based. It only describes which module needs which other module's data.
+ */
+export const READ_LOOKUP_DEPENDENCIES = Object.freeze({
+  classes: Object.freeze([
+    'students', 'attendance', 'canteen', 'exams', 'fees', 'homework', 'noticeboard', 'staff',
+    'subjects', 'timetables', 'resources', 'lesson_plans', 'transport', 'performance', 'ptm', 'reports'
+  ]),
+  students: Object.freeze([
+    'attendance', 'canteen', 'transport', 'exams', 'chats', 'ptm', 'performance', 'noticeboard', 'reports'
+  ]),
+  staff: Object.freeze(['classes', 'subjects', 'timetables', 'hr-payroll', 'reports']),
+  subjects: Object.freeze(['exams', 'homework', 'timetables', 'staff', 'resources', 'lesson_plans']),
+  attendance: Object.freeze(['reports', 'performance']),
+  fees: Object.freeze(['reports'])
+});
+
 export const LOGIN_PANELS = Object.freeze({
   ADMIN: 'admin',
   TEACHER: 'teacher'

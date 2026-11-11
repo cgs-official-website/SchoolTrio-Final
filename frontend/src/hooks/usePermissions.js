@@ -11,6 +11,11 @@ let permissionsCache = {
 };
 let inFlightPermissionsPromise = null;
 
+// Cached permissions are re-checked with the server at least this often, so a role change
+// made by the admin (possibly from another browser) shows up without logging in again.
+const PERMISSIONS_TTL_MS = 30 * 1000;
+const PERMISSIONS_POLL_MS = 60 * 1000;
+
 export const clearPermissionsCache = () => {
   permissionsCache = { key: null, data: null, timestamp: 0 };
   inFlightPermissionsPromise = null;
@@ -68,7 +73,8 @@ export default function usePermissions() {
     setIsUnrestricted(isUnres);
   }, [userProfile]);
 
-  const fetchPermissions = useCallback(async (forceRefresh = false) => {
+  // silent = background refresh: no loading spinner, and a failed refresh keeps the current permissions
+  const fetchPermissions = useCallback(async (forceRefresh = false, silent = false) => {
     const currentFetchId = ++fetchIdRef.current;
 
     if (!currentUser || !userProfile) {
@@ -118,16 +124,21 @@ export default function usePermissions() {
       clearPermissionsCache();
     }
 
-    // Return cached permissions immediately if valid and not forcing refresh
-    if (!forceRefresh && permissionsCache.key === cacheKey && permissionsCache.data) {
+    // Use cached permissions immediately (no spinner). If the cache is older than the TTL,
+    // keep showing it and re-check with the server silently in the background.
+    const hasCache = permissionsCache.key === cacheKey && permissionsCache.data;
+    if (!forceRefresh && hasCache) {
       applyPermissionData(permissionsCache.data);
       setError(null);
       setLoading(false);
-      return;
+      if (Date.now() - permissionsCache.timestamp < PERMISSIONS_TTL_MS) {
+        return;
+      }
+      silent = true;
     }
 
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
 
       // Single-flight deduplication across multiple concurrent mounts (e.g. nested route guards)
@@ -153,14 +164,16 @@ export default function usePermissions() {
         };
         applyPermissionData(res.data);
         setError(null);
-      } else {
+      } else if (!silent) {
         setPermissions({});
         setRoles([]);
         setIsUnrestricted(false);
         setError(null);
       }
     } catch (err) {
-      if (currentFetchId === fetchIdRef.current) {
+      if (silent) {
+        console.warn('[RBAC] Background permission refresh failed:', err);
+      } else if (currentFetchId === fetchIdRef.current) {
         console.error('[RBAC] Error fetching permissions:', err);
         // Distinguish transient failure from confirmed permission denial:
         // Do NOT set permissions to {} (which would look like confirmed denial)
@@ -192,6 +205,27 @@ export default function usePermissions() {
       window.removeEventListener('rbac-permissions-updated', handleRbacUpdate);
     };
   }, [fetchPermissions]);
+
+  // Pick up role/permission changes made by an admin (even from another browser):
+  // re-check when the tab gets focus again, and every minute while it stays open.
+  useEffect(() => {
+    if (!currentUser || !userProfile) return undefined;
+
+    const refreshSilently = () => {
+      if (document.visibilityState === 'hidden') return;
+      fetchPermissions(true, true);
+    };
+
+    window.addEventListener('focus', refreshSilently);
+    document.addEventListener('visibilitychange', refreshSilently);
+    const timer = setInterval(refreshSilently, PERMISSIONS_POLL_MS);
+
+    return () => {
+      window.removeEventListener('focus', refreshSilently);
+      document.removeEventListener('visibilitychange', refreshSilently);
+      clearInterval(timer);
+    };
+  }, [fetchPermissions, currentUser, userProfile]);
 
   // Canonical live-data synchronization for RBAC permissions
   useLiveDataRefresh(() => fetchPermissions(true), [fetchPermissions], ['rbac', 'permissions']);

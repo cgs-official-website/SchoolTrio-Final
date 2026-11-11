@@ -33,6 +33,28 @@ export function canReactivateStaff(member, hasEditPermission) {
   return (member.status || 'Active') === 'Inactive';
 }
 
+// Designation follows the assigned role. A designation that is just the name of another role
+// (e.g. "Finance Department" left over after the role was changed to "Staffs") is treated as stale.
+// A custom designation such as "Senior Maths Teacher" is kept as typed.
+const ROLE_NAME_DESIGNATIONS = [
+  'Correspondent', 'Principal', 'Vice Principal', 'Subject Wise Head',
+  'Class Incharge', 'Staffs', 'Administrative Officer', 'Finance Department',
+  'Library', 'Canteen', 'Transport', 'Janitors', 'Hostel', 'Inventory', 'Security'
+];
+
+export function resolveDesignation(designation, roleName) {
+  const current = String(designation || '').trim();
+  if (!current) return roleName;
+  if (roleName && current !== roleName && ROLE_NAME_DESIGNATIONS.includes(current)) return roleName;
+  return current;
+}
+
+export function syncDesignationWithRole(currentDesignation, newRoleName) {
+  const current = String(currentDesignation || '').trim();
+  if (!current || ROLE_NAME_DESIGNATIONS.includes(current)) return newRoleName;
+  return current;
+}
+
 export function normalizeStaffMember(s) {
   if (!s) return null;
   const custom = (typeof s.customData === 'object' && s.customData !== null)
@@ -46,7 +68,7 @@ export function normalizeStaffMember(s) {
       try {
         const parsed = JSON.parse(val);
         if (typeof parsed === 'object' && parsed !== null) return parsed;
-      } catch (e) {}
+      } catch (e) { }
     }
     return val;
   };
@@ -247,7 +269,7 @@ export function normalizeStaffMember(s) {
     role: roleName,
     roles: roleNames.length > 0 ? roleNames : ['Staffs'],
     roleId,
-    designation: s.designation || roleName,
+    designation: resolveDesignation(s.designation, roleName),
     dob: s.dob || custom.dob || '',
     gender: s.gender || custom.gender || 'Male',
     bloodGroup: s.bloodGroup || custom.bloodGroup || '',
@@ -1157,7 +1179,7 @@ export default function StaffAssignment() {
       const uploadedCustomData = await uploadCustomDataFiles(editStaffData.customData, schoolId, 'staff');
 
       const selectedRoleName = (editStaffData.roles && editStaffData.roles.length > 0) ? editStaffData.roles[0] : (editStaffData.role || 'Staffs');
-      const matchedRole = rolesList.find(r => r.name === selectedRoleName || r.slug === selectedRoleName || r.id === editStaffData.roleId);
+      const matchedRole = (rolesList.find(r => r.name === selectedRoleName || r.slug === selectedRoleName) || rolesList.find(r => r.id === editStaffData.roleId));
 
       const updatePayload = {
         firstName: (editStaffData.firstName || '').trim() || selectedStaffToView.firstName || null,
@@ -1174,7 +1196,10 @@ export default function StaffAssignment() {
         address: (editStaffData.residentialAddress || editStaffData.address || '').trim() || selectedStaffToView.residentialAddress || null,
         staffType: editStaffData.staff_type || editStaffData.staffType || selectedStaffToView.staffType || 'teaching',
         designation: editStaffData.designation || selectedRoleName || selectedStaffToView.designation || null,
-        roleId: matchedRole ? matchedRole.id : (editStaffData.roleId || selectedStaffToView.roleId || null),
+        // Send the role that was selected. If it is not in the loaded list yet, send its name and let
+        // the server find/create it, instead of re-sending the OLD role id (which kept the old role).
+        roleId: matchedRole ? matchedRole.id : null,
+        roleName: selectedRoleName,
         status: editStaffData.status || selectedStaffToView.status || 'Active',
         qualifications: {
           ...(selectedStaffToView.qualifications || selectedStaffToView.customData?.qualifications || {}),
@@ -1388,7 +1413,7 @@ export default function StaffAssignment() {
       const uploadedCustomData = await uploadCustomDataFiles(activeStaffData.customData, schoolId, 'staff');
 
       const selectedRoleName = (activeStaffData.roles && activeStaffData.roles.length > 0) ? activeStaffData.roles[0] : (activeStaffData.role || 'Staffs');
-      const matchedRole = rolesList.find(r => r.name === selectedRoleName || r.slug === selectedRoleName || r.id === activeStaffData.roleId);
+      const matchedRole = (rolesList.find(r => r.name === selectedRoleName || r.slug === selectedRoleName) || rolesList.find(r => r.id === activeStaffData.roleId));
 
       const staffPayload = {
         firstName: activeStaffData.firstName,
@@ -1398,7 +1423,8 @@ export default function StaffAssignment() {
         employeeId: activeStaffData.staffId || null,
         staffType: activeStaffData.staff_type || activeStaffData.staffType || 'teaching',
         designation: activeStaffData.designation || selectedRoleName || null,
-        roleId: matchedRole ? matchedRole.id : (activeStaffData.roleId || null),
+        roleId: matchedRole ? matchedRole.id : null,
+        roleName: selectedRoleName,
         assignedClassId: activeStaffData.assignedClassId || null,
         baseSalary: activeStaffData.baseSalary ? Number(activeStaffData.baseSalary) : null,
         status: activeStaffData.status || 'Active',
@@ -2352,8 +2378,8 @@ export default function StaffAssignment() {
                       aria-selected={isActive}
                       role="tab"
                       className={`relative py-3.5 px-5 text-xs font-bold whitespace-nowrap transition-all duration-200 flex-shrink-0 focus:outline-none flex items-center gap-2 ${isActive
-                          ? 'text-indigo-600 dark:text-indigo-400 font-extrabold bg-indigo-50/50 dark:bg-slate-800/60'
-                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        ? 'text-indigo-600 dark:text-indigo-400 font-extrabold bg-indigo-50/50 dark:bg-slate-800/60'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800'
                         }`}
                     >
                       <TabIcon size={16} className={isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'} />
@@ -2515,32 +2541,25 @@ export default function StaffAssignment() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="col-span-1 sm:col-span-3">
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Assigned Roles *</label>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Assigned Role *</label>
                       <select
                         onChange={(e) => {
                           const val = e.target.value;
                           if (val) {
-                            const currentRoles = newStaff.roles || (newStaff.role ? [newStaff.role] : ['Staffs']);
-                            if (!currentRoles.includes(val)) {
-                              const updated = [...currentRoles, val];
-                              setNewStaff({
-                                ...newStaff,
-                                roles: updated,
-                                role: updated[0] || 'Staffs'
-                              });
-                            }
+                            // One role per staff member: selecting a role REPLACES the current one
+                            setNewStaff({ ...newStaff, roles: [val], role: val, designation: syncDesignationWithRole(newStaff.designation, val) });
                           }
                           e.target.value = ''; // reset selection
                         }}
                         className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 text-sm cursor-pointer"
                       >
-                        <option value="">-- Choose a role to add --</option>
+                        <option value="">-- Change role --</option>
                         {allRoles.map(roleOption => {
                           const currentRoles = newStaff.roles || (newStaff.role ? [newStaff.role] : ['Staffs']);
                           const isAssigned = currentRoles.includes(roleOption);
                           return (
                             <option key={roleOption} value={roleOption} disabled={isAssigned}>
-                              {roleOption} {isAssigned ? '(Already added)' : ''}
+                              {roleOption} {isAssigned ? '(Current)' : ''}
                             </option>
                           );
                         })}
@@ -2551,22 +2570,6 @@ export default function StaffAssignment() {
                         {(newStaff.roles || (newStaff.role ? [newStaff.role] : ['Staffs'])).map(role => (
                           <span key={role} className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold rounded-xl uppercase tracking-wider">
                             {role}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const currentRoles = newStaff.roles || (newStaff.role ? [newStaff.role] : ['Staffs']);
-                                let updated = currentRoles.filter(r => r !== role);
-                                if (updated.length === 0) updated = ['Staffs']; // fallback to default
-                                setNewStaff({
-                                  ...newStaff,
-                                  roles: updated,
-                                  role: updated[0] || 'Staffs'
-                                });
-                              }}
-                              className="text-indigo-400 hover:text-indigo-650 focus:outline-none"
-                            >
-                              <X size={14} />
-                            </button>
                           </span>
                         ))}
                       </div>
@@ -3106,8 +3109,8 @@ export default function StaffAssignment() {
                     type="button"
                     onClick={() => setAddStaffActiveTab(tab)}
                     className={`px-5 py-3.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-all ${isTabActive
-                        ? 'border-indigo-600 text-indigo-700 bg-white dark:bg-slate-900'
-                        : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      ? 'border-indigo-600 text-indigo-700 bg-white dark:bg-slate-900'
+                      : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
                       }`}
                   >
                     {tab}
@@ -3344,32 +3347,25 @@ export default function StaffAssignment() {
                         <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4">Institutional Roles & Classification</h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="col-span-1 sm:col-span-2">
-                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Assigned Roles *</label>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">Assigned Role *</label>
                             <select
                               onChange={(e) => {
                                 const val = e.target.value;
                                 if (val) {
-                                  const currentRoles = editStaffData.roles || (editStaffData.role ? [editStaffData.role] : ['Staffs']);
-                                  if (!currentRoles.includes(val)) {
-                                    const updated = [...currentRoles, val];
-                                    setEditStaffData({
-                                      ...editStaffData,
-                                      roles: updated,
-                                      role: updated[0] || 'Staffs'
-                                    });
-                                  }
+                                  // One role per staff member: selecting a role REPLACES the current one
+                                  setEditStaffData({ ...editStaffData, roles: [val], role: val, designation: syncDesignationWithRole(editStaffData.designation, val) });
                                 }
                                 e.target.value = '';
                               }}
                               className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer"
                             >
-                              <option value="">-- Choose a role to add --</option>
+                              <option value="">-- Change role --</option>
                               {allRoles.map(roleOption => {
                                 const currentRoles = editStaffData.roles || (editStaffData.role ? [editStaffData.role] : ['Staffs']);
                                 const isAssigned = currentRoles.includes(roleOption);
                                 return (
                                   <option key={roleOption} value={roleOption} disabled={isAssigned}>
-                                    {roleOption} {isAssigned ? '(Already added)' : ''}
+                                    {roleOption} {isAssigned ? '(Current)' : ''}
                                   </option>
                                 );
                               })}
@@ -3380,22 +3376,6 @@ export default function StaffAssignment() {
                               {(editStaffData.roles || (editStaffData.role ? [editStaffData.role] : ['Staffs'])).map(role => (
                                 <span key={role} className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold rounded-xl uppercase tracking-wider">
                                   {role}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const currentRoles = editStaffData.roles || (editStaffData.role ? [editStaffData.role] : ['Staffs']);
-                                      let updated = currentRoles.filter(r => r !== role);
-                                      if (updated.length === 0) updated = ['Staffs'];
-                                      setEditStaffData({
-                                        ...editStaffData,
-                                        roles: updated,
-                                        role: updated[0] || 'Staffs'
-                                      });
-                                    }}
-                                    className="text-indigo-400 hover:text-indigo-650 focus:outline-none"
-                                  >
-                                    <X size={14} />
-                                  </button>
                                 </span>
                               ))}
                             </div>
@@ -3993,8 +3973,8 @@ export default function StaffAssignment() {
                     <label
                       key={key}
                       className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer select-none transition-all ${selectedFields[key]
-                          ? 'border-primary-200 bg-primary-50/30 text-primary-900 font-semibold'
-                          : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
+                        ? 'border-primary-200 bg-primary-50/30 text-primary-900 font-semibold'
+                        : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
                         }`}
                     >
                       <input

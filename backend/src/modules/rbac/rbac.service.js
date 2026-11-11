@@ -465,6 +465,7 @@ export async function assignUserRole(schoolId, userId, roleId, actor = null) {
 
   // Invalidate specific user RBAC cache
   await RedisCacheService.del(`rbac:perms:${schoolId}:${userId}`);
+  await RedisCacheService.del(`rbac:perms:${schoolId}:ctx:${userId}`);
 
   // Record audit log
   await rbacRepository.createAuditLog({
@@ -529,6 +530,7 @@ export async function removeUserRole(schoolId, userId, roleId, actor = null) {
 
   // Invalidate specific user RBAC cache
   await RedisCacheService.del(`rbac:perms:${schoolId}:${userId}`);
+  await RedisCacheService.del(`rbac:perms:${schoolId}:ctx:${userId}`);
 
   // Record audit log
   await rbacRepository.createAuditLog({
@@ -1330,13 +1332,13 @@ export async function suggestRolePermissions(roleName) {
   }
 
   // Determine final target login panel
-  const finalLoginPanel = isTeachingRole 
-    ? 'teacher' 
+  const finalLoginPanel = isTeachingRole
+    ? 'teacher'
     : (candidateLoginPanel || matchedPreset?.loginPanel || 'admin');
 
   // Check if AI output is empty or only returned minimal fallback for a known standard role
-  const isMinimalPerms = candidatePerms && 
-    Object.keys(candidatePerms).length <= 2 && 
+  const isMinimalPerms = candidatePerms &&
+    Object.keys(candidatePerms).length <= 2 &&
     Object.keys(candidatePerms).every(k => k === 'noticeboard' || k === 'calendar');
 
   if (!candidatePerms || Object.keys(candidatePerms).length === 0 || (isMinimalPerms && matchedPreset)) {

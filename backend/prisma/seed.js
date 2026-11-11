@@ -123,67 +123,13 @@ const MODULE_KEYS = [
 ];
 
 /**
- * Helper to compute default CRUD flags for a role and module.
+ * Default CRUD flags for a role and module.
+ *
+ * Every role starts with NO access. The school admin decides what each role can open from
+ * Roles & Permissions; until then the user sees a "No permissions assigned" message.
  */
-function getRoleModulePermissions(roleSlug, moduleKey) {
-  // Full admin roles get all permissions
-  if (['correspondent', 'principal', 'administrative-officer'].includes(roleSlug)) {
-    return { canRead: true, canCreate: true, canEdit: true, canDelete: true };
-  }
-
-  // Vice Principal has full permissions on academic and student modules, read on finance
-  if (roleSlug === 'vice-principal') {
-    const isAcademic = ['classes', 'subjects', 'students', 'staff', 'homework', 'attendance', 'exams', 'reports', 'calendar', 'noticeboard'].includes(moduleKey);
-    return {
-      canRead: true,
-      canCreate: isAcademic,
-      canEdit: isAcademic,
-      canDelete: isAcademic
-    };
-  }
-
-  // Teaching / Academic roles
-  if (['subject-wise-head', 'class-incharge', 'staffs'].includes(roleSlug)) {
-    const teachingModules = ['classes', 'subjects', 'students', 'homework', 'lesson_plans', 'resources', 'attendance', 'exams', 'ptm', 'performance', 'chats', 'leaves', 'calendar', 'noticeboard'];
-    if (teachingModules.includes(moduleKey)) {
-      return { canRead: true, canCreate: true, canEdit: true, canDelete: roleSlug !== 'staffs' };
-    }
-    return { canRead: false, canCreate: false, canEdit: false, canDelete: false };
-  }
-
-  // Finance Department
-  if (roleSlug === 'finance-department') {
-    if (['fees', 'billing', 'hr-payroll', 'reports'].includes(moduleKey)) {
-      return { canRead: true, canCreate: true, canEdit: true, canDelete: true };
-    }
-    if (['students', 'staff'].includes(moduleKey)) {
-      return { canRead: true, canCreate: false, canEdit: false, canDelete: false };
-    }
-    return { canRead: false, canCreate: false, canEdit: false, canDelete: false };
-  }
-
-  // Domain-specific functional roles
-  if (roleSlug === 'library' && moduleKey === 'library') {
-    return { canRead: true, canCreate: true, canEdit: true, canDelete: true };
-  }
-  if (roleSlug === 'transport' && moduleKey === 'transport') {
-    return { canRead: true, canCreate: true, canEdit: true, canDelete: true };
-  }
-  if (roleSlug === 'inventory' && moduleKey === 'inventory') {
-    return { canRead: true, canCreate: true, canEdit: true, canDelete: true };
-  }
-  if (roleSlug === 'hostel' && moduleKey === 'hostel') {
-    return { canRead: true, canCreate: true, canEdit: true, canDelete: true };
-  }
-  if (roleSlug === 'canteen' && moduleKey === 'complaints') {
-    return { canRead: true, canCreate: false, canEdit: true, canDelete: false };
-  }
-
-  // Default view for noticeboard / calendar
-  if (['noticeboard', 'calendar'].includes(moduleKey)) {
-    return { canRead: true, canCreate: false, canEdit: false, canDelete: false };
-  }
-
+// eslint-disable-next-line no-unused-vars
+function getRoleModulePermissions(_roleSlug, _moduleKey) {
   return { canRead: false, canCreate: false, canEdit: false, canDelete: false };
 }
 

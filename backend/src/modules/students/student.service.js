@@ -12,6 +12,7 @@ import { SYSTEM_ROLES, ERROR_CODES } from '../../config/constants.js';
 import { parsePagination, buildPaginationMetadata } from '../../utils/pagination.js';
 import { verifyTeacherClassAccess } from '../classes/class.service.js';
 import { syncStudentClassFeeInvoices } from '../fees/fee.service.js';
+import { hasAdminPanelScope } from '../../utils/access-scope.js';
 
 /**
  * Student Business Logic Service Layer
@@ -428,6 +429,7 @@ export async function updateStudentPerformanceStatus(schoolId, studentId, status
   if (actor) {
     const role = (actor.systemRole || actor.role || '').toUpperCase();
     const isAdmin =
+      hasAdminPanelScope(actor) ||
       role === SYSTEM_ROLES.SUPER_ADMIN ||
       role === SYSTEM_ROLES.SCHOOL_ADMIN ||
       role === SYSTEM_ROLES.PRINCIPAL ||
@@ -860,5 +862,3 @@ export async function bulkImportStudents(schoolId, studentsPayload = [], actor =
     errors
   };
 }
-
-

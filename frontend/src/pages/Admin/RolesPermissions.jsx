@@ -74,8 +74,9 @@ const ALL_AVAILABLE_MODULES = [
 
 const ADMIN_PANEL_MODULES = [
   'classes', 'subjects', 'students', 'staff', 'timetables', 'transport', 'library', 'exams',
-  'noticeboard', 'hr-payroll', 'attendance', 'calendar', 'fees', 'hostel', 'inventory',
-  'health', 'complaints', 'alumni', 'documents', 'branches', 'reports', 'form-builder', 'api', 'links', 'leads', 'billing', 'chats', 'homework', 'leaves', 'lesson_plans', 'resources', 'ptm', 'performance', 'media'
+  'noticeboard', 'hr-payroll', 'attendance', 'calendar', 'fees', 'inventory', 'reports', 'form-builder',
+  'api', 'links', 'leads', 'billing', 'chats', 'homework', 'leaves', 'lesson_plans',
+  'resources', 'ptm', 'performance'
 ];
 
 const TEACHER_PANEL_MODULES = [
@@ -447,7 +448,7 @@ export default function RolesPermissions() {
           <p className="text-slate-500 dark:text-slate-400 mt-1">Configure fine-grained access control for your staff members.</p>
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-          <button 
+          <button
             type="button"
             onClick={handleAiSuggest}
             disabled={suggestingAi || saving}
@@ -457,7 +458,7 @@ export default function RolesPermissions() {
             {suggestingAi && <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
             {suggestingAi ? 'AI Analyzing...' : 'AI Auto-Suggest'}
           </button>
-          <button 
+          <button
             onClick={handleSave}
             disabled={saving || suggestingAi}
             className="w-full sm:w-auto px-4 py-2 bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 rounded-xl shadow-sm disabled:opacity-50 transition-colors flex justify-center items-center gap-2 cursor-pointer"
@@ -473,7 +474,7 @@ export default function RolesPermissions() {
         <div className="w-full lg:w-64 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col overflow-hidden shrink-0 max-h-[300px] lg:max-h-none">
           <div className="p-4 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
             <span className="font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider text-xs">Select Role</span>
-            <button 
+            <button
               onClick={() => setIsAddingRole(true)}
               className="p-1 hover:bg-slate-200 dark:hover:bg-slate-600 rounded text-slate-500 dark:text-slate-400 hover:text-primary-600 transition-colors cursor-pointer"
               title="Add New Role"
@@ -485,7 +486,7 @@ export default function RolesPermissions() {
             {isAddingRole && (
               <form onSubmit={handleAddRole} className="mb-2 p-2.5 border border-primary-200 bg-primary-50/70 dark:bg-primary-950/20 dark:border-primary-800 rounded-xl flex flex-col gap-2">
                 <div className="flex items-center gap-2">
-                  <input 
+                  <input
                     type="text"
                     autoFocus
                     value={newRoleName}
@@ -493,31 +494,29 @@ export default function RolesPermissions() {
                     placeholder="e.g. Librarian, Hostel Warden"
                     className="w-full bg-white dark:bg-slate-900 px-2 py-1.5 rounded-lg text-sm border border-primary-200 dark:border-primary-800 focus:outline-none focus:border-primary-500"
                   />
-                  <button type="submit" className="p-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 cursor-pointer" title="Add Role"><LuCheck size={14}/></button>
-                  <button type="button" onClick={() => setIsAddingRole(false)} className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"><LuX size={14}/></button>
+                  <button type="submit" className="p-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 cursor-pointer" title="Add Role"><LuCheck size={14} /></button>
+                  <button type="button" onClick={() => setIsAddingRole(false)} className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"><LuX size={14} /></button>
                 </div>
                 <div className="text-[11px] text-primary-700 dark:text-primary-300 font-medium">
                   <span>AI will auto-suggest least-privilege permissions</span>
                 </div>
               </form>
             )}
-            
+
             {rolesList.map(role => (
               <div
                 key={role}
                 onClick={() => setActiveRole(role)}
-                className={`w-full text-left px-4 py-3 rounded-xl mb-1 font-semibold text-sm transition-all flex items-center justify-between cursor-pointer group ${
-                  activeRole === role 
-                    ? 'bg-primary-50 text-primary-700 shadow-sm border border-primary-100' 
+                className={`w-full text-left px-4 py-3 rounded-xl mb-1 font-semibold text-sm transition-all flex items-center justify-between cursor-pointer group ${activeRole === role
+                    ? 'bg-primary-50 text-primary-700 shadow-sm border border-primary-100'
                     : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white border border-transparent'
-                }`}
+                  }`}
               >
                 <span className="truncate pr-2">{role}</span>
-                <button 
+                <button
                   onClick={(e) => handleDeleteRole(e, role)}
-                  className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 cursor-pointer ${
-                    activeRole === role ? 'text-primary-600 hover:bg-primary-100 dark:hover:bg-slate-700' : 'text-slate-400 dark:text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800'
-                  }`}
+                  className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 cursor-pointer ${activeRole === role ? 'text-primary-600 hover:bg-primary-100 dark:hover:bg-slate-700' : 'text-slate-400 dark:text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800'
+                    }`}
                   title="Delete Role"
                 >
                   <LuTrash2 size={14} />
@@ -589,7 +588,7 @@ export default function RolesPermissions() {
               </button>
             </div>
           )}
-          
+
           <div className="flex-1 overflow-auto custom-scrollbar p-0 mt-2">
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead className="sticky top-0 bg-white dark:bg-slate-900 shadow-sm z-10">
@@ -632,52 +631,51 @@ export default function RolesPermissions() {
                         </td>
                         <td className="p-4 text-center">
                           <label className="inline-flex items-center cursor-pointer">
-                            <input 
-                              type="checkbox" 
-                              checked={p.read} 
+                            <input
+                              type="checkbox"
+                              checked={p.read}
                               onChange={() => handleToggle(module.id, 'read')}
-                              className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500 cursor-pointer" 
+                              className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500 cursor-pointer"
                             />
                           </label>
                         </td>
                         <td className="p-4 text-center">
                           <label className="inline-flex items-center cursor-pointer">
-                            <input 
-                              type="checkbox" 
-                              checked={p.create} 
+                            <input
+                              type="checkbox"
+                              checked={p.create}
                               onChange={() => handleToggle(module.id, 'create')}
-                              className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500 cursor-pointer" 
+                              className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500 cursor-pointer"
                             />
                           </label>
                         </td>
                         <td className="p-4 text-center">
                           <label className="inline-flex items-center cursor-pointer">
-                            <input 
-                              type="checkbox" 
-                              checked={p.edit} 
+                            <input
+                              type="checkbox"
+                              checked={p.edit}
                               onChange={() => handleToggle(module.id, 'edit')}
-                              className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500 cursor-pointer" 
+                              className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500 cursor-pointer"
                             />
                           </label>
                         </td>
                         <td className="p-4 text-center">
                           <label className="inline-flex items-center cursor-pointer">
-                            <input 
-                              type="checkbox" 
-                              checked={p.delete} 
+                            <input
+                              type="checkbox"
+                              checked={p.delete}
                               onChange={() => handleToggle(module.id, 'delete')}
-                              className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500 cursor-pointer" 
+                              className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500 cursor-pointer"
                             />
                           </label>
                         </td>
                         <td className="p-4 pr-6 text-right">
-                          <button 
+                          <button
                             onClick={() => handleToggleAll(module.id, !isAll)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                              isAll 
-                                ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600' 
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${isAll
+                                ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
                                 : 'bg-primary-50 text-primary-700 hover:bg-primary-100 dark:hover:bg-slate-700 border border-primary-200'
-                            }`}
+                              }`}
                           >
                             {isAll ? 'Clear All' : 'Select All'}
                           </button>
@@ -691,7 +689,7 @@ export default function RolesPermissions() {
           </div>
         </div>
       </div>
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={confirmModal.isOpen}
         onClose={() => setConfirmModal({ ...confirmModal, isOpen: false })}
         onConfirm={confirmModal.onConfirm}

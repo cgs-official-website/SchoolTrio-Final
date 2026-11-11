@@ -2,6 +2,7 @@ import { TenantAccessError } from '../utils/app-error.js';
 import { runWithTenantContext } from '../database/prisma.client.js';
 import { SYSTEM_ROLES, REGEX } from '../config/constants.js';
 import * as authRepository from '../modules/auth/auth.repository.js';
+import { getAccessContext, applyAccessContext } from '../utils/access-scope.js';
 
 /**
  * Multi-Tenant Context Resolution & Isolation Middleware (Phase 4B.3 Implementation)
@@ -142,7 +143,19 @@ export const tenantContext = (options = { requireTenant: true }) => {
       };
       req.schoolId = schoolId;
 
-      return runWithTenantContext(context, () => next());
+      return runWithTenantContext(context, async () => {
+        // Role-driven access context (admin-panel scope) for every staff request, so services never
+        // need hard-coded role lists. Parents / students are skipped. Never blocks the request.
+        const roleUpper = String(user.systemRole || user.role || '').toUpperCase();
+        if (roleUpper !== SYSTEM_ROLES.PARENT && roleUpper !== SYSTEM_ROLES.STUDENT) {
+          try {
+            applyAccessContext(req, await getAccessContext(schoolId, user.userId || user.id));
+          } catch (_ctxErr) {
+            // fall back to default (no admin-panel scope)
+          }
+        }
+        next();
+      });
     } catch (err) {
       next(err);
     }

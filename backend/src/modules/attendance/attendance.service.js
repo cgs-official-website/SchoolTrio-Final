@@ -64,6 +64,34 @@ export async function resolveAbsenteeThreshold(schoolId) {
 }
 
 /**
+ * True when the actor holds an ADMIN-PANEL role (e.g. Correspondent, Principal, Grade Co-ordinator)
+ * whose attendance permission includes Create or Edit. Such roles may mark attendance for any class.
+ * Teacher-panel roles (Staffs, Class Incharge, ...) are NOT affected and stay limited to their own
+ * class / section.
+ */
+async function hasAdminPanelAttendanceAccess(schoolId, actor) {
+  const userId = actor.id || actor.userId;
+  if (!userId || !prisma.userRoleAssignment?.findMany) return false;
+
+  const assignments = await prisma.userRoleAssignment.findMany({
+    where: { schoolId, userId },
+    include: {
+      schoolRole: {
+        include: {
+          permissions: { where: { moduleKey: 'attendance' } }
+        }
+      }
+    }
+  });
+
+  return assignments.some(
+    (ra) =>
+      String(ra.schoolRole?.loginPanel || '').toLowerCase() === 'admin' &&
+      ra.schoolRole?.permissions?.some((p) => p.canCreate || p.canEdit)
+  );
+}
+
+/**
  * Verifies whether the requesting actor is authorized to mark or update attendance for a given class.
  */
 export async function verifyTeacherClassAuthorization(schoolId, classId, actor, sectionId = null) {
@@ -96,6 +124,13 @@ export async function verifyTeacherClassAuthorization(schoolId, classId, actor, 
     permissions.includes('attendance.create') ||
     permissions.includes('attendance.edit')
   ) {
+    return true;
+  }
+
+  // 2b. Admin-panel roles with attendance Create/Edit permission (set in Roles & Permissions)
+  // may mark attendance for any class. Must run BEFORE the class-teacher section check below,
+  // otherwise those roles are rejected for every section they are not class teacher of.
+  if (await hasAdminPanelAttendanceAccess(schoolId, actor)) {
     return true;
   }
 
@@ -173,27 +208,27 @@ export async function verifyTeacherClassAuthorization(schoolId, classId, actor, 
     // Check if actor has Grade Coordinator role or RBAC permissions
     const roleAssignments = prisma.userRoleAssignment?.findMany
       ? await prisma.userRoleAssignment.findMany({
-          where: {
-            schoolId,
-            userId: actor.id || actor.userId
-          },
-          include: {
-            schoolRole: {
-              include: {
-                permissions: {
-                  where: { moduleKey: 'attendance' }
-                }
+        where: {
+          schoolId,
+          userId: actor.id || actor.userId
+        },
+        include: {
+          schoolRole: {
+            include: {
+              permissions: {
+                where: { moduleKey: 'attendance' }
               }
             }
           }
-        })
+        }
+      })
       : [];
 
     const isCoordinator = roleAssignments.some(ra => {
       const slug = ra.schoolRole?.slug?.toLowerCase() || '';
       const name = ra.schoolRole?.name?.toLowerCase() || '';
       return slug.includes('coordinator') || slug.includes('co-ordinator') ||
-             name.includes('coordinator') || name.includes('co-ordinator');
+        name.includes('coordinator') || name.includes('co-ordinator');
     });
 
     const hasAttendanceRbacPermission = roleAssignments.some(ra => {

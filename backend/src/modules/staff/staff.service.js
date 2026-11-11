@@ -10,6 +10,49 @@ import {
 } from '../../utils/app-error.js';
 import { SYSTEM_ROLES } from '../../config/constants.js';
 import { RedisCacheService } from '../../services/redis-cache.service.js';
+import { DEFAULT_ROLES, slugifyRoleName } from '../rbac/rbac.constants.js';
+
+/**
+ * Finds the school role with exactly this name/slug. If it is one of the 15 default institutional
+ * roles and the school does not have it yet, it is created with NO permissions (the admin grants
+ * them later in Roles & Permissions). Returns null for unknown custom names.
+ */
+async function resolveSchoolRoleByName(schoolId, roleName) {
+  const name = String(roleName || '').trim();
+  if (!name) return null;
+
+  let slug = null;
+  try { slug = slugifyRoleName(name); } catch { slug = null; }
+
+  const existing = await prisma.schoolRole.findFirst({
+    where: {
+      schoolId,
+      OR: [
+        { name: { equals: name, mode: 'insensitive' } },
+        ...(slug ? [{ slug }] : [])
+      ]
+    }
+  });
+  if (existing) return existing;
+
+  const def = DEFAULT_ROLES.find(r => r.slug === slug || r.name.toLowerCase() === name.toLowerCase());
+  if (!def) return null;
+
+  try {
+    return await prisma.schoolRole.create({
+      data: {
+        schoolId,
+        name: def.name,
+        slug: def.slug,
+        loginPanel: def.loginPanel,
+        isSystemDefault: true
+      }
+    });
+  } catch {
+    // Created concurrently by another request
+    return prisma.schoolRole.findFirst({ where: { schoolId, slug: def.slug } });
+  }
+}
 import {
   setSectionClassTeacher,
   clearStaffSectionAssignments
@@ -342,19 +385,11 @@ export async function createStaff(schoolId, data, actor = null) {
     }
     assignedRoleId = role.id;
   } else {
-    const roleName = data.designation || 'Staffs';
-    const fallbackRole = await prisma.schoolRole.findFirst({
-      where: {
-        schoolId,
-        OR: [
-          { name: { equals: roleName, mode: 'insensitive' } },
-          { slug: { equals: roleName.toLowerCase(), mode: 'insensitive' } },
-          { slug: 'staffs' }
-        ]
-      }
-    });
-    if (fallbackRole) {
-      assignedRoleId = fallbackRole.id;
+    // Use the role the admin chose (exact match first); only fall back to "Staffs" when no role was chosen
+    const chosen = await resolveSchoolRoleByName(schoolId, data.roleName || data.designation);
+    const resolved = chosen || await resolveSchoolRoleByName(schoolId, 'Staffs');
+    if (resolved) {
+      assignedRoleId = resolved.id;
     }
   }
 
@@ -505,7 +540,7 @@ export async function createStaff(schoolId, data, actor = null) {
     });
   }
 
-  if (data.roleId && createdStaffProfile?.userId) {
+  if ((data.roleId || assignedRoleId) && createdStaffProfile?.userId) {
     await RedisCacheService.del(`rbac:perms:${schoolId}:${createdStaffProfile.userId}`);
   }
 
@@ -650,38 +685,22 @@ export async function updateStaff(schoolId, id, data, actor = null) {
         throw new NotFoundError('School role');
       }
       targetRoleId = role.id;
-    } else if (data.designation || existingStaff.designation) {
-      const roleName = data.designation || existingStaff.designation || 'Staffs';
-      const fallbackRole = await prisma.schoolRole.findFirst({
-        where: {
-          schoolId,
-          OR: [
-            { name: { equals: roleName, mode: 'insensitive' } },
-            { slug: { equals: roleName.toLowerCase(), mode: 'insensitive' } },
-            { slug: 'staffs' }
-          ]
-        }
-      });
-      if (fallbackRole) {
-        targetRoleId = fallbackRole.id;
+    } else {
+      const roleName = data.roleName || data.designation || existingStaff.designation || 'Staffs';
+      const resolved = (await resolveSchoolRoleByName(schoolId, roleName))
+        || (await resolveSchoolRoleByName(schoolId, 'Staffs'));
+      if (resolved) {
+        targetRoleId = resolved.id;
       }
     }
     roleUpdateRequired = true;
     modifiedFields.roleId = { old: existingStaff.user?.roleAssignments?.[0]?.schoolRoleId || null, new: targetRoleId };
   } else if (existingStaff.userId && existingStaff.user?.roleAssignments?.length === 0) {
-    const roleName = data.designation || existingStaff.designation || 'Staffs';
-    const fallbackRole = await prisma.schoolRole.findFirst({
-      where: {
-        schoolId,
-        OR: [
-          { name: { equals: roleName, mode: 'insensitive' } },
-          { slug: { equals: roleName.toLowerCase(), mode: 'insensitive' } },
-          { slug: 'staffs' }
-        ]
-      }
-    });
-    if (fallbackRole) {
-      targetRoleId = fallbackRole.id;
+    const roleName = data.roleName || data.designation || existingStaff.designation || 'Staffs';
+    const resolved = (await resolveSchoolRoleByName(schoolId, roleName))
+      || (await resolveSchoolRoleByName(schoolId, 'Staffs'));
+    if (resolved) {
+      targetRoleId = resolved.id;
       roleUpdateRequired = true;
     }
   }

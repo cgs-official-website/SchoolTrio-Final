@@ -5,8 +5,9 @@ import {
   TenantAccessError
 } from '../utils/app-error.js';
 import { SYSTEM_ROLES, ERROR_CODES } from '../config/constants.js';
-import { CANONICAL_MODULE_KEYS } from '../modules/rbac/rbac.constants.js';
+import { CANONICAL_MODULE_KEYS, READ_LOOKUP_DEPENDENCIES } from '../modules/rbac/rbac.constants.js';
 import { getUserEffectivePermissions, isModuleApprovedForSchool } from '../modules/rbac/rbac.service.js';
+import { getAccessContext, applyAccessContext } from '../utils/access-scope.js';
 
 const VALID_OPERATIONS = new Set(['read', 'create', 'edit', 'delete']);
 const OPERATION_TO_FIELD = {
@@ -235,6 +236,11 @@ export const requirePermission = (...args) => {
 
       const effectivePermissions = await getUserEffectivePermissions(schoolId, userId);
 
+      // Role-driven access context (admin-panel scope, has-any-role). Attached to req.user / req.auth
+      // so services can apply school-wide data scope without hard-coded role lists.
+      const accessContext = await getAccessContext(schoolId, userId);
+      applyAccessContext(req, accessContext);
+
       // 6. Evaluate all required permissions with conjunctive ALL-of semantics
       const systemRoleUpper = String(systemRole || '').toUpperCase();
       const isTeacherRole = systemRoleUpper === 'TEACHER' || user.roles?.includes('TEACHER') || Boolean(user.staffProfile);
@@ -247,8 +253,10 @@ export const requirePermission = (...args) => {
           hasPermission = modulePerms[reqPerm.permField];
         }
 
-        // System-wide fallback for TEACHER role on core educational modules
-        if (!hasPermission && isTeacherRole) {
+        // Legacy fallback ONLY for teachers that have no school role assigned at all.
+        // Once a role is assigned (Roles & Permissions), that role's permissions are authoritative:
+        // ticked = allowed, not ticked = denied.
+        if (!hasPermission && isTeacherRole && !accessContext.hasAnyRole) {
           const DEFAULT_TEACHER_MODULES = {
             attendance: ['read', 'create', 'edit'],
             homework: ['read', 'create', 'edit', 'delete'],
@@ -270,6 +278,14 @@ export const requirePermission = (...args) => {
           }
         }
 
+        // Read-only lookup dependency: a page the user IS allowed to open may need to read another
+        // module's list (e.g. Student Directory -> Classes list for the class filter).
+        // Only 'read' is ever implied. See READ_LOOKUP_DEPENDENCIES in rbac.constants.js.
+        if (!hasPermission && reqPerm.operation === 'read') {
+          const consumerModules = READ_LOOKUP_DEPENDENCIES[reqPerm.moduleKey] || [];
+          hasPermission = consumerModules.some((key) => effectivePermissions?.[key]?.canRead === true);
+        }
+
         if (!hasPermission) {
           throw new ForbiddenError(
             `Access denied: missing '${reqPerm.operation}' permission for module '${reqPerm.moduleKey}'`,
@@ -287,4 +303,3 @@ export const requirePermission = (...args) => {
     }
   };
 };
-

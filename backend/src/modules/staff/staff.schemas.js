@@ -75,6 +75,7 @@ export const createStaffSchema = {
       .max(100, 'Designation must not exceed 100 characters')
       .nullable()
       .optional(),
+    roleName: z.string().trim().max(100).nullable().optional(),
     roleId: z
       .string()
       .regex(REGEX.UUID, 'Invalid role ID format')
@@ -210,6 +211,7 @@ export const updateStaffSchema = {
         .max(100, 'Designation must not exceed 100 characters')
         .nullable()
         .optional(),
+      roleName: z.string().trim().max(100).nullable().optional(),
       roleId: z
         .string()
         .regex(REGEX.UUID, 'Invalid role ID format')

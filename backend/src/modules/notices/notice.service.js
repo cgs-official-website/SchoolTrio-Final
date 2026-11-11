@@ -7,6 +7,7 @@ import {
 } from '../../utils/app-error.js';
 import { SYSTEM_ROLES } from '../../config/constants.js';
 import { getTeacherAssignments } from '../classes/class.service.js';
+import { hasAdminPanelScope } from '../../utils/access-scope.js';
 
 /**
  * Normalizes and formats a database Notice record for canonical API output.
@@ -412,7 +413,8 @@ export async function listNotices(schoolId, query = {}, actor = {}) {
 
   const isSuperAdmin = systemRole === SYSTEM_ROLES.SUPER_ADMIN || actor.roles?.includes(SYSTEM_ROLES.SUPER_ADMIN);
   const isSchoolAdmin = systemRole === SYSTEM_ROLES.SCHOOL_ADMIN || actor.roles?.includes(SYSTEM_ROLES.SCHOOL_ADMIN);
-  const isPrincipal = systemRole === SYSTEM_ROLES.PRINCIPAL || actor.roles?.includes(SYSTEM_ROLES.PRINCIPAL);
+  // Principal-level access also applies to admin-panel roles (Login Panel = Admin in Roles & Permissions)
+  const isPrincipal = systemRole === SYSTEM_ROLES.PRINCIPAL || actor.roles?.includes(SYSTEM_ROLES.PRINCIPAL) || hasAdminPanelScope(actor);
 
   // 1. Institutional Admins / Staff with full noticeboard permission have unfiltered visibility within tenant
   if (isSuperAdmin || isSchoolAdmin || isPrincipal) {
@@ -634,7 +636,8 @@ export async function verifyNoticeVisibility(schoolId, notice, actor = {}) {
 
   const isSuperAdmin = systemRole === SYSTEM_ROLES.SUPER_ADMIN || actor.roles?.includes(SYSTEM_ROLES.SUPER_ADMIN);
   const isSchoolAdmin = systemRole === SYSTEM_ROLES.SCHOOL_ADMIN || actor.roles?.includes(SYSTEM_ROLES.SCHOOL_ADMIN);
-  const isPrincipal = systemRole === SYSTEM_ROLES.PRINCIPAL || actor.roles?.includes(SYSTEM_ROLES.PRINCIPAL);
+  // Principal-level access also applies to admin-panel roles (Login Panel = Admin in Roles & Permissions)
+  const isPrincipal = systemRole === SYSTEM_ROLES.PRINCIPAL || actor.roles?.includes(SYSTEM_ROLES.PRINCIPAL) || hasAdminPanelScope(actor);
 
   // 1. Institutional Admins have unrestricted tenant visibility
   if (isSuperAdmin || isSchoolAdmin || isPrincipal) {
@@ -762,7 +765,8 @@ export async function createNotice(schoolId, payload, actor = {}) {
 
   const isSuperAdmin = systemRole === SYSTEM_ROLES.SUPER_ADMIN || actor.roles?.includes(SYSTEM_ROLES.SUPER_ADMIN);
   const isSchoolAdmin = systemRole === SYSTEM_ROLES.SCHOOL_ADMIN || actor.roles?.includes(SYSTEM_ROLES.SCHOOL_ADMIN);
-  const isPrincipal = systemRole === SYSTEM_ROLES.PRINCIPAL || actor.roles?.includes(SYSTEM_ROLES.PRINCIPAL);
+  // Principal-level access also applies to admin-panel roles (Login Panel = Admin in Roles & Permissions)
+  const isPrincipal = systemRole === SYSTEM_ROLES.PRINCIPAL || actor.roles?.includes(SYSTEM_ROLES.PRINCIPAL) || hasAdminPanelScope(actor);
   const isInstitutionalAdmin = isSuperAdmin || isSchoolAdmin || isPrincipal;
 
   const content = payload.content || payload.message;
@@ -894,7 +898,8 @@ export async function updateNotice(schoolId, noticeId, payload, actor = {}) {
 
   const isSuperAdmin = systemRole === SYSTEM_ROLES.SUPER_ADMIN || actor.roles?.includes(SYSTEM_ROLES.SUPER_ADMIN);
   const isSchoolAdmin = systemRole === SYSTEM_ROLES.SCHOOL_ADMIN || actor.roles?.includes(SYSTEM_ROLES.SCHOOL_ADMIN);
-  const isPrincipal = systemRole === SYSTEM_ROLES.PRINCIPAL || actor.roles?.includes(SYSTEM_ROLES.PRINCIPAL);
+  // Principal-level access also applies to admin-panel roles (Login Panel = Admin in Roles & Permissions)
+  const isPrincipal = systemRole === SYSTEM_ROLES.PRINCIPAL || actor.roles?.includes(SYSTEM_ROLES.PRINCIPAL) || hasAdminPanelScope(actor);
   const isInstitutionalAdmin = isSuperAdmin || isSchoolAdmin || isPrincipal;
 
   const currentAttachments = existingNotice.attachments || {};
@@ -1020,7 +1025,8 @@ export async function deleteNotice(schoolId, noticeId, actor = {}) {
 
   const isSuperAdmin = systemRole === SYSTEM_ROLES.SUPER_ADMIN || actor.roles?.includes(SYSTEM_ROLES.SUPER_ADMIN);
   const isSchoolAdmin = systemRole === SYSTEM_ROLES.SCHOOL_ADMIN || actor.roles?.includes(SYSTEM_ROLES.SCHOOL_ADMIN);
-  const isPrincipal = systemRole === SYSTEM_ROLES.PRINCIPAL || actor.roles?.includes(SYSTEM_ROLES.PRINCIPAL);
+  // Principal-level access also applies to admin-panel roles (Login Panel = Admin in Roles & Permissions)
+  const isPrincipal = systemRole === SYSTEM_ROLES.PRINCIPAL || actor.roles?.includes(SYSTEM_ROLES.PRINCIPAL) || hasAdminPanelScope(actor);
   const isInstitutionalAdmin = isSuperAdmin || isSchoolAdmin || isPrincipal;
 
   const currentAttachments = existingNotice.attachments || {};

@@ -12,6 +12,7 @@ import {
 } from '../../utils/app-error.js';
 import { SYSTEM_ROLES } from '../../config/constants.js';
 import { parsePagination, buildPaginationMetadata } from '../../utils/pagination.js';
+import { hasAdminPanelScope } from '../../utils/access-scope.js';
 
 /**
  * Class and Section Business Logic Service Layer
@@ -224,7 +225,8 @@ export async function getMyTeacherClasses(schoolId, actor, query = {}) {
     throw new TenantAccessError('Tenant context required to retrieve classes');
   }
 
-  const isTeacher = actor?.systemRole === SYSTEM_ROLES.TEACHER;
+  // Admin-panel roles see all classes, like an administrator
+  const isTeacher = actor?.systemRole === SYSTEM_ROLES.TEACHER && !hasAdminPanelScope(actor);
 
   // Non-teachers (e.g. Admins, SuperAdmins, Principals) see all classes
   if (!isTeacher) {
@@ -239,15 +241,15 @@ export async function getMyTeacherClasses(schoolId, actor, query = {}) {
   // Check if teacher is a coordinator (coordinators manage all classes assigned under them)
   const userRoleAssignments = prisma.userRoleAssignment?.findMany
     ? await prisma.userRoleAssignment.findMany({
-        where: { schoolId, userId: actor.id },
-        include: { schoolRole: true }
-      })
+      where: { schoolId, userId: actor.id },
+      include: { schoolRole: true }
+    })
     : [];
   const isCoordinator = userRoleAssignments.some(ra => {
     const slug = ra.schoolRole?.slug?.toLowerCase() || '';
     const name = ra.schoolRole?.name?.toLowerCase() || '';
     return slug.includes('coordinator') || slug.includes('co-ordinator') ||
-           name.includes('coordinator') || name.includes('co-ordinator');
+      name.includes('coordinator') || name.includes('co-ordinator');
   });
 
   // classTeacherOnly=true -> only the section(s) this teacher is CLASS TEACHER of
@@ -398,7 +400,7 @@ export async function getClassById(schoolId, classId, actor = null) {
     throw new NotFoundError('Class');
   }
 
-  if (actor && actor.systemRole === SYSTEM_ROLES.TEACHER) {
+  if (actor && actor.systemRole === SYSTEM_ROLES.TEACHER && !hasAdminPanelScope(actor)) {
     const authResult = await verifyTeacherClassAccess(schoolId, actor.id, classId);
     if (!authResult.allowed) {
       throw new ForbiddenError('You are not authorized to access this class');
@@ -1203,4 +1205,3 @@ export async function bulkImportClasses(schoolId, rows = [], actor = null) {
     errors
   };
 }
-

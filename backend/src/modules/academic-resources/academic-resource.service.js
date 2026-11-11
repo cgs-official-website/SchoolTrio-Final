@@ -7,6 +7,7 @@ import {
   ForbiddenError,
   TenantAccessError
 } from '../../utils/app-error.js';
+import { hasAdminPanelScope } from '../../utils/access-scope.js';
 
 const ADMIN_ROLE_SET = new Set([
   'SUPER_ADMIN',
@@ -32,6 +33,7 @@ const ADMIN_ROLE_SET = new Set([
  */
 export function isAcademicResourceAdmin(actor) {
   if (!actor) return false;
+  if (hasAdminPanelScope(actor)) return true;
 
   const systemRole = (actor.systemRole || actor.role || '').toUpperCase().replace(/\s+/g, '_');
   if (ADMIN_ROLE_SET.has(systemRole)) {

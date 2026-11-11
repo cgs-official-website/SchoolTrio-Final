@@ -1,7 +1,10 @@
 import { prisma } from '../database/prisma.client.js';
 import { SYSTEM_ROLES } from '../config/constants.js';
+import { hasAdminPanelScope } from './access-scope.js';
 
 export function isTeacherActor(actor) {
+  // A teaching staff member holding an admin-panel role is not limited to their own classes
+  if (hasAdminPanelScope(actor)) return false;
   const role = (actor?.systemRole || actor?.role || '').toUpperCase();
   return role === SYSTEM_ROLES.TEACHER || role === 'TEACHER';
 }

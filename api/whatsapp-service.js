@@ -98,7 +98,7 @@ export default async function handler(req, res) {
         headers: { 'Authorization': `Bearer ${credentials.accessToken}` }
       });
       const testData = await testRes.json();
-      
+
       if (!testRes.ok) {
         console.error("Meta API test failed:", testData);
         return res.status(400).json({ error: 'Unable to connect to WhatsApp Cloud API.' });
@@ -117,7 +117,7 @@ export default async function handler(req, res) {
 
     if (action === 'sendPTM') {
       const { ptmId, studentId, ptmData } = req.body;
-      
+
       // Duplicate check
       const logId = `${schoolId}_PTM_${ptmId}_${studentId}`;
       const logRef = db.collection('whatsapp_logs').doc(logId);
@@ -131,10 +131,10 @@ export default async function handler(req, res) {
       if (!studentDoc.exists) {
         return res.status(404).json({ error: 'Student not found' });
       }
-      
+
       const phone = studentDoc.data().parentPhone;
       const normalizedPhone = normalizePhone(phone);
-      
+
       if (!normalizedPhone) {
         await logRef.set({
           schoolId, notificationType: 'PTM', referenceId: ptmId, studentId,
@@ -190,7 +190,7 @@ export default async function handler(req, res) {
       const audienceType = noticeData.audience;
       const targetClasses = noticeData.targetClasses || [];
       const targetSections = noticeData.targetSections || [];
-      
+
       // Duplicate check
       const logId = `${schoolId}_NOTICE_${noticeId}`;
       const logRef = db.collection('whatsapp_logs').doc(logId);
@@ -207,9 +207,9 @@ export default async function handler(req, res) {
       // Note: Firestore 'in' has a max of 10. If more, we'd need to fetch all and filter.
       // For simplicity, we just fetch all and filter in memory if needed.
       const snapshot = await db.collection(`schools/${schoolId}/students`).where('status', '==', 'Active').get();
-      
+
       let studentsToNotify = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      
+
       if (audienceType === 'Specific Class') {
         studentsToNotify = studentsToNotify.filter(s => targetClasses.includes(s.classId));
       } else if (audienceType === 'Specific Section') {

@@ -6,6 +6,7 @@ import {
   NotFoundError,
   ForbiddenError
 } from '../../utils/app-error.js';
+import { hasAdminPanelScope } from '../../utils/access-scope.js';
 
 /**
  * Checks whether the actor is an administrator for the tenant.
@@ -14,6 +15,7 @@ import {
  * @returns {boolean}
  */
 export function isTenantAdmin(actor) {
+  if (hasAdminPanelScope(actor)) return true;
   const role = (actor?.systemRole || actor?.role || '').toUpperCase();
   return (
     role === SYSTEM_ROLES.SUPER_ADMIN ||
