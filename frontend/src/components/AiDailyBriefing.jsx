@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import usePermissions from '../hooks/usePermissions';
 import { getAiBriefing } from '../api/dashboard';
-import { 
-  LuSparkles as Sparkles, 
+import {  
   LuRefreshCw as RefreshCw, 
   LuArrowRight as ArrowRight, 
   LuCheck as Check, 
@@ -96,7 +95,6 @@ export default function AiDailyBriefing({ stats = {}, className = '' }) {
       <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-indigo-100/60 dark:border-indigo-900/30 pb-3 mb-4">
         <div className="flex flex-wrap items-center gap-2.5">
           <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300">
-            <Sparkles className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
             AI Work Assistant
           </span>
           <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700">

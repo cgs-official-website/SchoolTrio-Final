@@ -815,26 +815,28 @@ export default function Attendance() {
 
   // Compile Grade Averages for Analytics
   const getGradeMonthAverages = () => {
-    const gradesMap = {};
-    monthlySessionsList.forEach((sess) => {
-      const grade = sess.class?.gradeLevel ? String(sess.class.gradeLevel) : (sess.class?.name || 'General');
-      if (!gradesMap[grade]) {
-        gradesMap[grade] = { presentCount: 0, totalCount: 0 };
+  const gradesMap = {};
+  monthlySessionsList.forEach((sess) => {
+    const grade = sess.class?.gradeLevel ? String(sess.class.gradeLevel) : (sess.class?.name || 'General');
+    if (!gradesMap[grade]) {
+      gradesMap[grade] = { presentCount: 0, totalCount: 0 };
+    }
+    const records = sess.records || [];
+    records.forEach((r) => {
+      gradesMap[grade].totalCount++;
+      if (r.status === 'Present' || r.status === 'Late') {
+        gradesMap[grade].presentCount++;
       }
-      const records = sess.records || [];
-      records.forEach((r) => {
-        gradesMap[grade].totalCount++;
-        if (r.status === 'Present' || r.status === 'Late') {
-          gradesMap[grade].presentCount++;
-        }
-      });
     });
+  });
 
-    return Object.entries(gradesMap).map(([gradeId, accum]) => ({
-      gradeId,
-      average: accum.totalCount === 0 ? 100 : Math.round((accum.presentCount / accum.totalCount) * 100)
-    }));
-  };
+  return Object.entries(gradesMap).map(([gradeId, accum]) => ({
+    gradeId,
+    average: accum.totalCount === 0
+      ? null
+      : Number(((accum.presentCount / accum.totalCount) * 100).toFixed(1))
+  }));
+};
 
   const renderTrendSVG = () => {
     if (monthlySessionsList.length === 0) return null;
@@ -858,13 +860,16 @@ export default function Attendance() {
       });
     });
 
-    const sortedDates = Object.keys(dateMap).sort();
+    const sortedDates = Object.keys(dateMap)
+    .filter((d) => dateMap[d].total > 0)
+    .sort();
+
     if (sortedDates.length === 0) return null;
 
     const points = sortedDates.map((dStr, idx) => {
       const x = padding + (idx / (sortedDates.length - 1 || 1)) * (width - 2 * padding);
       const dayData = dateMap[dStr];
-      const percentage = dayData.total === 0 ? 100 : Math.round((dayData.present / dayData.total) * 100);
+      const percentage = Number(((dayData.present / dayData.total) * 100).toFixed(1));
       const y = height - padding - (percentage / 100) * (height - 2 * padding);
       return { x, y, date: dStr, percentage };
     });
@@ -910,62 +915,55 @@ export default function Attendance() {
 
   // Filter scoped statistics for Grade Coordinators
   const getScopedStats = () => {
-    if (!dashboardStats) return null;
-    if (!isCoordinator || assignedGrades.length === 0) return dashboardStats;
+  if (!dashboardStats) return null;
+  if (!isCoordinator || assignedGrades.length === 0) return dashboardStats;
 
-    const filteredByGrade = {};
-    const filteredByClass = {};
-
-    Object.entries(dashboardStats.byGrade || {}).forEach(([gradeId, data]) => {
-      const matches = assignedGrades.some(g =>
-        g.toLowerCase() === gradeId.toLowerCase() ||
-        gradeId.toLowerCase().includes(g.toLowerCase())
-      );
-      if (matches) filteredByGrade[gradeId] = data;
-    });
-
-    Object.entries(dashboardStats.byClass || {}).forEach(([classId, data]) => {
-      const gradeLevel = data.gradeLevel || '';
-      const matches = assignedGrades.some(g =>
-        g.toLowerCase() === gradeLevel.toLowerCase() ||
-        gradeLevel.toLowerCase().includes(g.toLowerCase())
-      );
-      if (matches) filteredByClass[classId] = data;
-    });
-
-    const filteredPending = (dashboardStats.pendingClassList || []).filter(c => {
-      const gradeLevel = c.gradeLevel || '';
-      return assignedGrades.some(g =>
-        g.toLowerCase() === gradeLevel.toLowerCase() ||
-        gradeLevel.toLowerCase().includes(g.toLowerCase())
-      );
-    });
-
-    const schoolWide = { total: 0, present: 0, absent: 0, late: 0, percentage: 100 };
-    Object.values(filteredByGrade).forEach((g) => {
-      schoolWide.total += g.total;
-      schoolWide.present += g.present;
-      schoolWide.absent += g.absent;
-      schoolWide.late += g.late;
-    });
-    if (schoolWide.total > 0) {
-      schoolWide.percentage = Number((((schoolWide.present + schoolWide.late) / schoolWide.total) * 100).toFixed(1));
-    }
-
-    const classesTotal = Object.keys(filteredByClass).length;
-    const classesMarked = Object.values(filteredByClass).filter((s) => s.total > 0).length;
-
-    return {
-      ...dashboardStats,
-      schoolWide,
-      byGrade: filteredByGrade,
-      byClass: filteredByClass,
-      pendingClassList: filteredPending,
-      classesMarked,
-      classesTotal,
-      classesPending: Math.max(0, classesTotal - classesMarked)
-    };
+  const inScope = (gradeLevel = '') => {
+    const gl = String(gradeLevel).toLowerCase();
+    return assignedGrades.some(g => g.toLowerCase() === gl || gl.includes(g.toLowerCase()));
   };
+
+  const filteredByGrade = {};
+  Object.entries(dashboardStats.byGrade || {}).forEach(([gradeId, data]) => {
+    if (inScope(gradeId)) filteredByGrade[gradeId] = data;
+  });
+
+  const filteredByClass = {};
+  Object.entries(dashboardStats.byClass || {}).forEach(([classId, data]) => {
+  if (inScope(data.gradeLevel)) filteredByClass[classId] = data;
+  });
+
+  const filteredPending = (dashboardStats.pendingClassList || []).filter(c => inScope(c.gradeLevel));
+  const filteredPendingSections = (dashboardStats.pendingSections || []).filter(s => inScope(s.gradeLevel));
+
+  const schoolWide = { total: 0, present: 0, absent: 0, late: 0, percentage: null };
+  Object.values(filteredByGrade).forEach((g) => {
+    schoolWide.total += g.total;
+    schoolWide.present += g.present;
+    schoolWide.absent += g.absent;
+    schoolWide.late += g.late;
+  });
+  const recorded = schoolWide.present + schoolWide.absent + schoolWide.late;
+  if (recorded > 0) {
+    schoolWide.percentage = Number((((schoolWide.present + schoolWide.late) / recorded) * 100).toFixed(1));
+  }
+
+  const sectionsMarked = Object.values(filteredByClass)
+    .reduce((n, c) => n + (c.sections || []).filter(s => !s.isUnmarked).length, 0);
+  const sectionsTotal = sectionsMarked + filteredPendingSections.length;
+
+  return {
+    ...dashboardStats,
+    schoolWide,
+    byGrade: filteredByGrade,
+    byClass: filteredByClass,
+    pendingClassList: filteredPending,
+    pendingSections: filteredPendingSections,
+    classesMarked: sectionsMarked,
+    classesTotal: sectionsTotal,
+    classesPending: filteredPendingSections.length
+  };
+};
 
   const scopedStats = getScopedStats();
 
@@ -1092,19 +1090,24 @@ export default function Attendance() {
                   <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between">
                     <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Attendance Rate</p>
                     <p className="text-4xl font-extrabold text-slate-900 dark:text-white mt-2">
-                      {scopedStats.schoolWide?.percentage ?? 100}%
+                      {scopedStats.schoolWide?.percentage == null ? '—' : `${scopedStats.schoolWide.percentage}%`}
                     </p>
                     <div className="mt-4 h-1.5 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                      <div className="h-full bg-green-500 rounded-full" style={{ width: `${scopedStats.schoolWide?.percentage ?? 100}%` }}></div>
+                      <div className="h-full bg-green-500 rounded-full" style={{ width: `${scopedStats.schoolWide?.percentage ?? 0}%` }}></div>
                     </div>
+                    <p className="text-xs text-slate-400 dark:text-slate-300 mt-3">
+                      {scopedStats.schoolWide?.percentage == null
+                        ? 'No attendance recorded yet'
+                        : `${scopedStats.classesMarked} of ${scopedStats.classesTotal} sections marked`}
+                    </p>
                   </div>
                   <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between">
-                    <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Classes Marked</p>
+                    <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Sections Marked</p>
                     <p className="text-4xl font-extrabold text-slate-900 dark:text-white mt-2">
                       {scopedStats.classesMarked} <span className="text-lg font-medium text-slate-400 dark:text-slate-300">/ {scopedStats.classesTotal}</span>
                     </p>
                     <p className="text-xs text-slate-400 dark:text-slate-300 mt-4">
-                      {scopedStats.classesPending ?? Math.max(0, scopedStats.classesTotal - scopedStats.classesMarked)} classes remaining today
+                      {scopedStats.classesPending ?? Math.max(0, scopedStats.classesTotal - scopedStats.classesMarked)} sections remaining today
                     </p>
                   </div>
                   <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between">
@@ -1113,7 +1116,7 @@ export default function Attendance() {
                       {scopedStats.classesPending ?? 0}
                     </p>
                     <p className="text-xs text-slate-400 dark:text-slate-300 mt-4">
-                      Unrecorded class attendance sessions
+                      Unrecorded section attendance sessions
                     </p>
                   </div>
                 </div>
@@ -1150,7 +1153,7 @@ export default function Attendance() {
                       (scopedStats.pendingClassList || []).forEach(c => {
                         const gradeId = c.gradeLevel || 'General';
                         if (!gradeMap.has(gradeId)) {
-                          gradeMap.set(gradeId, { total: 0, present: 0, absent: 0, late: 0, percentage: 0 });
+                          gradeMap.set(gradeId, { total: 0, present: 0, absent: 0, late: 0, percentage: null });
                         }
                       });
                       return Array.from(gradeMap.entries()).sort(([gradeA], [gradeB]) =>
@@ -1187,13 +1190,15 @@ export default function Attendance() {
                                 <span>Absent: <b className="text-red-600">{gradeData.absent}</b></span>
                                 <span>Late: <b className="text-amber-600">{gradeData.late}</b></span>
                               </div>
-                              <span className={`text-sm font-black px-3 py-1 rounded-full border ${gradeData.percentage >= 75
-                                  ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800'
-                                  : gradeData.percentage >= 50
-                                    ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
-                                    : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
+                              <span className={`text-sm font-black px-3 py-1 rounded-full border ${gradeData.percentage == null
+                                  ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                                  : gradeData.percentage >= 75
+                                    ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800'
+                                    : gradeData.percentage >= 50
+                                      ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                                      : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
                                 }`}>
-                                {gradeData.percentage}%
+                                {gradeData.percentage == null ? '—' : `${gradeData.percentage}%`}
                               </span>
                               {isExpanded ? <ChevronUp className="text-slate-400 dark:text-slate-300" size={18} /> : <ChevronDown className="text-slate-400 dark:text-slate-300" size={18} />}
                             </div>
@@ -1251,22 +1256,7 @@ export default function Attendance() {
               <div className="xl:col-span-1">
                 <div className="bg-white dark:bg-slate-900 rounded-3xl border border-red-200 dark:border-red-900/60 overflow-hidden shadow-sm sticky top-6">
                   {(() => {
-                    const pendingClassSections = (() => {
-                      if (Array.isArray(scopedStats.pendingClassList) && scopedStats.pendingClassList.length > 0) {
-                        return scopedStats.pendingClassList.flatMap(c =>
-                          Array.isArray(c.sections) && c.sections.length > 0 ? c.sections : [c]
-                        );
-                      }
-                      const pendingFromByClass = Object.values(scopedStats.byClass || {}).flatMap(c =>
-                        Array.isArray(c.sections)
-                          ? c.sections.filter(s => s.isUnmarked || s.total === 0)
-                          : (c.isUnmarked || c.total === 0 ? [c] : [])
-                      );
-                      if (pendingFromByClass.length > 0) return pendingFromByClass;
-                      const markedIds = new Set(Object.keys(scopedStats.byClass || {}));
-                      return flattenClassesWithSections(classes).filter(c => !markedIds.has(c.classId));
-                    })();
-
+                    const pendingClassSections = Array.isArray(scopedStats.pendingSections) ? scopedStats.pendingSections : [];
                     const pendingCount = pendingClassSections.length > 0 ? pendingClassSections.length : (scopedStats.classesPending ?? 0);
 
                     return (
@@ -1383,12 +1373,12 @@ export default function Attendance() {
                     <div key={grade.gradeId} className="space-y-1.5">
                       <div className="flex justify-between text-xs font-bold text-slate-700 dark:text-slate-200">
                         <span>Grade {grade.gradeId}</span>
-                        <span>{grade.average}%</span>
+                        <span>{grade.average == null ? '—' : `${grade.average}%`}</span>
                       </div>
                       <div className="h-2.5 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-gradient-to-r from-primary-500 to-indigo-600 rounded-full transition-all duration-500"
-                          style={{ width: `${grade.average}%` }}
+                          style={{ width: `${grade.average ?? 0}%` }}
                         ></div>
                       </div>
                     </div>
@@ -1791,7 +1781,7 @@ export default function Attendance() {
                       .filter(s => `${s.firstName} ${s.lastName || ''}`.toLowerCase().includes(searchQuery.toLowerCase()))
                       .map(student => {
                         const stat = reportStats[student.id] || { present: 0, absent: 0, late: 0, total: 0 };
-                        const percentage = stat.total === 0 ? 100 : Math.round(((stat.present + stat.late) / stat.total) * 100);
+                        const percentage = stat.total === 0 ? null : Math.round(((stat.present + stat.late) / stat.total) * 100);
 
                         return (
                           <tr key={student.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
@@ -1804,13 +1794,15 @@ export default function Attendance() {
                             <td className="p-4 font-semibold text-red-600">{stat.absent}</td>
                             <td className="p-4 font-semibold text-amber-600">{stat.late}</td>
                             <td className="p-4 pr-6 text-right">
-                              <span className={`inline-flex items-center justify-center px-3 py-1 text-xs font-bold rounded-full border ${percentage >= 75
-                                  ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800'
-                                  : percentage >= 50
-                                    ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
-                                    : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
+                              <span className={`inline-flex items-center justify-center px-3 py-1 text-xs font-bold rounded-full border ${percentage == null
+                                  ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                                  : percentage >= 75
+                                    ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800'
+                                    : percentage >= 50
+                                      ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                                      : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
                                 }`}>
-                                {percentage}%
+                                {percentage == null ? '—' : `${percentage}%`}
                               </span>
                             </td>
                           </tr>

@@ -117,7 +117,7 @@ export default function TransportManagement() {
     pollutionCertificateExpiryDate: v.pollutionExpiry || v.customData?.pollutionCertificateExpiryDate || '',
     permitExpiryDate: v.customData?.permitExpiryDate || '',
     roadTaxExpiryDate: v.customData?.roadTaxExpiryDate || '',
-    assignedRouteIds: v.routes ? v.routes.map(r => r.id) : (v.customData?.assignedRouteIds || []),
+    assignedRouteIds: (v.routes || []).map(r => r.id),
     status: v.status || 'Active',
     customData: v.customData || {}
   }), []);
@@ -460,29 +460,57 @@ export default function TransportManagement() {
         insuranceExpiry: newVehicle.insuranceExpiryDate || null,
         pollutionExpiry: newVehicle.pollutionCertificateExpiryDate || null,
         status: newVehicle.status || 'Active',
-        customData: {
-          ...(newVehicle.customData || {}),
-          vehicleName: newVehicle.vehicleName || null,
-          permitExpiryDate: newVehicle.permitExpiryDate || null,
-          roadTaxExpiryDate: newVehicle.roadTaxExpiryDate || null,
-          assignedRouteIds: newVehicle.assignedRouteIds || []
-        }
+        customData: (() => {
+          const { assignedRouteIds: _stale, ...rest } = newVehicle.customData || {};
+          return {
+            ...rest,
+            vehicleName: newVehicle.vehicleName || null,
+            permitExpiryDate: newVehicle.permitExpiryDate || null,
+            roadTaxExpiryDate: newVehicle.roadTaxExpiryDate || null
+          };
+        })()
       };
 
+      const previousRouteIds = newVehicle.id
+        ? (vehicles.find(v => v.id === newVehicle.id)?.assignedRouteIds || [])
+        : [];
+
+      let savedVehicleId = newVehicle.id;
       if (newVehicle.id) {
         await updateVehicle(newVehicle.id, payload);
-        toast.success("Vehicle updated successfully!");
       } else {
-        await createVehicle(payload);
-        toast.success("Vehicle registered successfully!");
+        const res = await createVehicle(payload);
+        savedVehicleId = res?.data?.id;
       }
+
+      const selectedRouteIds = newVehicle.assignedRouteIds || [];
+      const toAssign = selectedRouteIds.filter(id => !previousRouteIds.includes(id));
+      const toUnassign = previousRouteIds.filter(id => !selectedRouteIds.includes(id));
+
+      let routeSyncFailed = false;
+      if (savedVehicleId) {
+        const results = await Promise.allSettled([
+          ...toAssign.map(id => updateRoute(id, { vehicleId: savedVehicleId })),
+          ...toUnassign.map(id => updateRoute(id, { vehicleId: null }))
+        ]);
+        routeSyncFailed = results.some(r => r.status === 'rejected');
+      } else if (selectedRouteIds.length > 0) {
+        routeSyncFailed = true;
+      }
+
+      if (routeSyncFailed) {
+        toast.error('Vehicle saved, but some route assignments failed.');
+      } else {
+        toast.success(newVehicle.id ? 'Vehicle updated successfully!' : 'Vehicle registered successfully!');
+      }
+
       notifyDataChanged('transport');
       setVehicleErrors({});
       setShowVehicleModal(false);
       await loadAllTransportData();
     } catch (err) {
       console.error(err);
-      toast.error(err.message || "Failed to save vehicle details.");
+      toast.error(err.message || 'Failed to save vehicle details.');
     } finally {
       setSavingVehicle(false);
     }
@@ -1362,11 +1390,16 @@ export default function TransportManagement() {
                     }}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900 min-h-[90px]"
                   >
-                    {routes.map(r => (
-                      <option key={r.id} value={r.id}>
-                        {r.name} ({r.vehicleNumber})
-                      </option>
-                    ))}
+                  {routes.map(r => {
+                      const owner = r.vehicleId && r.vehicleId !== newVehicle.id
+                        ? vehicles.find(v => v.id === r.vehicleId)
+                        : null;
+                      return (
+                        <option key={r.id} value={r.id}>
+                          {r.name}{owner ? ` (currently on ${owner.registrationNumber})` : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                   <p className="text-slate-400 dark:text-slate-300 text-xs mt-1.5">Hold <kbd className="font-mono bg-slate-100 dark:bg-slate-700 px-1 py-0.5 rounded border border-slate-200 dark:border-slate-700">Ctrl</kbd> (or <kbd className="font-mono bg-slate-100 dark:bg-slate-700 px-1 py-0.5 rounded border border-slate-200 dark:border-slate-700">Cmd</kbd> on Mac) to select multiple routes.</p>
                 </div>
