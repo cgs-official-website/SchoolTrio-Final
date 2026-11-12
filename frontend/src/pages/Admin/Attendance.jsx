@@ -292,7 +292,11 @@ export default function Attendance() {
             date: targetDate,
             limit: 20
           });
-          const fallbackSessions = Array.isArray(fallbackRes?.data) ? fallbackRes.data : (Array.isArray(fallbackRes) ? fallbackRes : []);
+          // Only accept class-wide sessions (no section) or this section's own session.
+          // Sessions that belong to a DIFFERENT section of the same class (e.g. X-A while viewing X-B)
+          // must never be loaded here, otherwise saving tries to update the other section's session.
+          const fallbackSessions = (Array.isArray(fallbackRes?.data) ? fallbackRes.data : (Array.isArray(fallbackRes) ? fallbackRes : []))
+            .filter(s => !s.sectionId || s.sectionId === targetSectionId);
           const fallbackFnSession = fallbackSessions.find(s => s.date === targetDate && (s.session === 'FN' || s.session === 'STANDARD'));
           const fallbackAnSession = fallbackSessions.find(s => s.date === targetDate && s.session === 'AN');
           const fallbackFnMarked = !!fallbackFnSession && ((fallbackFnSession._count?.records || 0) > 0 || (Array.isArray(fallbackFnSession.records) && fallbackFnSession.records.length > 0));
@@ -815,28 +819,28 @@ export default function Attendance() {
 
   // Compile Grade Averages for Analytics
   const getGradeMonthAverages = () => {
-  const gradesMap = {};
-  monthlySessionsList.forEach((sess) => {
-    const grade = sess.class?.gradeLevel ? String(sess.class.gradeLevel) : (sess.class?.name || 'General');
-    if (!gradesMap[grade]) {
-      gradesMap[grade] = { presentCount: 0, totalCount: 0 };
-    }
-    const records = sess.records || [];
-    records.forEach((r) => {
-      gradesMap[grade].totalCount++;
-      if (r.status === 'Present' || r.status === 'Late') {
-        gradesMap[grade].presentCount++;
+    const gradesMap = {};
+    monthlySessionsList.forEach((sess) => {
+      const grade = sess.class?.gradeLevel ? String(sess.class.gradeLevel) : (sess.class?.name || 'General');
+      if (!gradesMap[grade]) {
+        gradesMap[grade] = { presentCount: 0, totalCount: 0 };
       }
+      const records = sess.records || [];
+      records.forEach((r) => {
+        gradesMap[grade].totalCount++;
+        if (r.status === 'Present' || r.status === 'Late') {
+          gradesMap[grade].presentCount++;
+        }
+      });
     });
-  });
 
-  return Object.entries(gradesMap).map(([gradeId, accum]) => ({
-    gradeId,
-    average: accum.totalCount === 0
-      ? null
-      : Number(((accum.presentCount / accum.totalCount) * 100).toFixed(1))
-  }));
-};
+    return Object.entries(gradesMap).map(([gradeId, accum]) => ({
+      gradeId,
+      average: accum.totalCount === 0
+        ? null
+        : Number(((accum.presentCount / accum.totalCount) * 100).toFixed(1))
+    }));
+  };
 
   const renderTrendSVG = () => {
     if (monthlySessionsList.length === 0) return null;
@@ -861,8 +865,8 @@ export default function Attendance() {
     });
 
     const sortedDates = Object.keys(dateMap)
-    .filter((d) => dateMap[d].total > 0)
-    .sort();
+      .filter((d) => dateMap[d].total > 0)
+      .sort();
 
     if (sortedDates.length === 0) return null;
 
@@ -915,55 +919,55 @@ export default function Attendance() {
 
   // Filter scoped statistics for Grade Coordinators
   const getScopedStats = () => {
-  if (!dashboardStats) return null;
-  if (!isCoordinator || assignedGrades.length === 0) return dashboardStats;
+    if (!dashboardStats) return null;
+    if (!isCoordinator || assignedGrades.length === 0) return dashboardStats;
 
-  const inScope = (gradeLevel = '') => {
-    const gl = String(gradeLevel).toLowerCase();
-    return assignedGrades.some(g => g.toLowerCase() === gl || gl.includes(g.toLowerCase()));
+    const inScope = (gradeLevel = '') => {
+      const gl = String(gradeLevel).toLowerCase();
+      return assignedGrades.some(g => g.toLowerCase() === gl || gl.includes(g.toLowerCase()));
+    };
+
+    const filteredByGrade = {};
+    Object.entries(dashboardStats.byGrade || {}).forEach(([gradeId, data]) => {
+      if (inScope(gradeId)) filteredByGrade[gradeId] = data;
+    });
+
+    const filteredByClass = {};
+    Object.entries(dashboardStats.byClass || {}).forEach(([classId, data]) => {
+      if (inScope(data.gradeLevel)) filteredByClass[classId] = data;
+    });
+
+    const filteredPending = (dashboardStats.pendingClassList || []).filter(c => inScope(c.gradeLevel));
+    const filteredPendingSections = (dashboardStats.pendingSections || []).filter(s => inScope(s.gradeLevel));
+
+    const schoolWide = { total: 0, present: 0, absent: 0, late: 0, percentage: null };
+    Object.values(filteredByGrade).forEach((g) => {
+      schoolWide.total += g.total;
+      schoolWide.present += g.present;
+      schoolWide.absent += g.absent;
+      schoolWide.late += g.late;
+    });
+    const recorded = schoolWide.present + schoolWide.absent + schoolWide.late;
+    if (recorded > 0) {
+      schoolWide.percentage = Number((((schoolWide.present + schoolWide.late) / recorded) * 100).toFixed(1));
+    }
+
+    const sectionsMarked = Object.values(filteredByClass)
+      .reduce((n, c) => n + (c.sections || []).filter(s => !s.isUnmarked).length, 0);
+    const sectionsTotal = sectionsMarked + filteredPendingSections.length;
+
+    return {
+      ...dashboardStats,
+      schoolWide,
+      byGrade: filteredByGrade,
+      byClass: filteredByClass,
+      pendingClassList: filteredPending,
+      pendingSections: filteredPendingSections,
+      classesMarked: sectionsMarked,
+      classesTotal: sectionsTotal,
+      classesPending: filteredPendingSections.length
+    };
   };
-
-  const filteredByGrade = {};
-  Object.entries(dashboardStats.byGrade || {}).forEach(([gradeId, data]) => {
-    if (inScope(gradeId)) filteredByGrade[gradeId] = data;
-  });
-
-  const filteredByClass = {};
-  Object.entries(dashboardStats.byClass || {}).forEach(([classId, data]) => {
-  if (inScope(data.gradeLevel)) filteredByClass[classId] = data;
-  });
-
-  const filteredPending = (dashboardStats.pendingClassList || []).filter(c => inScope(c.gradeLevel));
-  const filteredPendingSections = (dashboardStats.pendingSections || []).filter(s => inScope(s.gradeLevel));
-
-  const schoolWide = { total: 0, present: 0, absent: 0, late: 0, percentage: null };
-  Object.values(filteredByGrade).forEach((g) => {
-    schoolWide.total += g.total;
-    schoolWide.present += g.present;
-    schoolWide.absent += g.absent;
-    schoolWide.late += g.late;
-  });
-  const recorded = schoolWide.present + schoolWide.absent + schoolWide.late;
-  if (recorded > 0) {
-    schoolWide.percentage = Number((((schoolWide.present + schoolWide.late) / recorded) * 100).toFixed(1));
-  }
-
-  const sectionsMarked = Object.values(filteredByClass)
-    .reduce((n, c) => n + (c.sections || []).filter(s => !s.isUnmarked).length, 0);
-  const sectionsTotal = sectionsMarked + filteredPendingSections.length;
-
-  return {
-    ...dashboardStats,
-    schoolWide,
-    byGrade: filteredByGrade,
-    byClass: filteredByClass,
-    pendingClassList: filteredPending,
-    pendingSections: filteredPendingSections,
-    classesMarked: sectionsMarked,
-    classesTotal: sectionsTotal,
-    classesPending: filteredPendingSections.length
-  };
-};
 
   const scopedStats = getScopedStats();
 
@@ -1012,8 +1016,8 @@ export default function Attendance() {
               <button
                 onClick={() => setActiveTab('dashboard')}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${activeTab === 'dashboard'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-md'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-md'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
                   }`}
               >
                 <DashboardIcon size={16} /> Dashboard
@@ -1021,8 +1025,8 @@ export default function Attendance() {
               <button
                 onClick={() => setActiveTab('marking')}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${activeTab === 'marking'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-md'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-md'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
                   }`}
               >
                 <ClipboardIcon size={16} /> Daily Marking
@@ -1030,8 +1034,8 @@ export default function Attendance() {
               <button
                 onClick={() => setActiveTab('analytics')}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${activeTab === 'analytics'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-md'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-md'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
                   }`}
               >
                 <TrendIcon size={16} /> Analytics
@@ -1191,12 +1195,12 @@ export default function Attendance() {
                                 <span>Late: <b className="text-amber-600">{gradeData.late}</b></span>
                               </div>
                               <span className={`text-sm font-black px-3 py-1 rounded-full border ${gradeData.percentage == null
-                                  ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                                  : gradeData.percentage >= 75
-                                    ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800'
-                                    : gradeData.percentage >= 50
-                                      ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
-                                      : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
+                                ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                                : gradeData.percentage >= 75
+                                  ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800'
+                                  : gradeData.percentage >= 50
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                                    : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
                                 }`}>
                                 {gradeData.percentage == null ? '—' : `${gradeData.percentage}%`}
                               </span>
@@ -1229,12 +1233,12 @@ export default function Attendance() {
                                       <td className="py-2.5 font-semibold text-amber-600">{sec.late}</td>
                                       <td className="py-2.5 text-right">
                                         <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded-lg border ${sec.total === 0 || sec.isUnmarked
-                                            ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                                            : sec.percentage >= 75
-                                              ? 'bg-green-50 text-green-600 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800'
-                                              : sec.percentage >= 50
-                                                ? 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
-                                                : 'bg-red-50 text-red-600 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
+                                          ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                                          : sec.percentage >= 75
+                                            ? 'bg-green-50 text-green-600 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800'
+                                            : sec.percentage >= 50
+                                              ? 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                                              : 'bg-red-50 text-red-600 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
                                           }`}>
                                           {sec.total === 0 || sec.isUnmarked ? 'Unmarked' : `${sec.percentage}%`}
                                         </span>
@@ -1521,8 +1525,8 @@ export default function Attendance() {
                     type="button"
                     onClick={() => setSelectedSession('FN')}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${selectedSession === 'FN'
-                        ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
-                        : 'text-slate-600 dark:text-slate-300'
+                      ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-300'
                       }`}
                   >
                     {daySessionStatus.fn && <CheckCircle2 size={13} className="text-emerald-500" />}
@@ -1537,8 +1541,8 @@ export default function Attendance() {
                     type="button"
                     onClick={() => setSelectedSession('AN')}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${selectedSession === 'AN'
-                        ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
-                        : 'text-slate-600 dark:text-slate-300'
+                      ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-300'
                       }`}
                   >
                     {daySessionStatus.an && <CheckCircle2 size={13} className="text-emerald-500" />}
@@ -1714,8 +1718,8 @@ export default function Attendance() {
                             <tr
                               key={student.id}
                               className={`transition-colors ${isSelected
-                                  ? 'bg-primary-50/40 dark:bg-primary-950/20 hover:bg-primary-50/60 dark:hover:bg-primary-950/30'
-                                  : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/50'
+                                ? 'bg-primary-50/40 dark:bg-primary-950/20 hover:bg-primary-50/60 dark:hover:bg-primary-950/30'
+                                : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/50'
                                 }`}
                             >
                               <td className="p-4 text-slate-600 dark:text-slate-300 font-medium pl-6">{student.rollNumber || '-'}</td>
@@ -1746,8 +1750,8 @@ export default function Attendance() {
                                       type="button"
                                       onClick={() => handleStatusChange(student.id, status)}
                                       className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${currentStatus === status
-                                          ? `${getStatusColor(status)} font-black shadow-sm`
-                                          : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                        ? `${getStatusColor(status)} font-black shadow-sm`
+                                        : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
                                         }`}
                                     >
                                       {status}
@@ -1795,12 +1799,12 @@ export default function Attendance() {
                             <td className="p-4 font-semibold text-amber-600">{stat.late}</td>
                             <td className="p-4 pr-6 text-right">
                               <span className={`inline-flex items-center justify-center px-3 py-1 text-xs font-bold rounded-full border ${percentage == null
-                                  ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                                  : percentage >= 75
-                                    ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800'
-                                    : percentage >= 50
-                                      ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
-                                      : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
+                                ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                                : percentage >= 75
+                                  ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800'
+                                  : percentage >= 50
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                                    : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
                                 }`}>
                                 {percentage == null ? '—' : `${percentage}%`}
                               </span>
