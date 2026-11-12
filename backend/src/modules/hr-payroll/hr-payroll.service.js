@@ -89,10 +89,36 @@ export async function getMySalary(schoolId, userId, query = {}) {
   }
 
   const options = {
-    month: query.month?.trim()
+    month: query.month?.trim(),
+    status: 'Payslip Released'
   };
 
   return hrPayrollRepository.findPayrollsByStaffId(schoolId, staffProfile.id, options);
+}
+
+/**
+ * Returns the data a staff member needs to render their own payslip:
+ * authorized signature and school letterhead. Reads only the caller's own tenant.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @returns {Promise<{ authorizedSignature: string|null, school: Object|null }>}
+ */
+export async function getMySalaryMeta(schoolId) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required');
+  }
+
+  const [config, school] = await Promise.all([
+    hrPayrollRepository.findHRConfig(schoolId),
+    hrPayrollRepository.findSchoolLetterhead(schoolId)
+  ]);
+
+  return {
+    authorizedSignature: config?.data?.authorizedSignature || null,
+    school: school
+      ? { name: school.name, logoUrl: school.logoUrl, address: school.address }
+      : null
+  };
 }
 
 /**

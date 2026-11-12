@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getMySalary, getConfig } from '../../api/hr-payroll';
+import { getMySalary } from '../../api/hr-payroll';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { LuBanknote } from 'react-icons/lu';
 import { Printer, X, FileText, Download } from 'lucide-react';
@@ -13,30 +13,18 @@ export default function MySalary() {
   
   const [payrolls, setPayrolls] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [hrConfig, setHrConfig] = useState({ authorizedSignature: null });
+  const [meta, setMeta] = useState({ authorizedSignature: null, school: null });
   const [showPayslipModal, setShowPayslipModal] = useState(null);
 
   const fetchSalaryData = useCallback(async () => {
     try {
       setLoading(true);
-      const [salaryRes, configRes] = await Promise.allSettled([
-        getMySalary(),
-        getConfig()
-      ]);
-
-      if (salaryRes.status === 'fulfilled' && salaryRes.value?.data) {
-        setPayrolls(salaryRes.value.data);
-      } else if (salaryRes.status === 'rejected') {
-        console.error("Failed to fetch my salary", salaryRes.reason);
-        toast.error(salaryRes.reason?.message || "Failed to load salary history");
-      }
-
-      if (configRes.status === 'fulfilled' && configRes.value?.data) {
-        setHrConfig(configRes.value.data);
-      }
+      const res = await getMySalary();
+      setPayrolls(res?.data || []);
+      setMeta(res?.meta || { authorizedSignature: null, school: null });
     } catch (err) {
-      console.error("Error loading salary data", err);
-      toast.error("Failed to load salary information");
+      console.error("Failed to fetch my salary", err);
+      toast.error(err.message || "Failed to load salary history");
     } finally {
       setLoading(false);
     }
@@ -64,10 +52,12 @@ export default function MySalary() {
     const staffName = staff.name || payroll.name || userProfile?.name || 'Staff Member';
     const staffRole = staff.designation || payroll.role || userProfile?.role || 'Staff';
 
-    docPDF.setFontSize(22);
     docPDF.setTextColor(30, 58, 138); 
-    docPDF.text("Payslip", 105, 20, { align: 'center' });
-    
+    docPDF.setFontSize(12);
+    docPDF.text(meta.school?.name || '', 105, 12, { align: 'center' });
+    docPDF.setFontSize(22);
+    docPDF.text("Payslip", 105, 24, { align: 'center' });
+
     docPDF.setFontSize(12);
     docPDF.setTextColor(100, 116, 139); 
     docPDF.text(`Month: ${payroll.month || 'N/A'}`, 105, 30, { align: 'center' });
@@ -97,9 +87,9 @@ export default function MySalary() {
     docPDF.setTextColor(16, 185, 129); 
     docPDF.text(`Net Payable: Rs. ${netPay.toLocaleString()}`, 190, finalY + 15, { align: 'right' });
 
-    if (hrConfig?.authorizedSignature) {
+    if (meta.authorizedSignature) {
       try {
-        docPDF.addImage(hrConfig.authorizedSignature, 'PNG', 140, finalY + 25, 40, 15);
+        docPDF.addImage(meta.authorizedSignature, 'PNG', 140, finalY + 25, 40, 15);
         docPDF.setFontSize(10);
         docPDF.setTextColor(100, 116, 139);
         docPDF.text("Authorized Signatory", 160, finalY + 45, { align: 'center' });
@@ -178,7 +168,7 @@ export default function MySalary() {
                           onClick={() => setShowPayslipModal(payroll)}
                           className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 text-purple-700 text-sm font-bold hover:bg-purple-100 rounded-lg transition-colors shadow-sm cursor-pointer"
                         >
-                          <FileText size={16} /> Payslip
+                          <FileText size={16} />
                         </button>
                       ) : (
                         <span className="text-xs text-slate-400 dark:text-slate-300 font-medium italic px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded-lg">Not Released</span>
@@ -235,14 +225,14 @@ export default function MySalary() {
                 {/* Header */}
                 <div className="flex justify-between items-center border-b-2 border-slate-200 dark:border-slate-700 pb-6 mb-8">
                   <div className="flex items-center gap-4">
-                    {userProfile?.schoolLogoUrl ? (
-                      <img src={userProfile.schoolLogoUrl} alt="School Logo" className="h-16 w-16 object-contain" />
+                    {meta.school?.logoUrl ? (
+                      <img src={meta.school.logoUrl} alt="School Logo" className="h-16 w-16 object-contain" />
                     ) : (
                       <div className="h-16 w-16 bg-slate-100 dark:bg-slate-700 rounded flex items-center justify-center font-bold text-slate-400 dark:text-slate-300">LOGO</div>
                     )}
                     <div>
-                      <h1 className="text-2xl font-bold text-slate-900 dark:text-white uppercase tracking-tight">{userProfile?.schoolName || 'School Name'}</h1>
-                      <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">{userProfile?.schoolAddress || 'School Address'}</p>
+                      <h1 className="text-2xl font-bold text-slate-900 dark:text-white uppercase tracking-tight">{meta.school?.name || 'School Name'}</h1>
+                      <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">{meta.school?.address || ''}</p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -264,7 +254,7 @@ export default function MySalary() {
                     <h3 className="text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-3">Payment Details</h3>
                     <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg border border-slate-100 dark:border-slate-800">
                       <p className="text-slate-500 dark:text-slate-400 text-sm mb-1">Status: <span className="text-emerald-600 font-bold ml-1">{showPayslipModal.status}</span></p>
-                      <p className="text-slate-500 dark:text-slate-400 text-sm">Date: <span className="text-slate-900 dark:text-white font-semibold ml-1">{new Date().toLocaleDateString('en-GB')}</span></p>
+                      <p className="text-slate-500 dark:text-slate-400 text-sm">Date: <span className="text-slate-900 dark:text-white font-semibold ml-1">{new Date(showPayslipModal.paidAt || showPayslipModal.createdAt).toLocaleDateString('en-GB')}</span></p>
                     </div>
                   </div>
                 </div>
@@ -338,9 +328,9 @@ export default function MySalary() {
                   </div>
                   
                   <div className="text-center w-48">
-                    {hrConfig?.authorizedSignature ? (
+                    {meta.authorizedSignature ? (
                       <div className="h-16 mb-2 flex items-end justify-center">
-                        <img src={hrConfig.authorizedSignature} alt="Authorized Signature" className="max-h-full object-contain mix-blend-multiply" />
+                        <img src={meta.authorizedSignature} alt="Authorized Signature" className="max-h-full object-contain mix-blend-multiply" />
                       </div>
                     ) : (
                       <div className="h-16 mb-2 border-b-2 border-dashed border-slate-300 dark:border-slate-600"></div>

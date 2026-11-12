@@ -173,6 +173,10 @@ export async function findPayrollsByStaffId(schoolId, staffProfileId, options = 
     where.month = { equals: options.month, mode: 'insensitive' };
   }
 
+  if (options.status) {
+    where.status = options.status;
+  }
+
   return tx.hRPayrollRecord.findMany({
     where,
     select: PAYROLL_SELECT_CONFIG,
@@ -298,5 +302,19 @@ export async function upsertHRConfig(schoolId, configData, tx = prisma) {
       category: 'hrConfig',
       data: configData
     }
+  });
+}
+
+/**
+ * Returns school letterhead details (name, logo, address) for payslips.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Object} [tx] - Optional transaction client
+ * @returns {Promise<{ name: string, logoUrl: string|null, address: string|null }|null>}
+ */
+export async function findSchoolLetterhead(schoolId, tx = prisma) {
+  return tx.school.findUnique({
+    where: { id: schoolId },
+    select: { name: true, logoUrl: true, address: true }
   });
 }

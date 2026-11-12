@@ -91,7 +91,7 @@ export default function TeacherDashboard() {
     { name: 'Transport', path: '/teacher/transport', icon: LuBus, moduleKey: 'transport' },
     { name: 'Grades & Exams', path: '/teacher/grades', icon: GraduationCap, moduleKey: 'exams' },
     { name: 'Messages', path: '/teacher/chat', icon: MessageSquare, moduleKey: 'chats' },
-    { name: 'My Salary', path: '/teacher/salary', icon: LuBanknote, moduleKey: 'hr-payroll' },
+    { name: 'My Salary', path: '/teacher/salary', icon: LuBanknote },
     { name: 'Leave Requests', path: '/teacher/leaves', icon: Calendar, moduleKey: 'leaves' },
     { name: 'Profile', path: '/teacher/profile', icon: UserIcon },
   ];

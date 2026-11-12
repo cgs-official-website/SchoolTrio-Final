@@ -30,11 +30,15 @@ export const getMySalary = async (req, res, next) => {
   try {
     const schoolId = req.tenant.schoolId;
     const userId = req.user.id;
-    const records = await hrPayrollService.getMySalary(schoolId, userId, req.query);
+    const [records, meta] = await Promise.all([
+      hrPayrollService.getMySalary(schoolId, userId, req.query),
+      hrPayrollService.getMySalaryMeta(schoolId)
+    ]);
 
     res.status(200).json({
       success: true,
-      data: records
+      data: records,
+      meta
     });
   } catch (error) {
     next(error);

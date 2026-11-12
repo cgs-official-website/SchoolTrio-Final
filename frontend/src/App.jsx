@@ -251,6 +251,7 @@ function App() {
                 <Route path="performance" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="performance"><PerformanceTracking /></ProtectedRoute>} />
                 <Route path="ptm" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="ptm"><PTMScheduler /></ProtectedRoute>} />
                 <Route path="profile" element={<ProfileSetup />} />
+                <Route path="salary" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']}><MySalary /></ProtectedRoute>} />
                 <Route path="custom/:moduleId" element={<CustomModuleView />} />
                 <Route path="leaves" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="leaves"><AdminLeaves /></ProtectedRoute>} />
                 <Route path="leads" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="leads"><LeadsManagement /></ProtectedRoute>} />
@@ -281,7 +282,7 @@ function App() {
                 <Route path="performance" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="performance"><PerformanceTracking /></ProtectedRoute>} />
                 <Route path="resources" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="resources"><ResourceSharing /></ProtectedRoute>} />
                 <Route path="ptm" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="ptm"><PTMScheduler /></ProtectedRoute>} />
-                <Route path="salary" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="hr-payroll"><MySalary /></ProtectedRoute>} />
+                <Route path="salary" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']}><MySalary /></ProtectedRoute>} />
                 <Route path="leaves" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="leaves"><TeacherLeaves /></ProtectedRoute>} />
                 <Route path="transport" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="transport"><TeacherTransport /></ProtectedRoute>} />
                 <Route path="profile" element={<ProfileSetup />} />
