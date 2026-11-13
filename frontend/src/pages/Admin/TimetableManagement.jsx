@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { listClasses } from '../../api/classes';
 import { listStaff } from '../../api/staff';
 import { listSubjects } from '../../api/subjects';
-import { listTimetables, getClassTimetable, replaceClassTimetable } from '../../api/timetables';
+import { listTimetables, getClassTimetable, replaceClassTimetable, getTimetableTemplate, saveTimetableTemplate } from '../../api/timetables';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { notifyDataChanged } from '../../utils/liveData';
-import { LuCalendar as Calendar, LuPlus as Plus, LuX as X, LuClock as Clock, LuBookOpen as BookOpen, LuUser as User, LuTrash2 as Trash2, LuPencil as Edit2, LuCircleAlert as AlertCircle } from 'react-icons/lu';
+import { LuCalendar as Calendar, LuPlus as Plus, LuX as X, LuClock as Clock, LuBookOpen as BookOpen, LuUser as User, LuTrash2 as Trash2, LuPencil as Edit2, LuCircleAlert as AlertCircle, LuSettings as Settings, LuCoffee as Coffee, LuUtensils as Utensils } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
 import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
@@ -47,6 +47,13 @@ export const areTimeIntervalsOverlapping = (startA, endA, startB, endB) => {
   const eB = timeToMinutes(endB);
   if (sA === null || eA === null || sB === null || eB === null) return false;
   return sA < eB && eA > sB;
+};
+
+export const addMinutesToTime = (time24, mins) => {
+  const t = timeToMinutes(time24);
+  if (t === null) return '';
+  const total = Math.min(t + mins, 23 * 60 + 55);
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 };
 
 const TimePicker12Hour = ({ value, onChange, required }) => {
@@ -222,6 +229,10 @@ export default function TimetableManagement() {
     Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: []
   });
   const [customData, setCustomData] = useState({});
+  const [template, setTemplate] = useState(null);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templateDraft, setTemplateDraft] = useState([]);
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   const [allTimetables, setAllTimetables] = useState({});
   const [masterDay, setMasterDay] = useState('Monday');
@@ -260,6 +271,17 @@ export default function TimetableManagement() {
   const isCurrentUnitKey = (key) =>
     key === timetableKey(selectedClassId, selectedSectionId) || key === timetableKey(selectedClassId, null);
   const classIdFromKey = (key) => String(key).split(':')[0];
+
+  const unitLabelFromKey = (key) => {
+    const [cId, sId] = String(key).split(':');
+    if (sId && sId !== 'shared') {
+      const unit = units.find(u => u.classId === cId && u.sectionId === sId);
+      if (unit?.label) return unit.label;
+    }
+    // Legacy shared timetable (no section): fall back to the class label
+    const cls = classes.find(c => c.id === cId);
+    return cls ? formatClassSection(cls) : 'another class';
+  };
 
   const fetchAllTimetables = useCallback(async () => {
     try {
@@ -301,6 +323,15 @@ export default function TimetableManagement() {
     }
   }, []);
 
+  const fetchTemplate = useCallback(async () => {
+    try {
+      const res = await getTimetableTemplate();
+      setTemplate(res.data || null);
+    } catch (err) {
+      console.error('Error fetching timetable template:', err);
+    }
+  }, []);
+
   useEffect(() => {
     if (!schoolId) return;
     setLoading(true);
@@ -332,24 +363,35 @@ export default function TimetableManagement() {
 
     fetchInitialData();
     fetchAllTimetables();
+    fetchTemplate();
 
     return () => {
       isMounted = false;
     };
-  }, [schoolId, fetchAllTimetables]);
+  }, [schoolId, fetchAllTimetables, fetchTemplate]);
+
+  const fetchSeq = useRef(0);
 
   const fetchClassSchedule = useCallback((targetClassId, targetSectionId = null, showSpinner = true) => {
+    const seq = ++fetchSeq.current;
+    const emptyWeek = { Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [] };
+
     if (!targetClassId) {
-      setSchedule({ Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [] });
+      setSchedule(emptyWeek);
       setCustomData({});
       setUsingSharedFallback(false);
       return;
     }
-    if (showSpinner) setLoading(true);
+    if (showSpinner) {
+      // Drop the previous section's data right away so it is never shown under the new section
+      setSchedule(emptyWeek);
+      setCustomData({});
+      setUsingSharedFallback(false);
+      setLoading(true);
+    }
     getClassTimetable(targetClassId, { sectionId: targetSectionId })
       .then((res) => {
-        // Legacy timetables were saved for the whole class (no section). Until this section is saved
-        // once, it shows that shared timetable; saving gives the section its own.
+        if (seq !== fetchSeq.current) return; // a newer request has started; ignore this one
         const fetchedPeriods = Array.isArray(res.data?.periods) ? res.data.periods : [];
         setUsingSharedFallback(Boolean(targetSectionId) && fetchedPeriods.length > 0 && fetchedPeriods.every(p => !p.sectionId));
         const scheduleData = res.data?.schedule || {};
@@ -382,13 +424,14 @@ export default function TimetableManagement() {
         setCustomData(res.data?.customData || {});
       })
       .catch((err) => {
+        if (seq !== fetchSeq.current) return;
         console.error("Error fetching class timetable:", err);
         setSchedule({ Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [] });
         setCustomData({});
         setUsingSharedFallback(false);
       })
       .finally(() => {
-        if (showSpinner) setLoading(false);
+        if (showSpinner && seq === fetchSeq.current) setLoading(false);
       });
   }, []);
 
@@ -399,12 +442,111 @@ export default function TimetableManagement() {
   // Live data synchronization for timetables
   const handleLiveRefresh = useCallback(() => {
     fetchAllTimetables();
+    fetchTemplate();
     if (selectedClassId) {
       fetchClassSchedule(selectedClassId, selectedSectionId, false);
     }
-  }, [fetchAllTimetables, fetchClassSchedule, selectedClassId, selectedSectionId]);
+  }, [fetchAllTimetables, fetchTemplate, fetchClassSchedule, selectedClassId, selectedSectionId]);
 
   useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], ['timetables', 'timetable', 'subjects']);
+
+  // Which template slot does this period belong to? Legacy periods are matched by identical times.
+  const slotIdOf = (slot) => {
+    if (slot?.templateSlotId) return slot.templateSlotId;
+    return template?.slots?.find(
+      s => s.slotType === 'PERIOD' && s.startTime === slot?.startTime && s.endTime === slot?.endTime
+    )?.id || null;
+  };
+
+  const openAssignModal = (day, tSlot) => {
+    setActiveDay(day);
+    setEditingSlotId(null);
+    setNewSlot({
+      startTime: tSlot.startTime,
+      endTime: tSlot.endTime,
+      subject: '',
+      subjectId: '',
+      teacher: '',
+      teacherId: '',
+      templateSlotId: tSlot.id
+    });
+    setShowAddModal(true);
+  };
+
+  // ---- Period template editor ----
+  const openTemplateModal = () => {
+    if (selectedUnitId && !window.confirm('Unsaved changes in this section will be lost if you save the template. Continue?')) return;
+    const base = (template?.slots || []).map(s => ({ ...s, key: s.id }));
+    setTemplateDraft(
+      base.length > 0
+        ? base
+        : [{ key: `n${Date.now()}`, slotType: 'PERIOD', label: 'Period 1', startTime: '09:00', endTime: '09:45' }]
+    );
+    setShowTemplateModal(true);
+  };
+
+  const addDraftSlot = (slotType) => {
+    setTemplateDraft(prev => {
+      const last = prev[prev.length - 1];
+      const start = last ? last.endTime : '09:00';
+      const duration = slotType === 'BREAK' ? 15 : 45;
+      const periodCount = prev.filter(s => s.slotType === 'PERIOD').length;
+      const label = slotType === 'PERIOD' ? `Period ${periodCount + 1}` : slotType === 'LUNCH' ? 'Lunch' : 'Break';
+      return [...prev, { key: `n${Date.now()}${prev.length}`, slotType, label, startTime: start, endTime: addMinutesToTime(start, duration) }];
+    });
+  };
+
+  const updateDraftSlot = (key, patch) =>
+    setTemplateDraft(prev => prev.map(s => (s.key === key ? { ...s, ...patch } : s)));
+
+  const removeDraftSlot = (key) => setTemplateDraft(prev => prev.filter(s => s.key !== key));
+
+  const handleSaveTemplate = async () => {
+    for (let i = 0; i < templateDraft.length; i++) {
+      const s = templateDraft[i];
+      if (!s.label.trim()) {
+        toast.error('Every row needs a label.');
+        return;
+      }
+      if (!isEndTimeAfterStartTime(s.startTime, s.endTime)) {
+        toast.error(`"${s.label}": end time must be later than start time.`);
+        return;
+      }
+      if (i > 0 && timeToMinutes(s.startTime) < timeToMinutes(templateDraft[i - 1].endTime)) {
+        toast.error(`"${s.label}" starts before "${templateDraft[i - 1].label}" ends.`);
+        return;
+      }
+    }
+    if (!templateDraft.some(s => s.slotType === 'PERIOD')) {
+      toast.error('Add at least one period.');
+      return;
+    }
+
+    setSavingTemplate(true);
+    try {
+      const res = await saveTimetableTemplate({
+        name: template?.name || 'Default Schedule',
+        slots: templateDraft.map(s => ({
+          id: s.id || undefined,
+          slotType: s.slotType,
+          label: s.label.trim(),
+          startTime: s.startTime,
+          endTime: s.endTime
+        }))
+      });
+      setTemplate(res.data || null);
+      setShowTemplateModal(false);
+      toast.success('Period template saved');
+      notifyDataChanged('timetables');
+      notifyDataChanged('timetable');
+      fetchAllTimetables();
+      if (selectedClassId) fetchClassSchedule(selectedClassId, selectedSectionId, false);
+    } catch (error) {
+      toast.error(error.message || 'Failed to save template.');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
 
   const handleAddSlot = (e) => {
     e.preventDefault();
@@ -468,8 +610,7 @@ export default function TimetableManagement() {
           areTimeIntervalsOverlapping(newSlot.startTime, newSlot.endTime, s.startTime, s.endTime)
         );
         if (conflictingOther) {
-          const conflictingClassObj = classes.find(c => c.id === classIdFromKey(classId));
-          const conflictingClassName = conflictingClassObj ? formatClassSection(conflictingClassObj) : 'another class';
+          const conflictingClassName = unitLabelFromKey(classId);
           toast.error(
             `Teacher conflict: ${teacherDisplayName || 'Teacher'} is already assigned to ${conflictingClassName} on ${activeDay} from ${formatTime12hr(conflictingOther.startTime)} to ${formatTime12hr(conflictingOther.endTime)}. A teacher cannot be assigned to two different classes in the same time slot.`
           );
@@ -542,7 +683,8 @@ export default function TimetableManagement() {
       subject: subjectStr,
       subjectId: subjectId,
       teacher: teacherStr,
-      teacherId: teacherId
+      teacherId: teacherId,
+      templateSlotId: slotIdOf(slot)
     });
     setShowAddModal(true);
   };
@@ -601,8 +743,7 @@ export default function TimetableManagement() {
             areTimeIntervalsOverlapping(slot.startTime, slot.endTime, os.startTime, os.endTime);
         });
         if (tc) {
-          const clsObj = classes.find(c => c.id === classIdFromKey(otherClassId));
-          const clsName = clsObj ? formatClassSection(clsObj) : 'another class';
+          const clsName = unitLabelFromKey(otherClassId);
           return {
             type: 'teacher',
             message: `Teacher assigned to ${clsName} (${formatTime12hr(tc.startTime)} - ${formatTime12hr(tc.endTime)})`
@@ -611,7 +752,7 @@ export default function TimetableManagement() {
       }
     }
     return null;
-  }, [schedule, allTimetables, selectedClassId, selectedSectionId, teachers, classes]);
+  }, [schedule, allTimetables, selectedClassId, selectedSectionId, teachers, classes, units]);
 
   const handleSaveTimetable = async () => {
     if (!selectedClassId) return;
@@ -659,8 +800,7 @@ export default function TimetableManagement() {
               areTimeIntervalsOverlapping(slot.startTime, slot.endTime, os.startTime, os.endTime);
           });
           if (conflicting) {
-            const conflictingClassObj = classes.find(c => c.id === classIdFromKey(otherClassId));
-            const conflictingClassName = conflictingClassObj ? formatClassSection(conflictingClassObj) : 'another class';
+            const conflictingClassName = unitLabelFromKey(otherClassId);
             const teacherName = slot.teacher || 'Teacher';
             toast.error(
               `Teacher conflict: ${teacherName} is already assigned to ${conflictingClassName} on ${day} from ${formatTime12hr(conflicting.startTime)} to ${formatTime12hr(conflicting.endTime)}. A teacher cannot be assigned to two different classes in the same time slot.`
@@ -716,6 +856,7 @@ export default function TimetableManagement() {
             periodNumber: slot.periodNumber || idx + 1,
             startTime: slot.startTime,
             endTime: slot.endTime,
+            templateSlotId: slotIdOf(slot),
             subjectId: subjectId || null,
             teacherId: teacherId || null,
             sectionId: selectedSectionId || slot.sectionId || null,
@@ -762,7 +903,12 @@ export default function TimetableManagement() {
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm w-full md:w-auto">
           <select
             value={selectedUnitId}
-            onChange={(e) => setSelectedUnitId(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setSchedule({ Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [] });
+              if (value) setLoading(true);
+              setSelectedUnitId(value);
+            }}
             className="px-4 py-2 bg-transparent border-none focus:ring-0 text-slate-700 dark:text-slate-200 font-medium w-full sm:w-64"
           >
             <option value="">Select a Class...</option>
@@ -772,6 +918,15 @@ export default function TimetableManagement() {
               </option>
             ))}
           </select>
+
+          {hasEditPermission && (
+            <button
+              onClick={openTemplateModal}
+              className="px-4 py-2 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap flex items-center justify-center gap-2"
+            >
+              <Settings size={16} /> Period Template
+            </button>
+          )}
 
           {(hasCreatePermission || hasEditPermission) && (
             <button
@@ -825,7 +980,11 @@ export default function TimetableManagement() {
                         {cls.label}
                       </h3>
                       <button
-                        onClick={() => setSelectedUnitId(cls.id)}
+                        onClick={() => {
+                          setSchedule({ Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [] });
+                          setLoading(true);
+                          setSelectedUnitId(cls.id);
+                        }}
                         className="text-xs font-bold text-primary-600 hover:text-white bg-primary-50 hover:bg-primary-600 px-3 py-1.5 rounded-lg transition-colors border border-primary-100 hover:border-primary-600 dark:hover:border-slate-700 shadow-sm"
                       >
                         Edit Timetable
@@ -864,123 +1023,276 @@ export default function TimetableManagement() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 bg-slate-100 dark:bg-slate-700 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-inner overflow-hidden flex flex-col min-h-0">
-          {usingSharedFallback && (
-            <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-800 text-xs font-semibold shrink-0">
-              {selectedUnit?.label} is showing the old shared class timetable. Adjust it for this section and click Save Changes to give {selectedUnit?.label} its own timetable.
-            </div>
-          )}
-          {/* Grid Header (Days) */}
-          <div className="grid grid-cols-1 md:grid-cols-6 divide-y md:divide-y-0 md:divide-x divide-slate-200 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 shrink-0">
-            {daysOfWeek.map(day => (
-              <div key={day} className="p-4 text-center font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider text-sm flex justify-between items-center md:block">
-                <span>{day}</span>
-                {hasCreatePermission && (
-                  <button
-                    onClick={() => {
-                      setActiveDay(day);
-                      setEditingSlotId(null);
-                      setNewSlot({
-                        startTime: '09:00',
-                        endTime: '10:00',
-                        subject: '',
-                        subjectId: '',
-                        teacher: '',
-                        teacherId: ''
-                      });
-                      setShowAddModal(true);
-                    }}
-                    className="md:mt-2 text-primary-600 hover:text-primary-700 bg-primary-50 hover:bg-primary-100 dark:hover:bg-slate-700 p-1.5 md:mx-auto rounded-lg transition-colors flex items-center justify-center"
-                    title={`Add slot to ${day}`}
-                  >
-                    <Plus size={16} />
-                  </button>
-                )}
+          <div className="relative flex-1 bg-slate-100 dark:bg-slate-700 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-inner overflow-hidden flex flex-col min-h-0">
+            {loading && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-100/80 dark:bg-slate-700/80 backdrop-blur-sm">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent"></div>
               </div>
-            ))}
-          </div>
+            )}
+            {usingSharedFallback && (
+              <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-800 text-xs font-semibold shrink-0">
+                {selectedUnit?.label} is showing the old shared class timetable. Adjust it for this section and click Save Changes to give {selectedUnit?.label} its own timetable.
+              </div>
+            )}
 
-          {/* Grid Columns (Slots) */}
-          <div className="flex-1 overflow-y-auto p-4 md:p-0">
-            <div className="grid grid-cols-1 md:grid-cols-6 gap-4 md:gap-0 md:divide-x divide-slate-200 min-h-full">
-              {daysOfWeek.map(day => (
-                <div key={day} className="bg-slate-50/50 dark:bg-slate-800/50 p-2 space-y-3 md:min-h-[500px]">
-                  {/* Mobile Day Header (only visible on small screens) */}
-                  <h3 className="font-bold text-slate-700 dark:text-slate-200 md:hidden mb-2 px-2">{day}</h3>
+          {template ? (
+            <>
+              <div className="flex-1 overflow-auto custom-scrollbar">
+                <div className="min-w-[980px]">
+                  {/* Day header */}
+                  <div
+                    className="grid bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10"
+                    style={{ gridTemplateColumns: '150px repeat(6, minmax(0, 1fr))' }}
+                  >
+                    <div className="p-4 text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-300">Period</div>
+                    {daysOfWeek.map(day => (
+                      <div key={day} className="p-4 text-center font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider text-sm border-l border-slate-200 dark:border-slate-700">
+                        {day}
+                      </div>
+                    ))}
+                  </div>
 
-                  {(!schedule[day] || schedule[day].length === 0) ? (
-                    <div className="text-center p-4 text-sm text-slate-400 dark:text-slate-300 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl mx-2">
-                      Free Day
-                    </div>
-                  ) : (
-                    (schedule[day] || []).map(slot => {
-                      const conflictInfo = getSlotConflict(day, slot);
+                  {template.slots.map(tSlot => {
+                    // Break / Lunch: locked band
+                    if (tSlot.slotType !== 'PERIOD') {
                       return (
-                        <div key={slot.id} className={`bg-white dark:bg-slate-900 rounded-2xl border ${conflictInfo ? 'border-rose-400 dark:border-rose-600 ring-1 ring-rose-300/50 dark:ring-rose-800/50' : 'border-slate-200 dark:border-slate-700'} p-3 shadow-sm hover:shadow-md transition-shadow group relative`}>
-
-                          <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
-                            <Clock size={12} className="text-primary-500" />
-                            {formatTime12hr(slot.startTime)} - {formatTime12hr(slot.endTime)}
-                          </div>
-
-                          <div className="font-bold text-slate-900 dark:text-white mb-2 flex items-start gap-1.5 leading-tight">
-                            <BookOpen size={14} className="text-primary-500 shrink-0 mt-0.5" />
-                            {formatDisplayValue(slot.subject, 'Subject')}
-                          </div>
-
-                          <div className="text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded-lg inline-flex items-center gap-1.5 border border-slate-100 dark:border-slate-800">
-                            <User size={12} className="text-slate-400 dark:text-slate-300" />
-                            {formatTeacherDisplay(slot.teacher, 'Not Assigned')}
-                          </div>
-
-                          {conflictInfo && (
-                            <div
-                              className="text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-lg px-2 py-1 flex items-center gap-1.5 mt-2 shadow-xs"
-                              title={conflictInfo.message}
-                            >
-                              <AlertCircle size={13} className="text-rose-500 shrink-0" />
-                              <span className="truncate">{conflictInfo.message}</span>
-                            </div>
-                          )}
-
-                          {/* Edit and Delete Buttons (visible on hover) */}
-                          <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                            {hasEditPermission && (
-                              <button
-                                onClick={() => handleEditSlot(day, slot)}
-                                className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-800 rounded-lg"
-                                title="Edit Period"
-                              >
-                                <Edit2 size={14} />
-                              </button>
-                            )}
-                            {hasDeletePermission && (
-                              <button
-                                onClick={() => handleDeleteClick(day, slot.id)}
-                                className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg"
-                                title="Delete Period"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            )}
-                          </div>
+                        <div key={tSlot.id} className="flex items-center justify-center gap-2 py-2 px-4 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-300 text-xs font-bold">
+                          {tSlot.slotType === 'LUNCH' ? <Utensils size={14} /> : <Coffee size={14} />}
+                          {tSlot.label} · {formatTime12hr(tSlot.startTime)} - {formatTime12hr(tSlot.endTime)}
                         </div>
                       );
-                    })
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+                    }
 
-          <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 p-6 shrink-0 z-10 relative shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">Additional Information</h3>
-            <CustomFieldsRenderer
-              moduleKey="timetables"
-              customData={customData}
-              onChange={(k, v) => setCustomData(prev => ({ ...prev, [k]: v }))}
-            />
-          </div>
+                    return (
+                      <div
+                        key={tSlot.id}
+                        className="grid border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50"
+                        style={{ gridTemplateColumns: '150px repeat(6, minmax(0, 1fr))' }}
+                      >
+                        <div className="p-3 bg-white dark:bg-slate-900">
+                          <div className="text-sm font-bold text-slate-800 dark:text-slate-100">{tSlot.label}</div>
+                          <div className="text-xs font-semibold text-primary-600 mt-1 flex items-center gap-1.5">
+                            <Clock size={12} />
+                            {formatTime12hr(tSlot.startTime)} - {formatTime12hr(tSlot.endTime)}
+                          </div>
+                        </div>
+
+                        {daysOfWeek.map(day => {
+                          const slot = (schedule[day] || []).find(s => slotIdOf(s) === tSlot.id);
+                          const conflictInfo = slot ? getSlotConflict(day, slot) : null;
+
+                          return (
+                            <div key={day} className="p-2 border-l border-slate-200 dark:border-slate-700 min-h-[96px]">
+                              {slot ? (
+                                <div className={`bg-white dark:bg-slate-900 rounded-2xl border ${conflictInfo ? 'border-rose-400 dark:border-rose-600 ring-1 ring-rose-300/50 dark:ring-rose-800/50' : 'border-slate-200 dark:border-slate-700'} p-3 shadow-sm hover:shadow-md transition-shadow group relative h-full`}>
+                                  <div className="font-bold text-slate-900 dark:text-white mb-2 flex items-start gap-1.5 leading-tight pr-12">
+                                    <BookOpen size={14} className="text-primary-500 shrink-0 mt-0.5" />
+                                    {formatDisplayValue(slot.subject, 'Subject')}
+                                  </div>
+                                  <div className="text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded-lg inline-flex items-center gap-1.5 border border-slate-100 dark:border-slate-800 max-w-full">
+                                    <User size={12} className="text-slate-400 dark:text-slate-300 shrink-0" />
+                                    <span className="truncate">{formatTeacherDisplay(slot.teacher, 'Not Assigned')}</span>
+                                  </div>
+
+                                  {conflictInfo && (
+                                    <div
+                                      className="text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-lg px-2 py-1 flex items-center gap-1.5 mt-2"
+                                      title={conflictInfo.message}
+                                    >
+                                      <AlertCircle size={13} className="text-rose-500 shrink-0" />
+                                      <span className="truncate">{conflictInfo.message}</span>
+                                    </div>
+                                  )}
+
+                                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                    {hasEditPermission && (
+                                      <button
+                                        onClick={() => handleEditSlot(day, slot)}
+                                        className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-800 rounded-lg"
+                                        title="Edit Period"
+                                      >
+                                        <Edit2 size={14} />
+                                      </button>
+                                    )}
+                                    {hasDeletePermission && (
+                                      <button
+                                        onClick={() => handleDeleteClick(day, slot.id)}
+                                        className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg"
+                                        title="Delete Period"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : hasCreatePermission ? (
+                                <button
+                                  onClick={() => openAssignModal(day, tSlot)}
+                                  className="w-full h-full min-h-[80px] flex items-center justify-center gap-1.5 text-xs font-bold text-slate-400 dark:text-slate-300 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl hover:text-primary-600 hover:border-primary-300 hover:bg-primary-50 dark:hover:bg-slate-800 transition-colors"
+                                >
+                                  <Plus size={14} /> Assign
+                                </button>
+                              ) : (
+                                <div className="h-full min-h-[80px] flex items-center justify-center text-xs text-slate-400 dark:text-slate-300">Free</div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+
+                  {/* Old periods whose times match no template slot */}
+                  {(() => {
+                    const unmatched = daysOfWeek.flatMap(day =>
+                      (schedule[day] || []).filter(s => !slotIdOf(s)).map(s => ({ day, slot: s }))
+                    );
+                    if (unmatched.length === 0) return null;
+                    return (
+                      <div className="m-4 p-4 rounded-2xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30">
+                        <h4 className="text-sm font-bold text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                          <AlertCircle size={16} /> Periods with old timings
+                        </h4>
+                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 mb-3">
+                          These periods don't match any slot in the template. They keep their own timings until you delete them and assign the subject in a template slot.
+                        </p>
+                        <div className="space-y-2">
+                          {unmatched.map(({ day, slot }) => (
+                            <div key={slot.id} className="flex items-center justify-between gap-3 bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                              <span className="truncate">
+                                {day} · {formatTime12hr(slot.startTime)} - {formatTime12hr(slot.endTime)} · {formatDisplayValue(slot.subject, 'Subject')} · {formatTeacherDisplay(slot.teacher, 'Not Assigned')}
+                              </span>
+                              {hasDeletePermission && (
+                                <button
+                                  onClick={() => handleDeleteClick(day, slot.id)}
+                                  className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg shrink-0"
+                                  title="Delete Period"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-800 text-xs font-semibold shrink-0 flex flex-wrap items-center gap-2">
+                No period template yet.
+                {hasEditPermission && (
+                  <button onClick={openTemplateModal} className="underline font-bold">Set up periods, breaks and lunch once</button>
+                )}
+              </div>
+
+              {/* Grid Header (Days) */}
+              <div className="grid grid-cols-1 md:grid-cols-6 divide-y md:divide-y-0 md:divide-x divide-slate-200 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 shrink-0">
+                {daysOfWeek.map(day => (
+                  <div key={day} className="p-4 text-center font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider text-sm flex justify-between items-center md:block">
+                    <span>{day}</span>
+                    {hasCreatePermission && (
+                      <button
+                        onClick={() => {
+                          setActiveDay(day);
+                          setEditingSlotId(null);
+                          setNewSlot({
+                            startTime: '09:00',
+                            endTime: '10:00',
+                            subject: '',
+                            subjectId: '',
+                            teacher: '',
+                            teacherId: ''
+                          });
+                          setShowAddModal(true);
+                        }}
+                        className="md:mt-2 text-primary-600 hover:text-primary-700 bg-primary-50 hover:bg-primary-100 dark:hover:bg-slate-700 p-1.5 md:mx-auto rounded-lg transition-colors flex items-center justify-center"
+                        title={`Add slot to ${day}`}
+                      >
+                        <Plus size={16} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Grid Columns (Slots) */}
+              <div className="flex-1 overflow-y-auto p-4 md:p-0">
+                  <div className="grid grid-cols-1 md:grid-cols-6 gap-4 md:gap-0 md:divide-x divide-slate-200 min-h-full">
+                    {daysOfWeek.map(day => (
+                      <div key={day} className="bg-slate-50/50 dark:bg-slate-800/50 p-2 space-y-3 md:min-h-[500px]">
+                        {/* Mobile Day Header (only visible on small screens) */}
+                        <h3 className="font-bold text-slate-700 dark:text-slate-200 md:hidden mb-2 px-2">{day}</h3>
+
+                        {(!schedule[day] || schedule[day].length === 0) ? (
+                          <div className="text-center p-4 text-sm text-slate-400 dark:text-slate-300 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl mx-2">
+                            Free Day
+                          </div>
+                        ) : (
+                          (schedule[day] || []).map(slot => {
+                            const conflictInfo = getSlotConflict(day, slot);
+                            return (
+                              <div key={slot.id} className={`bg-white dark:bg-slate-900 rounded-2xl border ${conflictInfo ? 'border-rose-400 dark:border-rose-600 ring-1 ring-rose-300/50 dark:ring-rose-800/50' : 'border-slate-200 dark:border-slate-700'} p-3 shadow-sm hover:shadow-md transition-shadow group relative`}>
+
+                                <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
+                                  <Clock size={12} className="text-primary-500" />
+                                  {formatTime12hr(slot.startTime)} - {formatTime12hr(slot.endTime)}
+                                </div>
+
+                                <div className="font-bold text-slate-900 dark:text-white mb-2 flex items-start gap-1.5 leading-tight">
+                                  <BookOpen size={14} className="text-primary-500 shrink-0 mt-0.5" />
+                                  {formatDisplayValue(slot.subject, 'Subject')}
+                                </div>
+
+                                <div className="text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded-lg inline-flex items-center gap-1.5 border border-slate-100 dark:border-slate-800">
+                                  <User size={12} className="text-slate-400 dark:text-slate-300" />
+                                  {formatTeacherDisplay(slot.teacher, 'Not Assigned')}
+                                </div>
+
+                                {conflictInfo && (
+                                  <div
+                                    className="text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-lg px-2 py-1 flex items-center gap-1.5 mt-2 shadow-xs"
+                                    title={conflictInfo.message}
+                                  >
+                                    <AlertCircle size={13} className="text-rose-500 shrink-0" />
+                                    <span className="truncate">{conflictInfo.message}</span>
+                                  </div>
+                                )}
+
+                                {/* Edit and Delete Buttons (visible on hover) */}
+                                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                  {hasEditPermission && (
+                                    <button
+                                      onClick={() => handleEditSlot(day, slot)}
+                                      className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-800 rounded-lg"
+                                      title="Edit Period"
+                                    >
+                                      <Edit2 size={14} />
+                                    </button>
+                                  )}
+                                  {hasDeletePermission && (
+                                    <button
+                                      onClick={() => handleDeleteClick(day, slot.id)}
+                                      className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg"
+                                      title="Delete Period"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    ))}
+                  </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -1000,24 +1312,32 @@ export default function TimetableManagement() {
 
             <form onSubmit={handleAddSlot} className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
               <div className="p-6 space-y-6 flex-1">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Start Time</label>
-                    <TimePicker12Hour
-                      required
-                      value={newSlot.startTime}
-                      onChange={(val) => setNewSlot({ ...newSlot, startTime: val })}
-                    />
+                {newSlot.templateSlotId ? (
+                  <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    <Clock size={16} className="text-primary-500" />
+                    {formatTime12hr(newSlot.startTime)} - {formatTime12hr(newSlot.endTime)}
+                    <span className="ml-auto text-xs font-medium text-slate-400 dark:text-slate-300">Set by period template</span>
                   </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">End Time</label>
-                    <TimePicker12Hour
-                      required
-                      value={newSlot.endTime}
-                      onChange={(val) => setNewSlot({ ...newSlot, endTime: val })}
-                    />
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Start Time</label>
+                      <TimePicker12Hour
+                        required
+                        value={newSlot.startTime}
+                        onChange={(val) => setNewSlot({ ...newSlot, startTime: val })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">End Time</label>
+                      <TimePicker12Hour
+                        required
+                        value={newSlot.endTime}
+                        onChange={(val) => setNewSlot({ ...newSlot, endTime: val })}
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
@@ -1152,6 +1472,95 @@ export default function TimetableManagement() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Period Template Modal */}
+      {showTemplateModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-3xl shadow-2xl overflow-hidden animate-fade-in-up flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800 shrink-0">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Settings className="text-primary-600" /> Period Template
+                </h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  Set periods, breaks and lunch once. Every section uses these timings.
+                </p>
+              </div>
+              <button onClick={() => setShowTemplateModal(false)} className="p-2 text-slate-400 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-3 flex-1 overflow-y-auto custom-scrollbar">
+              {templateDraft.map((s, idx) => (
+                <div
+                  key={s.key}
+                  className={`rounded-2xl border p-3 grid grid-cols-1 md:grid-cols-[110px_1fr_1fr_1fr_auto] gap-3 items-center ${s.slotType === 'PERIOD'
+                    ? 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
+                    : 'border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30'
+                    }`}
+                >
+                  <select
+                    value={s.slotType}
+                    onChange={(e) => updateDraftSlot(s.key, { slotType: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900 text-sm font-semibold"
+                  >
+                    <option value="PERIOD">Period</option>
+                    <option value="BREAK">Break</option>
+                    <option value="LUNCH">Lunch</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={s.label}
+                    onChange={(e) => updateDraftSlot(s.key, { label: e.target.value })}
+                    placeholder="Label"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900 text-sm"
+                  />
+                  <TimePicker12Hour value={s.startTime} onChange={(val) => updateDraftSlot(s.key, { startTime: val })} />
+                  <TimePicker12Hour value={s.endTime} onChange={(val) => updateDraftSlot(s.key, { endTime: val })} />
+                  <button
+                    onClick={() => removeDraftSlot(s.key)}
+                    className="p-2 text-slate-400 dark:text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg justify-self-end"
+                    title="Remove"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+
+              <div className="flex flex-wrap gap-2 pt-2">
+                <button onClick={() => addDraftSlot('PERIOD')} className="px-4 py-2 text-sm font-bold text-primary-600 bg-primary-50 hover:bg-primary-100 dark:hover:bg-slate-700 rounded-xl transition-colors flex items-center gap-1.5">
+                  <Plus size={14} /> Add Period
+                </button>
+                <button onClick={() => addDraftSlot('BREAK')} className="px-4 py-2 text-sm font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 dark:text-amber-300 dark:bg-amber-950/30 rounded-xl transition-colors flex items-center gap-1.5">
+                  <Coffee size={14} /> Add Break
+                </button>
+                <button onClick={() => addDraftSlot('LUNCH')} className="px-4 py-2 text-sm font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 dark:text-amber-300 dark:bg-amber-950/30 rounded-xl transition-colors flex items-center gap-1.5">
+                  <Utensils size={14} /> Add Lunch
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowTemplateModal(false)}
+                className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveTemplate}
+                disabled={savingTemplate}
+                className="px-6 py-2.5 bg-primary-600 text-white font-bold hover:bg-primary-700 disabled:opacity-50 rounded-xl shadow-sm transition-colors"
+              >
+                {savingTemplate ? 'Saving...' : 'Save Template'}
+              </button>
+            </div>
           </div>
         </div>
       )}

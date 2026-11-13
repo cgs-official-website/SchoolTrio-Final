@@ -148,3 +148,36 @@ export async function getMySchedule(req, res, next) {
     next(err);
   }
 }
+
+/**
+ * Controller: Gets the school-wide period template.
+ * GET /api/v1/timetables/template
+ */
+export async function getTimetableTemplate(req, res, next) {
+  try {
+    const schoolId = req.tenant?.schoolId;
+    const template = await timetableService.getTimetableTemplate(schoolId);
+    res.status(200).json({ status: 'success', data: template });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Controller: Saves the school-wide period template.
+ * PUT /api/v1/timetables/template
+ */
+export async function saveTimetableTemplate(req, res, next) {
+  try {
+    const schoolId = req.tenant?.schoolId;
+    const actor = req.auth || req.user;
+    const template = await timetableService.saveTimetableTemplate(schoolId, req.body, actor);
+    res.status(200).json({
+      status: 'success',
+      message: 'Timetable template saved successfully',
+      data: template
+    });
+  } catch (err) {
+    next(err);
+  }
+}

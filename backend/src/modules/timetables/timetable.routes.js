@@ -42,6 +42,28 @@ router.get(
 );
 
 /**
+ * School-wide period template (bell schedule)
+ * GET /api/v1/timetables/template
+ * PUT /api/v1/timetables/template
+ */
+router.get(
+  '/template',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requireTimetableReadOrCustody,
+  timetableController.getTimetableTemplate
+);
+
+router.put(
+  '/template',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('timetables', 'edit'),
+  validate(timetableSchemas.putTemplateSchema),
+  timetableController.saveTimetableTemplate
+);
+
+/**
  * Structured Weekly Class Timetable
  * GET /api/v1/timetables/classes/:classId
  */

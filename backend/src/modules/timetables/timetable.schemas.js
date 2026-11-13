@@ -206,17 +206,23 @@ const periodSlotSchema = z
       .preprocess((val) => (val !== undefined && val !== null ? normalizeDayOfWeek(val) : undefined), z.number().int().min(1).max(6))
       .optional(),
     day: z.string().optional(),
-    startTime: z.string().regex(TIME_24HR_REGEX, { message: 'startTime must be in 24-hour HH:mm format' }),
-    endTime: z.string().regex(TIME_24HR_REGEX, { message: 'endTime must be in 24-hour HH:mm format' }),
+    // Times are optional when the period is linked to a template slot (server derives them)
+    startTime: z.string().regex(TIME_24HR_REGEX, { message: 'startTime must be in 24-hour HH:mm format' }).optional(),
+    endTime: z.string().regex(TIME_24HR_REGEX, { message: 'endTime must be in 24-hour HH:mm format' }).optional(),
+    templateSlotId: z.preprocess((val) => (val === '' ? null : val), z.string().uuid().nullable().optional()),
     subjectId: z.preprocess((val) => (val === '' ? null : val), z.string().uuid().nullable().optional()),
     teacherId: z.preprocess((val) => (val === '' ? null : val), z.string().uuid().nullable().optional()),
     sectionId: z.preprocess((val) => (val === '' ? null : val), z.string().uuid().nullable().optional()),
     roomNumber: z.preprocess((val) => (val === '' ? null : val), z.string().max(50).trim().nullable().optional())
   })
+  .refine((data) => data.templateSlotId || (data.startTime && data.endTime), {
+    message: 'startTime and endTime are required unless templateSlotId is provided',
+    path: ['startTime']
+  })
   .refine((data) => isEndTimeAfterStartTime(data.startTime, data.endTime), {
     message: 'endTime must be later than startTime',
     path: ['endTime']
-  });
+});
 
 /**
  * Schema for atomic weekly timetable replacement
@@ -243,4 +249,27 @@ export const putClassTimetableSchema = z.object({
       message: 'Either schedule or periods array must be provided',
       path: ['schedule']
     })
+});
+
+const templateSlotSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    slotType: z.enum(['PERIOD', 'BREAK', 'LUNCH']),
+    label: z.string().trim().min(1, 'label is required').max(100),
+    startTime: z.string().regex(TIME_24HR_REGEX, { message: 'startTime must be in 24-hour HH:mm format' }),
+    endTime: z.string().regex(TIME_24HR_REGEX, { message: 'endTime must be in 24-hour HH:mm format' })
+  })
+  .refine((data) => isEndTimeAfterStartTime(data.startTime, data.endTime), {
+    message: 'endTime must be later than startTime',
+    path: ['endTime']
+  });
+
+/**
+ * PUT /api/v1/timetables/template
+ */
+export const putTemplateSchema = z.object({
+  body: z.object({
+    name: z.string().trim().min(1).max(100).optional(),
+    slots: z.array(templateSlotSchema).min(1, 'At least one slot is required').max(30)
+  })
 });

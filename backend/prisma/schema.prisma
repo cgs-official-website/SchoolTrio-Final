@@ -40,6 +40,7 @@ model School {
   classCategories        ClassCategory[]
   classes                Class[]
   subjects               Subject[]
+  timetableTemplate      TimetableTemplate?
   academicCalendarEvents AcademicCalendarEvent[]
   lessonPlans            LessonPlan[]
   academicResources      AcademicResource[]
@@ -386,28 +387,65 @@ model Subject {
 }
 
 model TimetablePeriod {
-  id           String   @id @default(uuid()) @db.Uuid
-  schoolId     String   @map("school_id") @db.Uuid
-  classId      String   @map("class_id") @db.Uuid
-  sectionId    String?  @map("section_id") @db.Uuid
-  subjectId    String?  @map("subject_id") @db.Uuid
-  teacherId    String?  @map("teacher_id") @db.Uuid
-  dayOfWeek    Int      @map("day_of_week")
-  periodNumber Int      @map("period_number")
-  startTime    String   @map("start_time") @db.VarChar(10)
-  endTime      String   @map("end_time") @db.VarChar(10)
-  roomNumber   String?  @map("room_number") @db.VarChar(50)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  schoolId       String   @map("school_id") @db.Uuid
+  classId        String   @map("class_id") @db.Uuid
+  sectionId      String?  @map("section_id") @db.Uuid
+  subjectId      String?  @map("subject_id") @db.Uuid
+  teacherId      String?  @map("teacher_id") @db.Uuid
+  templateSlotId String?  @map("template_slot_id") @db.Uuid
+  dayOfWeek      Int      @map("day_of_week")
+  periodNumber   Int      @map("period_number")
+  startTime      String   @map("start_time") @db.VarChar(10)
+  endTime        String   @map("end_time") @db.VarChar(10)
+  roomNumber     String?  @map("room_number") @db.VarChar(50)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
-  class   Class         @relation(fields: [schoolId, classId], references: [schoolId, id], onDelete: Cascade)
-  section Section?      @relation(fields: [sectionId], references: [id], onDelete: SetNull)
-  subject Subject?      @relation(fields: [subjectId], references: [id], onDelete: SetNull)
-  teacher StaffProfile? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  class        Class                  @relation(fields: [schoolId, classId], references: [schoolId, id], onDelete: Cascade)
+  section      Section?               @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  subject      Subject?               @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  teacher      StaffProfile?          @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  templateSlot TimetableTemplateSlot? @relation(fields: [templateSlotId], references: [id], onDelete: Restrict)
 
   @@unique([schoolId, id])
   @@index([schoolId, classId, dayOfWeek])
+  @@index([schoolId, templateSlotId])
   @@map("timetable_periods")
+}
+
+model TimetableTemplate {
+  id        String   @id @default(uuid()) @db.Uuid
+  schoolId  String   @unique @map("school_id") @db.Uuid
+  name      String   @default("Default Schedule") @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school School                  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  slots  TimetableTemplateSlot[]
+
+  @@unique([schoolId, id])
+  @@map("timetable_templates")
+}
+
+model TimetableTemplateSlot {
+  id         String   @id @default(uuid()) @db.Uuid
+  schoolId   String   @map("school_id") @db.Uuid
+  templateId String   @map("template_id") @db.Uuid
+  slotOrder  Int      @map("slot_order")
+  slotType   String   @default("PERIOD") @map("slot_type") @db.VarChar(20) // PERIOD | BREAK | LUNCH
+  label      String   @db.VarChar(100)
+  startTime  String   @map("start_time") @db.VarChar(10)
+  endTime    String   @map("end_time") @db.VarChar(10)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  template TimetableTemplate @relation(fields: [schoolId, templateId], references: [schoolId, id], onDelete: Cascade)
+  periods  TimetablePeriod[]
+
+  @@unique([schoolId, id])
+  @@index([schoolId, templateId])
+  @@map("timetable_template_slots")
 }
 
 model AcademicCalendarEvent {

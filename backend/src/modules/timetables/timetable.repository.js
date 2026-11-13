@@ -454,12 +454,13 @@ export async function replaceClassTimetable(schoolId, classId, periodsData, tx, 
   // 2. Insert validated periods
   if (periodsData.length > 0) {
     await tx.timetablePeriod.createMany({
-      data: periodsData.map((p) => ({
+        data: periodsData.map((p) => ({
         schoolId,
         classId,
         sectionId: sectionId || p.sectionId || null,
         subjectId: p.subjectId || null,
         teacherId: p.teacherId || null,
+        templateSlotId: p.templateSlotId || null,
         dayOfWeek: p.dayOfWeek,
         periodNumber: p.periodNumber || 1,
         startTime: p.startTime,
@@ -498,4 +499,81 @@ export async function replaceClassTimetable(schoolId, classId, periodsData, tx, 
       { periodNumber: 'asc' }
     ]
   });
+}
+
+/**
+ * Finds the school's period template (with ordered slots).
+ */
+export async function findTemplate(schoolId, tx = prisma) {
+  return tx.timetableTemplate.findUnique({
+    where: { schoolId },
+    include: { slots: { orderBy: { slotOrder: 'asc' } } }
+  });
+}
+
+/**
+ * Returns { [slotId]: count } of timetable periods that use the given template slots.
+ */
+export async function countPeriodsBySlot(schoolId, slotIds, tx = prisma) {
+  if (!slotIds || slotIds.length === 0) return {};
+  const rows = await tx.timetablePeriod.groupBy({
+    by: ['templateSlotId'],
+    where: { schoolId, templateSlotId: { in: slotIds } },
+    _count: { _all: true }
+  });
+  return Object.fromEntries(rows.map((r) => [r.templateSlotId, r._count._all]));
+}
+
+/**
+ * Upserts the school template and syncs its slots.
+ * - Slots with an id are updated, and the times of every linked period are updated too (Option A).
+ * - Slots without an id are created.
+ * - Existing slots missing from the payload are deleted (service has already verified they are unused).
+ */
+export async function saveTemplate(schoolId, { name, slots }, tx) {
+  const template = await tx.timetableTemplate.upsert({
+    where: { schoolId },
+    update: name ? { name } : {},
+    create: { schoolId, name: name || 'Default Schedule' }
+  });
+
+  const existing = await tx.timetableTemplateSlot.findMany({
+    where: { schoolId, templateId: template.id },
+    select: { id: true }
+  });
+  const keepIds = new Set(slots.filter((s) => s.id).map((s) => s.id));
+  const removeIds = existing.map((e) => e.id).filter((id) => !keepIds.has(id));
+  if (removeIds.length > 0) {
+    await tx.timetableTemplateSlot.deleteMany({ where: { schoolId, id: { in: removeIds } } });
+  }
+
+  let periodCounter = 0;
+  for (let i = 0; i < slots.length; i++) {
+    const s = slots[i];
+    if (s.slotType === 'PERIOD') periodCounter += 1;
+    const data = {
+      slotOrder: i + 1,
+      slotType: s.slotType,
+      label: s.label,
+      startTime: s.startTime,
+      endTime: s.endTime
+    };
+    if (s.id) {
+      await tx.timetableTemplateSlot.update({
+        where: { schoolId_id: { schoolId, id: s.id } },
+        data
+      });
+      // Option A: keep every linked period in sync with the template
+      await tx.timetablePeriod.updateMany({
+        where: { schoolId, templateSlotId: s.id },
+        data: { startTime: s.startTime, endTime: s.endTime, periodNumber: periodCounter }
+      });
+    } else {
+      await tx.timetableTemplateSlot.create({
+        data: { schoolId, templateId: template.id, ...data }
+      });
+    }
+  }
+
+  return findTemplate(schoolId, tx);
 }

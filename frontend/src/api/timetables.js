@@ -185,3 +185,24 @@ export async function getMyTimetable() {
     method: 'GET'
   });
 }
+
+/**
+ * Gets the school-wide period template (bell schedule), or null if not set up.
+ * Calls GET /api/v1/timetables/template.
+ */
+export async function getTimetableTemplate() {
+  return apiClient('/api/v1/timetables/template', { method: 'GET' });
+}
+
+/**
+ * Saves the school-wide period template.
+ * Calls PUT /api/v1/timetables/template.
+ *
+ * @param {Object} payload - { name?: string, slots: [{ id?, slotType, label, startTime, endTime }] }
+ */
+export async function saveTimetableTemplate(payload = {}) {
+  return apiClient('/api/v1/timetables/template', {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+}

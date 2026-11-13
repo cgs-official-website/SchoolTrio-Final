@@ -12,7 +12,8 @@ import {
   DAY_OF_WEEK_TO_NAME,
   normalizeDayOfWeek,
   isEndTimeAfterStartTime,
-  areTimeIntervalsOverlapping
+  areTimeIntervalsOverlapping,
+  timeToMinutes
 } from './timetable.schemas.js';
 
 /**
@@ -40,6 +41,7 @@ export function formatPeriod(period) {
     teacherId: period.teacherId || null,
     teacherName: period.teacher?.name || null,
     teacherEmail: period.teacher?.email || null,
+    templateSlotId: period.templateSlotId || null,
     dayOfWeek,
     day,
     periodNumber: period.periodNumber,
@@ -108,6 +110,22 @@ export function formatScheduleGrid(periods = []) {
   }
 
   return grid;
+}
+
+export function formatTemplate(template) {
+  if (!template) return null;
+  return {
+    id: template.id,
+    name: template.name,
+    slots: (template.slots || []).map((s) => ({
+      id: s.id,
+      slotOrder: s.slotOrder,
+      slotType: s.slotType,
+      label: s.label,
+      startTime: s.startTime,
+      endTime: s.endTime
+    }))
+  };
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -417,7 +435,9 @@ export async function createTimetablePeriod(schoolId, data, actor = {}) {
     for (const existing of existingTeacherPeriods) {
       if (areTimeIntervalsOverlapping(data.startTime, data.endTime, existing.startTime, existing.endTime)) {
         const teacherName = existing.teacher?.name || 'The teacher';
-        const conflictingClass = existing.class?.name || 'another class';
+        const conflictingClass = existing.class?.name
+          ? `${existing.class.name}${existing.section?.name ? ` - Section ${existing.section.name}` : ''}`
+          : 'another class';
         const dayName = DAY_OF_WEEK_TO_NAME[normalizedDay] || 'that day';
         throw new ConflictError(
           `Teacher schedule conflict: ${teacherName} is already assigned to ${conflictingClass} on ${dayName} from ${existing.startTime} to ${existing.endTime}. A teacher cannot be assigned to two different classes in the same time slot.`
@@ -540,7 +560,9 @@ export async function updateTimetablePeriod(schoolId, id, data, actor = {}) {
     for (const item of existingTeacherPeriods) {
       if (item.id !== id && areTimeIntervalsOverlapping(effectiveStart, effectiveEnd, item.startTime, item.endTime)) {
         const teacherName = item.teacher?.name || 'The teacher';
-        const conflictingClass = item.class?.name || 'another class';
+        const conflictingClass = item.class?.name
+          ? `${item.class.name}${item.section?.name ? ` - Section ${item.section.name}` : ''}`
+          : 'another class';
         const dayName = DAY_OF_WEEK_TO_NAME[effectiveDay] || 'that day';
         throw new ConflictError(
           `Teacher schedule conflict: ${teacherName} is already assigned to ${conflictingClass} on ${dayName} from ${item.startTime} to ${item.endTime}. A teacher cannot be assigned to two different classes in the same time slot.`
@@ -675,8 +697,30 @@ export async function replaceClassTimetable(schoolId, classId, payload = {}, act
   // 3. Pre-transaction validation of all referenced entities and times
   const validatedPeriods = [];
 
+  // Template slots: the source of truth for times of linked periods
+  const templateRecord = await timetableRepository.findTemplate(schoolId);
+  const templateSlotMap = new Map();
+  let periodNo = 0;
+  for (const ts of templateRecord?.slots || []) {
+    if (ts.slotType === 'PERIOD') periodNo += 1;
+    templateSlotMap.set(ts.id, { ...ts, periodNumber: periodNo });
+  }
+
   for (let i = 0; i < rawSlots.length; i++) {
-    const slot = rawSlots[i];
+    const slot = { ...rawSlots[i] };
+
+    if (slot.templateSlotId) {
+      const tSlot = templateSlotMap.get(slot.templateSlotId);
+      if (!tSlot) {
+        throw new NotFoundError(`Template slot '${slot.templateSlotId}' not found in active school`);
+      }
+      if (tSlot.slotType !== 'PERIOD') {
+        throw new ValidationError(`"${tSlot.label}" is a ${tSlot.slotType.toLowerCase()} and cannot have a subject or teacher`);
+      }
+      slot.startTime = tSlot.startTime;
+      slot.endTime = tSlot.endTime;
+      slot.periodNumber = tSlot.periodNumber;
+    }
 
     if (!slot.startTime || !slot.endTime) {
       throw new ValidationError(`Period at index ${i} is missing startTime or endTime`);
@@ -720,6 +764,7 @@ export async function replaceClassTimetable(schoolId, classId, payload = {}, act
       sectionId: targetSection ? targetSection.id : (slot.sectionId || null),
       subjectId: slot.subjectId || null,
       teacherId: slot.teacherId || null,
+      templateSlotId: slot.templateSlotId || null,
       dayOfWeek: slot.dayOfWeek,
       periodNumber: slot.periodNumber || 1,
       startTime: slot.startTime,
@@ -763,9 +808,13 @@ export async function replaceClassTimetable(schoolId, classId, payload = {}, act
   // 3c. Conflict Detection: Teacher already assigned to another class in overlapping time slot
   const teacherIds = Array.from(new Set(validatedPeriods.map(p => p.teacherId).filter(Boolean)));
   if (teacherIds.length > 0) {
-    const existingTeacherPeriods = await timetableRepository.findTimetablePeriods(schoolId, {
-      teacherId: teacherIds,
-      excludeClassId: classId
+    const allTeacherPeriods = await timetableRepository.findTimetablePeriods(schoolId, {
+      teacherId: teacherIds
+    });
+    const existingTeacherPeriods = allTeacherPeriods.filter((e) => {
+      if (e.classId !== classId) return true;           
+      if (!targetSection) return false;                 
+      return Boolean(e.sectionId) && e.sectionId !== targetSection.id;
     });
 
     for (const p of validatedPeriods) {
@@ -774,7 +823,9 @@ export async function replaceClassTimetable(schoolId, classId, payload = {}, act
         if (existing.teacherId === p.teacherId && existing.dayOfWeek === p.dayOfWeek) {
           if (areTimeIntervalsOverlapping(p.startTime, p.endTime, existing.startTime, existing.endTime)) {
             const teacherName = existing.teacher?.name || 'The teacher';
-            const conflictingClass = existing.class?.name || 'another class';
+            const conflictingClass = existing.class?.name
+              ? `${existing.class.name}${existing.section?.name ? ` - Section ${existing.section.name}` : ''}`
+              : 'another class';
             const dayName = DAY_OF_WEEK_TO_NAME[p.dayOfWeek] || 'that day';
             throw new ConflictError(
               `Teacher schedule conflict: ${teacherName} is already assigned to ${conflictingClass} on ${dayName} from ${existing.startTime} to ${existing.endTime}. A teacher cannot be assigned to two different classes in the same time slot.`
@@ -878,4 +929,84 @@ export async function getMySchedule(schoolId, actor) {
     subjectPeriods: subjectPeriods.map(formatPeriod),
     classPeriods: classPeriods.map(formatPeriod)
   };
+}
+
+/**
+ * Returns the school-wide period template (or null when not set up yet).
+ */
+export async function getTimetableTemplate(schoolId) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required to get timetable template');
+  }
+  return formatTemplate(await timetableRepository.findTemplate(schoolId));
+}
+
+/**
+ * Creates / updates the school-wide period template.
+ * Linked periods follow the new times automatically; slots that are in use cannot be removed.
+ */
+export async function saveTimetableTemplate(schoolId, payload = {}, actor = {}) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required to save timetable template');
+  }
+
+  const slots = payload.slots || [];
+
+  // Order + overlap validation (slots must run top to bottom without overlapping)
+  for (let i = 0; i < slots.length; i++) {
+    const s = slots[i];
+    if (!isEndTimeAfterStartTime(s.startTime, s.endTime)) {
+      throw new ValidationError(`"${s.label}" must end after it starts`);
+    }
+    if (i > 0 && timeToMinutes(s.startTime) < timeToMinutes(slots[i - 1].endTime)) {
+      throw new ValidationError(`"${s.label}" starts before "${slots[i - 1].label}" ends`);
+    }
+  }
+  if (!slots.some((s) => s.slotType === 'PERIOD')) {
+    throw new ValidationError('Add at least one teachable period');
+  }
+
+  const existing = await timetableRepository.findTemplate(schoolId);
+  const existingSlots = existing?.slots || [];
+  const existingById = new Map(existingSlots.map((s) => [s.id, s]));
+
+  for (const s of slots) {
+    if (s.id && !existingById.has(s.id)) {
+      throw new ValidationError('Unknown template slot in request');
+    }
+  }
+
+  // Slots that are removed, or turned from a period into a break/lunch, must not be in use
+  const keepIds = new Set(slots.filter((s) => s.id).map((s) => s.id));
+  const risky = existingSlots.filter((old) => {
+    if (!keepIds.has(old.id)) return true;
+    const next = slots.find((s) => s.id === old.id);
+    return old.slotType === 'PERIOD' && next.slotType !== 'PERIOD';
+  });
+  if (risky.length > 0) {
+    const usage = await timetableRepository.countPeriodsBySlot(schoolId, risky.map((s) => s.id));
+    const inUse = risky.filter((s) => usage[s.id] > 0);
+    if (inUse.length > 0) {
+      const list = inUse.map((s) => `${s.label} (${usage[s.id]} assigned)`).join(', ');
+      throw new ConflictError(
+        `Cannot remove or convert: ${list}. Clear these periods from the section timetables first.`
+      );
+    }
+  }
+
+  const saved = await timetableRepository.runTransaction((tx) =>
+    timetableRepository.saveTemplate(schoolId, { name: payload.name, slots }, tx)
+  );
+
+  createAuditLog({
+    schoolId,
+    entityType: 'TimetableTemplate',
+    entityId: saved.id,
+    actionPerformed: 'SAVE_TIMETABLE_TEMPLATE',
+    userName: actor?.name || actor?.email || 'Administrator',
+    userRole: actor?.role || actor?.systemRole || null,
+    modifiedFields: { slotCount: slots.length }
+  }).catch(() => { });
+
+  return formatTemplate(saved);
 }
