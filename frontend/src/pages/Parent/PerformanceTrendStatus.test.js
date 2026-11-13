@@ -16,7 +16,7 @@ describe('BUG-01: Parent Portal Trend Status Parity & Normalization (Frontend Un
     // Helper function mirroring the exact logic in Performance.jsx
     const resolveTrendStatus = (student) => {
       const rawStatus = student?.performanceStatus || student?.customData?.performanceStatus;
-      return typeof rawStatus === 'string' && rawStatus ? rawStatus.toLowerCase() : 'stable';
+      return typeof rawStatus === 'string' && rawStatus ? rawStatus.toLowerCase() : null;
     };
 
     const getStatusColor = (status) => {
@@ -83,7 +83,7 @@ describe('BUG-01: Parent Portal Trend Status Parity & Normalization (Frontend Un
       expect(getStatusColor(status)).toBe('text-blue-700 bg-blue-100');
     });
 
-    it('safely defaults to "stable" when customData exists but performanceStatus is omitted', () => {
+    it('shows no status (not a made-up "stable") when customData exists but performanceStatus is omitted', () => {
       const studentNoStatus = {
         id: 'student-uuid',
         customData: {
@@ -92,18 +92,18 @@ describe('BUG-01: Parent Portal Trend Status Parity & Normalization (Frontend Un
       };
 
       const status = resolveTrendStatus(studentNoStatus);
-      expect(status).toBe('stable');
+      expect(status).toBeNull();
     });
 
-    it('safely defaults to "stable" when customData is null or undefined', () => {
+    it('shows no status when customData is null or undefined', () => {
       const studentNullCustom = {
         id: 'student-uuid',
         customData: null
       };
 
-      expect(resolveTrendStatus(studentNullCustom)).toBe('stable');
-      expect(resolveTrendStatus({})).toBe('stable');
-      expect(resolveTrendStatus(null)).toBe('stable');
+      expect(resolveTrendStatus(studentNullCustom)).toBeNull();
+      expect(resolveTrendStatus({})).toBeNull();
+      expect(resolveTrendStatus(null)).toBeNull();
     });
 
     it('renders "No student linked to this account." when student is null, without masking as STABLE', () => {

@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback, useTransition } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef, useTransition } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import usePermissions from '../hooks/usePermissions';
 import { getAiBriefing } from '../api/dashboard';
-import {  
-  LuRefreshCw as RefreshCw, 
-  LuArrowRight as ArrowRight, 
-  LuCheck as Check, 
+import {
+  LuRefreshCw as RefreshCw,
+  LuArrowRight as ArrowRight,
+  LuCheck as Check,
   LuLightbulb as Lightbulb,
   LuBot as Bot
 } from 'react-icons/lu';
@@ -15,10 +15,18 @@ export default function AiDailyBriefing({ stats = {}, className = '' }) {
   const { userProfile } = useAuth();
   const { permissions, isUnrestricted, roles, loading: permissionsLoading } = usePermissions();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Which portal the user is in (/admin, /teacher or /parent) so suggested buttons open pages of THIS portal
+  const firstSegment = location.pathname.split('/')[1];
+  const portal = ['admin', 'teacher', 'parent'].includes(firstSegment) ? firstSegment : undefined;
 
   const [briefing, setBriefing] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
+  // Only the newest request may update the card (stops an old answer overwriting a newer one)
+  const requestIdRef = useRef(0);
+  // Changes whenever the real data given to the card changes (new child, timetable loaded, ...)
+  const statsKey = JSON.stringify(stats);
 
   const activeRoleName = roles?.[0]?.name || userProfile?.role || 'Staff';
   const userName = userProfile?.fullName || userProfile?.name || userProfile?.email?.split('@')[0] || 'User';
@@ -29,6 +37,7 @@ export default function AiDailyBriefing({ stats = {}, className = '' }) {
     if (isManualRefresh) {
       setLoading(true);
     }
+    const requestId = ++requestIdRef.current;
 
     try {
       // Determine permitted module keys for this session
@@ -39,12 +48,13 @@ export default function AiDailyBriefing({ stats = {}, className = '' }) {
 
       const res = await getAiBriefing({
         role: userProfile?.role,
+        portal,
         userName,
         permittedModules,
         stats
       });
 
-      if (res?.data) {
+      if (res?.data && requestId === requestIdRef.current) {
         startTransition(() => {
           setBriefing(res.data);
         });
@@ -52,19 +62,17 @@ export default function AiDailyBriefing({ stats = {}, className = '' }) {
     } catch (err) {
       console.warn('[AiDailyBriefing] Failed to fetch AI briefing, keeping previous state if available:', err);
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [userProfile?.schoolId, userProfile?.role, userName, permissionsLoading, isUnrestricted, permissions, stats]);
+  }, [userProfile?.schoolId, userProfile?.role, portal, userName, permissionsLoading, isUnrestricted, permissions, statsKey]);
 
+  // Fetch when the page opens AND again whenever the real data changes, so the briefing
+  // never describes old or half-loaded data. The short delay merges quick successive changes.
   useEffect(() => {
-    let isMounted = true;
-    if (userProfile?.schoolId && !permissionsLoading) {
-      fetchBriefing();
-    }
-    return () => {
-      isMounted = false;
-    };
-  }, [userProfile?.schoolId, permissionsLoading]);
+    if (!userProfile?.schoolId || permissionsLoading) return undefined;
+    const timer = setTimeout(() => { fetchBriefing(); }, 350);
+    return () => clearTimeout(timer);
+  }, [userProfile?.schoolId, permissionsLoading, statsKey]);
 
   if (loading && !briefing) {
     return (
@@ -105,7 +113,7 @@ export default function AiDailyBriefing({ stats = {}, className = '' }) {
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
             <Bot className="h-3.5 w-3.5 text-indigo-500" />
-            Gemini 3.5 AI
+            {briefing.isAiGenerated ? 'Gemini 3.5 AI' : 'Live school data'}
           </span>
           <button
             onClick={() => fetchBriefing(true)}
@@ -135,8 +143,8 @@ export default function AiDailyBriefing({ stats = {}, className = '' }) {
         {Array.isArray(briefing.highlights) && briefing.highlights.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
             {briefing.highlights.map((highlight, idx) => (
-              <div 
-                key={idx} 
+              <div
+                key={idx}
                 className="flex items-start gap-2.5 p-3 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-indigo-50 dark:border-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 shadow-2xs"
               >
                 <div className="h-4 w-4 rounded-full bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400 flex items-center justify-center shrink-0 mt-0.5">
@@ -157,12 +165,11 @@ export default function AiDailyBriefing({ stats = {}, className = '' }) {
             {briefing.quickActions.map((action, idx) => (
               <button
                 key={idx}
-                onClick={() => navigate(action.path)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-[0.98] ${
-                  action.type === 'primary' || idx === 0
-                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
-                    : 'bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700'
-                }`}
+                onClick={() => { if (typeof action.path === 'string' && action.path.startsWith('/')) navigate(action.path); }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-[0.98] ${action.type === 'primary' || idx === 0
+                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
+                  : 'bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700'
+                  }`}
               >
                 <span>{action.label}</span>
                 <ArrowRight className="h-3 w-3" />

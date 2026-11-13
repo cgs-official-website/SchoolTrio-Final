@@ -240,17 +240,12 @@ export default function RolesPermissions() {
     }
 
     try {
-      let initialPerms = {};
-      let initialPanel = 'admin';
-      try {
-        const aiRes = await suggestRolePermissions(role);
-        if (aiRes && aiRes.data && aiRes.data.permissions) {
-          initialPerms = aiRes.data.permissions;
-          initialPanel = aiRes.data.loginPanel || 'admin';
-        }
-      } catch (_aiErr) {
-        // Fallback to empty if AI is offline
-      }
+      // A brand-new role starts with NO permissions. The admin ticks the modules it needs (or clicks
+      // "AI Auto-Suggest" on purpose) and saves. Until then the role only gets the personal pages
+      // (Dashboard, My Salary, Profile). The Login Panel is a starting guess from the role name and
+      // can be changed with the "Login Panel" dropdown.
+      const initialPerms = {};
+      const initialPanel = /teacher|teaching|instructor|tutor|incharge|educator|faculty/i.test(role) ? 'teacher' : 'admin';
 
       const res = await createRole({
         name: role,
@@ -267,28 +262,10 @@ export default function RolesPermissions() {
         setActiveRole(role);
         setNewRoleName('');
         setIsAddingRole(false);
-
-        const grantedList = Object.entries(initialPerms)
-          .filter(([_, p]) => p.read || p.create || p.edit || p.delete)
-          .map(([mod, p]) => {
-            const actions = [];
-            if (p.read) actions.push('Read');
-            if (p.create) actions.push('Create');
-            if (p.edit) actions.push('Edit');
-            if (p.delete) actions.push('Delete');
-            return { module: mod, actions: actions.join('/') };
-          });
-
-        if (grantedList.length > 0) {
-          setAiSuggestionDetails({
-            roleName: role,
-            grantedList,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          });
-        }
+        setAiSuggestionDetails(null);
 
         notifyDataChanged('rbac');
-        toast.success(`Role "${role}" created with AI suggested permissions!`);
+        toast.success(`Role "${role}" created with no permissions. Tick the modules it needs, then click "Save Permissions".`);
       }
     } catch (error) {
       console.error('Error creating role:', error);
@@ -498,7 +475,7 @@ export default function RolesPermissions() {
                   <button type="button" onClick={() => setIsAddingRole(false)} className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"><LuX size={14} /></button>
                 </div>
                 <div className="text-[11px] text-primary-700 dark:text-primary-300 font-medium">
-                  <span>AI will auto-suggest least-privilege permissions</span>
+                  <span>New role starts with no permissions. Tick modules after creating it.</span>
                 </div>
               </form>
             )}
@@ -508,8 +485,8 @@ export default function RolesPermissions() {
                 key={role}
                 onClick={() => setActiveRole(role)}
                 className={`w-full text-left px-4 py-3 rounded-xl mb-1 font-semibold text-sm transition-all flex items-center justify-between cursor-pointer group ${activeRole === role
-                    ? 'bg-primary-50 text-primary-700 shadow-sm border border-primary-100'
-                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white border border-transparent'
+                  ? 'bg-primary-50 text-primary-700 shadow-sm border border-primary-100'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white border border-transparent'
                   }`}
               >
                 <span className="truncate pr-2">{role}</span>
@@ -673,8 +650,8 @@ export default function RolesPermissions() {
                           <button
                             onClick={() => handleToggleAll(module.id, !isAll)}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${isAll
-                                ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
-                                : 'bg-primary-50 text-primary-700 hover:bg-primary-100 dark:hover:bg-slate-700 border border-primary-200'
+                              ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
+                              : 'bg-primary-50 text-primary-700 hover:bg-primary-100 dark:hover:bg-slate-700 border border-primary-200'
                               }`}
                           >
                             {isAll ? 'Clear All' : 'Select All'}

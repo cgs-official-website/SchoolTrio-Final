@@ -312,14 +312,15 @@ export default function AdminDashboard() {
   const visibleModules = navItems.filter(item => item.moduleKey || item.name === 'Environment Setup');
   const permissionsUnverified = Boolean(permsError) || (permissions === null && !permsLoading);
   const hasNoAccess = !isAdminLike && !permsLoading && !permissionsUnverified && visibleModules.length === 0;
-  if (hasNoAccess || permissionsUnverified) {
-    navItems = []; // hide Dashboard link too: nothing to open
+  if (permissionsUnverified) {
+    navItems = []; // permissions could not be loaded: nothing safe to show
   }
+  // A role with no module permissions yet still gets Dashboard, My Salary and Profile (personal pages).
 
   // Every staff account in this portal (grade co-ordinator, principal, other non-teaching staff) gets a Profile page,
   // always last. The School Administrator account has no staff profile, so it never sees one.
   const showProfile = !isSchoolAdmin;
-  if (!(hasNoAccess || permissionsUnverified) && showProfile) {
+  if (!permissionsUnverified && showProfile) {
     navItems = [...navItems, mySalaryNavItem, profileNavItem];
   }
 
@@ -339,18 +340,23 @@ export default function AdminDashboard() {
         Retry
       </button>
     </div>
-  ) : (
-    <div className="flex flex-col items-center justify-center text-center gap-4 h-full min-h-[50vh] p-6">
-      <div className="rounded-full bg-slate-100 p-4 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-        <Lock size={32} />
+  ) : null;
+
+  // Role has no module permissions yet: show a small notice above the personal pages instead of blocking them
+  const noModulesNotice = hasNoAccess ? (
+    <div className="mx-4 mt-4 shrink-0 flex items-start gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+      <div className="rounded-full bg-slate-100 p-2 text-slate-500 dark:bg-slate-800 dark:text-slate-300 shrink-0">
+        <Lock size={18} />
       </div>
-      <h2 className="text-xl font-bold text-slate-900 dark:text-white">No permissions assigned</h2>
-      <p className="max-w-md text-sm text-slate-500 dark:text-slate-400">
-        {roleLabel ? <>Your role <strong>{roleLabel}</strong> doesn't have access to any module yet.</> : "You don't have access to any module yet."}{' '}
-        Please ask your school administrator to assign permissions in Roles &amp; Permissions.
-      </p>
+      <div className="min-w-0">
+        <p className="text-sm font-bold text-slate-800 dark:text-slate-100">No modules assigned yet</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+          {roleLabel ? <>Your role <strong>{roleLabel}</strong> has no module permissions yet. </> : null}
+          You can use Dashboard, My Salary and Profile. Ask your school administrator to assign modules in Roles &amp; Permissions.
+        </p>
+      </div>
     </div>
-  );
+  ) : null;
 
   return (
     <div className="flex h-screen bg-[#f4f7fe] dark:bg-[#0b0f19] font-sans overflow-hidden p-0 lg:p-4 gap-0 lg:gap-4">
@@ -384,14 +390,10 @@ export default function AdminDashboard() {
         </div>
 
         <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto custom-scrollbar">
-          {(hasNoAccess || permissionsUnverified) && (
+          {permissionsUnverified && (
             <div className="mx-1 mt-2 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 p-4 text-center">
-              <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                {permissionsUnverified ? 'Permissions unavailable' : 'No permissions assigned'}
-              </p>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {permissionsUnverified ? 'Could not load your access. Retry from the main area.' : 'Ask your administrator to assign modules to your role.'}
-              </p>
+              <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Permissions unavailable</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Could not load your access. Retry from the main area.</p>
             </div>
           )}
           {navItems.map((item) => {
@@ -506,13 +508,14 @@ export default function AdminDashboard() {
         />
 
         <main className="flex-1 overflow-y-auto custom-scrollbar">
-          {!(hasNoAccess || permissionsUnverified) && showProfile && <ProfileCompletionBanner profilePath="/admin/profile" />}
+          {!permissionsUnverified && showProfile && <ProfileCompletionBanner profilePath="/admin/profile" />}
+          {!permissionsUnverified && noModulesNotice}
           <Suspense fallback={
             <div className="flex-1 flex justify-center items-center h-[50vh]">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent"></div>
             </div>
           }>
-            {(hasNoAccess || permissionsUnverified) ? noAccessMessage : <Outlet />}
+            {permissionsUnverified ? noAccessMessage : <Outlet />}
           </Suspense>
         </main>
       </div>

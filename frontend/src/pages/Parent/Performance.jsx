@@ -226,10 +226,16 @@ export default function Performance() {
   const present = attendanceStats.present + attendanceStats.late;
   const attendancePerc = totalDays > 0 ? Math.round((present / totalDays) * 100) : 0;
 
-  let totalObtained = 0, totalMax = 0;
+  // Exams the child was ABSENT for are not counted in the average (an absence is not a score of 0)
+  let totalObtained = 0, totalMax = 0, gradedCount = 0, absentCount = 0;
   assessmentsData.forEach(assessment => {
+    if (assessment.isAbsent) {
+      absentCount += 1;
+      return;
+    }
     totalObtained += Number(assessment.score);
     totalMax += Number(assessment.totalMarks);
+    gradedCount += 1;
   });
 
   const avgPerc = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0;
@@ -254,8 +260,9 @@ export default function Performance() {
     }
   };
 
+  // Only show a status when the teacher really set one. No status saved = "Not rated yet" (never a made-up "stable")
   const rawStatus = student?.performanceStatus || student?.customData?.performanceStatus;
-  const trendStatus = typeof rawStatus === 'string' && rawStatus ? rawStatus.toLowerCase() : 'stable';
+  const trendStatus = typeof rawStatus === 'string' && rawStatus ? rawStatus.toLowerCase() : null;
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24 min-w-0 w-full">
@@ -272,9 +279,12 @@ export default function Performance() {
           <p className="text-primary-100 font-bold mb-1">Teacher's Status</p>
           <div className="flex items-center gap-3">
             <span className={`px-4 py-1.5 rounded-xl text-sm font-black uppercase tracking-widest ${getStatusColor(trendStatus)} bg-white dark:bg-slate-900 shadow-sm`}>
-              {trendStatus}
+              {trendStatus || 'Not rated yet'}
             </span>
           </div>
+          <p className="text-primary-100/90 text-xs font-medium mt-3">
+            {trendStatus ? "Set by your child's teacher." : "Your child's teacher has not added a status yet."}
+          </p>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-6">
@@ -287,12 +297,20 @@ export default function Performance() {
               <span className="text-3xl font-black text-slate-900 dark:text-white">{avgGrade}</span>
               <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">{avgPerc > 0 ? `${avgPerc.toFixed(1)}%` : ''}</span>
             </div>
+            {absentCount > 0 && (
+              <p className="text-xs font-medium text-slate-400 dark:text-slate-300 mt-1">
+                {gradedCount > 0 ? `Based on ${gradedCount} exam(s) attended. Absent exams not counted.` : 'No exam attended yet.'}
+              </p>
+            )}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-center">
           <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-1">Attendance</p>
-          <span className={`text-3xl font-black ${attendancePerc < 75 ? 'text-red-600' : 'text-slate-900 dark:text-white'}`}>{attendancePerc}%</span>
+          <span className={`text-3xl font-black ${totalDays > 0 && attendancePerc < 75 ? 'text-red-600' : 'text-slate-900 dark:text-white'}`}>{totalDays > 0 ? `${attendancePerc}%` : '—'}</span>
+          {totalDays > 0 && (
+            <p className="text-xs font-medium text-slate-400 dark:text-slate-300 mt-1">{present} of {totalDays} school days attended</p>
+          )}
         </div>
       </div>
 
@@ -312,10 +330,7 @@ export default function Performance() {
                   </div>
                   <div className="text-right shrink-0">
                     {assessment.isAbsent ? (
-                      <>
-                        <p className="font-black text-lg text-red-600 dark:text-red-400">AB <span className="text-slate-400 dark:text-slate-300 text-sm font-bold">/ {assessment.totalMarks}</span></p>
-                        <p className="text-xs font-bold text-red-600 dark:text-red-400">Absent</p>
-                      </>
+                      <p className="font-black text-lg text-red-600 dark:text-red-400">Absent</p>
                     ) : (
                       <>
                         <p className="font-black text-lg text-slate-900 dark:text-white">{assessment.score} <span className="text-slate-400 dark:text-slate-300 text-sm font-bold">/ {assessment.totalMarks}</span></p>

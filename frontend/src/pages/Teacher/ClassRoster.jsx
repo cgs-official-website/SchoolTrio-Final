@@ -13,6 +13,7 @@ import { isMale, isFemale, normalizeGender } from '../../utils/genderUtils';
 import { formatClassSection, getSectionName, flattenClassesWithSections } from '../../utils/classSorting';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import AiDailyBriefing from '../../components/AiDailyBriefing';
+import { getMyTimetable } from '../../api/timetables';
 
 export default function ClassRoster() {
   const { userProfile } = useAuth();
@@ -20,6 +21,9 @@ export default function ClassRoster() {
   const [classId, setClassId] = useState(userProfile?.assignedClassId || null);
   const [sectionId, setSectionId] = useState(null);
   const [classList, setClassList] = useState([]);
+  // Today's real timetable, used so the AI briefing never guesses about today's classes
+  const [todaySchedule, setTodaySchedule] = useState(null); // null = not loaded yet
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -60,6 +64,40 @@ export default function ClassRoster() {
       }
     };
     fetchStaffAssignment();
+    return () => {
+      isMounted = false;
+    };
+  }, [schoolId]);
+
+  // Load today's timetable (teaching periods + class periods) for the AI briefing
+  useEffect(() => {
+    if (!schoolId) return;
+    let isMounted = true;
+    const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+    const toText = (p) => {
+      const subject = p.subjectName || (typeof p.subject === 'object' && p.subject !== null ? (p.subject.name || '') : (p.subject || 'Subject'));
+      const cls = p.className || (typeof p.class === 'object' && p.class !== null ? (p.class.name || '') : (p.class || ''));
+      const sec = p.sectionName || (typeof p.section === 'object' && p.section !== null ? (p.section.name || '') : (p.section || ''));
+      const label = [cls, sec].filter(Boolean).join('-');
+      const time = p.startTime && p.endTime ? `${p.startTime}-${p.endTime}` : (p.time || '');
+      return [subject, label, time].filter(Boolean).join(' | ');
+    };
+    getMyTimetable()
+      .then(res => {
+        if (!isMounted) return;
+        const data = res?.data || {};
+        const teaching = data.subjectSchedule?.[todayName] || [];
+        const classPeriods = data.classSchedule?.[todayName] || [];
+        setTodaySchedule({
+          dayName: todayName,
+          teachingPeriods: teaching.map(toText),
+          classPeriods: classPeriods.map(toText)
+        });
+      })
+      .catch(err => {
+        console.error('Error fetching timetable for AI briefing in ClassRoster:', err);
+        if (isMounted) setTodaySchedule({ dayName: todayName, teachingPeriods: [], classPeriods: [], unavailable: true });
+      });
     return () => {
       isMounted = false;
     };
@@ -284,7 +322,19 @@ export default function ClassRoster() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto pb-24 space-y-6">
-      <AiDailyBriefing stats={{ assignedClassesCount: classList.length }} />
+      {/*  {todaySchedule && (
+        <AiDailyBriefing
+          stats={{
+            classTeacherOfCount: classList.length,
+            todayName: todaySchedule.dayName,
+            todayTeachingPeriodsCount: todaySchedule.teachingPeriods.length,
+            todayTeachingPeriods: todaySchedule.teachingPeriods,
+            todayClassTimetablePeriodsCount: todaySchedule.classPeriods.length,
+            timetableUnavailable: Boolean(todaySchedule.unavailable)
+          }}
+        />
+      )}
+    */}
       <div className="mb-6 bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-8 text-white shadow-lg relative overflow-hidden">
         {/* Decorative elements */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
