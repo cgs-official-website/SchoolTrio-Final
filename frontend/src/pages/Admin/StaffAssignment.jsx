@@ -4,7 +4,7 @@ import { listStaff, createStaff, bulkImportStaff, updateStaff, assignStaff, dele
 import { listClasses } from '../../api/classes';
 import { listSubjects } from '../../api/subjects';
 import { uploadFileToCloudinaryOrFirebase, uploadCustomDataFiles } from '../../utils/cloudinary';
-import { LuSearch as Search, LuShieldCheck as ShieldCheck, LuMail as Mail, LuUsers as Users, LuCircleCheck as CheckCircle2, LuX as X, LuCloudUpload as UploadCloud, LuFileText as FileText, LuLink as LinkIcon, LuDownload as Download, LuFileSpreadsheet as FileSpreadsheet, LuUserPlus as UserPlus, LuEye as Eye, LuFilter as Filter, LuTrash2 as Trash, LuFileDown as FileDown, LuUser as User, LuGraduationCap as GraduationCap, LuBriefcase as Briefcase, LuBuilding2 as Building2, LuCreditCard as CreditCard, LuChevronRight as ChevronRight, LuChevronLeft as ChevronLeft, LuUserX as UserX, LuUserCheck as UserCheck } from 'react-icons/lu';
+import { LuSearch as Search, LuShieldCheck as ShieldCheck, LuMail as Mail, LuUsers as Users, LuCircleCheck as CheckCircle2, LuX as X, LuCloudUpload as UploadCloud, LuFileText as FileText, LuLink as LinkIcon, LuDownload as Download, LuFileSpreadsheet as FileSpreadsheet, LuUserPlus as UserPlus, LuEye as Eye, LuFilter as Filter, LuTrash2 as Trash, LuFileDown as FileDown, LuUser as User, LuGraduationCap as GraduationCap, LuBriefcase as Briefcase, LuBuilding2 as Building2, LuCreditCard as CreditCard, LuChevronRight as ChevronRight, LuChevronLeft as ChevronLeft, LuUserX as UserX, LuUserCheck as UserCheck, LuSettings as SettingsIcon } from 'react-icons/lu';
 import { TableSkeleton } from '../../components/Skeleton';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -14,6 +14,21 @@ import { sortClassesAscending } from '../../utils/classSorting';
 import { normalizeGender, isMale, isFemale } from '../../utils/genderUtils';
 import { notifyDataChanged } from '../../utils/liveData';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
+import useCustomSchema from '../../hooks/useCustomSchema';
+import { getMissingRequired, resolveTarget } from '../../utils/customSchema';
+
+// Which admin-defined sections (by built-in tab) show inside each tab of the View/Edit staff modal.
+const STAFF_VIEW_TAB_TARGETS = {
+  'Personal Details': ['Personal'],
+  'Personal Info': ['Personal'],
+  'Personal': ['Personal'],
+  'Education & Work': ['Educational', 'Professional', 'Employment'],
+  'Identity & Banking': ['Government & Identity', 'Banking'],
+  'Documents': ['Uploads']
+};
+// New (unmatched) sections have their own tab with id `section:<id>`
+const staffViewTargets = (tab) => STAFF_VIEW_TAB_TARGETS[tab] || (String(tab).startsWith('section:') ? [tab] : []);
 
 export function getStaffStatusBadgeClass(status) {
   const normalized = (status || 'Active').toLowerCase();
@@ -576,6 +591,19 @@ export default function StaffAssignment() {
   const [newStaff, setNewStaff] = useState(initialStaffFormState);
   const [addingStaff, setAddingStaff] = useState(false);
   const [addStaffActiveTab, setAddStaffActiveTab] = useState('Personal');
+  // Admin-defined extra sections/fields (Custom Modules > Form Schema Builder > Staff Directory).
+  // Built-in default fields are stripped, so only newly added ones appear here.
+  const { sections: staffCustomSections, unmatchedSections: staffUnmatched } = useCustomSchema('staff');
+  const addStaffTabs = [
+    { id: 'Personal', label: 'Personal', icon: User },
+    { id: 'Educational', label: 'Educational', icon: GraduationCap },
+    { id: 'Professional', label: 'Professional', icon: Briefcase },
+    { id: 'Government & Identity', label: 'Government & Identity', icon: FileText },
+    { id: 'Employment', label: 'Employment', icon: Building2 },
+    { id: 'Banking', label: 'Banking', icon: CreditCard },
+    ...staffUnmatched.map(sec => ({ id: `section:${sec.id}`, label: sec.title || 'Custom', icon: SettingsIcon })),
+    { id: 'Uploads', label: 'Uploads', icon: UploadCloud }
+  ];
   const [addStaffErrors, setAddStaffErrors] = useState({});
   const [addStaffFiles, setAddStaffFiles] = useState({
     photo: null,
@@ -1403,6 +1431,14 @@ export default function StaffAssignment() {
 
     if (!validateStaffForm(false)) {
       toast.error("Please resolve the validation errors first.");
+      return;
+    }
+
+    const missingCustom = getMissingRequired(staffCustomSections, activeStaffData.customData);
+    if (missingCustom.length > 0) {
+      const firstBad = staffCustomSections.find(sec => getMissingRequired([sec], activeStaffData.customData).length > 0);
+      setAddStaffActiveTab(resolveTarget('staff', firstBad?.title) || `section:${firstBad?.id}`);
+      toast.error(`Please fill required custom field(s): ${missingCustom.join(', ')}`);
       return;
     }
 
@@ -2359,15 +2395,7 @@ export default function StaffAssignment() {
             {/* Tabbed Navigation */}
             <div className="flex border-b border-slate-200 dark:border-slate-700 overflow-x-auto bg-white dark:bg-slate-900 shrink-0 hide-scrollbar scroll-smooth">
               <div className="flex w-full justify-start items-center">
-                {[
-                  { id: 'Personal', label: 'Personal', icon: User },
-                  { id: 'Educational', label: 'Educational', icon: GraduationCap },
-                  { id: 'Professional', label: 'Professional', icon: Briefcase },
-                  { id: 'Government & Identity', label: 'Government & Identity', icon: FileText },
-                  { id: 'Employment', label: 'Employment', icon: Building2 },
-                  { id: 'Banking', label: 'Banking', icon: CreditCard },
-                  { id: 'Uploads', label: 'Uploads', icon: UploadCloud }
-                ].map(({ id, label, icon: TabIcon }) => {
+                {addStaffTabs.map(({ id, label, icon: TabIcon }) => {
                   const isActive = addStaffActiveTab === id;
                   return (
                     <button
@@ -3010,6 +3038,16 @@ export default function StaffAssignment() {
                   ))}
                 </div>
               )}
+
+              {/* Admin-defined fields (Custom Modules > Staff Directory): shown INSIDE the tab whose
+                  section they were added to; new sections (no matching tab) get their own tab named after the section. */}
+              <CustomFieldsRenderer
+                moduleKey="staff"
+                targets={[addStaffActiveTab]}
+                variant="compact"
+                customData={newStaff.customData}
+                onChange={(k, v) => setNewStaff(prev => ({ ...prev, customData: { ...(prev.customData || {}), [k]: v } }))}
+              />
             </div>
 
             <div className="p-4 sm:p-6 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex flex-wrap justify-between items-center gap-3 shrink-0">
@@ -3018,7 +3056,7 @@ export default function StaffAssignment() {
                   <button
                     type="button"
                     onClick={() => {
-                      const tabs = ['Personal', 'Educational', 'Professional', 'Government & Identity', 'Employment', 'Banking', 'Uploads'];
+                      const tabs = addStaffTabs.map(t => t.id);
                       const idx = tabs.indexOf(addStaffActiveTab);
                       if (idx > 0) setAddStaffActiveTab(tabs[idx - 1]);
                     }}
@@ -3031,7 +3069,7 @@ export default function StaffAssignment() {
                   <button
                     type="button"
                     onClick={() => {
-                      const tabs = ['Personal', 'Educational', 'Professional', 'Government & Identity', 'Employment', 'Banking', 'Uploads'];
+                      const tabs = addStaffTabs.map(t => t.id);
                       const idx = tabs.indexOf(addStaffActiveTab);
                       if (idx < tabs.length - 1) setAddStaffActiveTab(tabs[idx + 1]);
                     }}
@@ -3101,7 +3139,13 @@ export default function StaffAssignment() {
 
             {/* Tabbed details navigation */}
             <div className="flex border-b border-slate-150 overflow-x-auto bg-slate-50/50 dark:bg-slate-800/50 shrink-0 custom-scrollbar">
-              {['Personal Details', 'Education & Work', 'Identity & Banking', 'Documents'].map(tab => {
+              {[
+                { id: 'Personal Details', label: 'Personal Details' },
+                { id: 'Education & Work', label: 'Education & Work' },
+                { id: 'Identity & Banking', label: 'Identity & Banking' },
+                ...staffUnmatched.map(sec => ({ id: `section:${sec.id}`, label: sec.title || 'Custom' })),
+                { id: 'Documents', label: 'Documents' }
+              ].map(({ id: tab, label: tabLabel }) => {
                 const isTabActive = addStaffActiveTab === tab;
                 return (
                   <button
@@ -3113,7 +3157,7 @@ export default function StaffAssignment() {
                       : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
                       }`}
                   >
-                    {tab}
+                    {tabLabel}
                   </button>
                 );
               })}
@@ -3530,6 +3574,14 @@ export default function StaffAssignment() {
                       })}
                     </div>
                   )}
+
+                  <CustomFieldsRenderer
+                    moduleKey="staff"
+                    targets={staffViewTargets(addStaffActiveTab)}
+                    variant="compact"
+                    customData={editStaffData.customData || {}}
+                    onChange={(k, v) => setEditStaffData(prev => ({ ...prev, customData: { ...(prev.customData || {}), [k]: v } }))}
+                  />
                 </div>
               ) : (
                 /* ── VIEW MODE ── */
@@ -3799,6 +3851,14 @@ export default function StaffAssignment() {
                       })}
                     </div>
                   )}
+
+                  <CustomFieldsRenderer
+                    moduleKey="staff"
+                    readOnly
+                    targets={staffViewTargets(addStaffActiveTab)}
+                    variant="compact"
+                    customData={selectedStaffToView.customData || {}}
+                  />
                 </>
               )}
             </div>
@@ -3838,7 +3898,7 @@ export default function StaffAssignment() {
                       });
                       setEditStaffErrors({});
                       setEditStaffDocFiles({});
-                      if (!['Personal Details', 'Education & Work', 'Identity & Banking', 'Documents'].includes(addStaffActiveTab)) {
+                      if (!['Personal Details', 'Education & Work', 'Identity & Banking', 'Documents'].includes(addStaffActiveTab) && !String(addStaffActiveTab).startsWith('section:')) {
                         setAddStaffActiveTab('Personal Details');
                       }
                       setIsStaffEditMode(true);

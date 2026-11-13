@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { 
-  listVehicles, 
-  createVehicle, 
-  updateVehicle, 
+import {
+  listVehicles,
+  createVehicle,
+  updateVehicle,
   deleteVehicle,
   listRoutes,
   createRoute,
@@ -14,14 +14,14 @@ import {
   unassignStudentFromRoute
 } from '../../api/transport';
 import { listStudents } from '../../api/students';
-import { 
-  LuBus as Bus, 
-  LuPlus as Plus, 
-  LuX as X, 
-  LuUsers as Users, 
-  LuPhone as Phone, 
-  LuNavigation as Navigation, 
-  LuTriangleAlert as AlertTriangle, 
+import {
+  LuBus as Bus,
+  LuPlus as Plus,
+  LuX as X,
+  LuUsers as Users,
+  LuPhone as Phone,
+  LuNavigation as Navigation,
+  LuTriangleAlert as AlertTriangle,
   LuCircleCheck as CheckCircle2,
   LuCalendar as Calendar,
   LuSearch as Search,
@@ -56,7 +56,7 @@ export default function TransportManagement() {
   const [vehicleSearchQuery, setVehicleSearchQuery] = useState('');
   const [vehicleStatusFilter, setVehicleStatusFilter] = useState('all'); // 'all' | 'Active' | 'Inactive'
   const [vehicleComplianceFilter, setVehicleComplianceFilter] = useState('all'); // 'all' | 'expiring' | 'expired'
-  
+
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -244,7 +244,7 @@ export default function TransportManagement() {
         await createRoute(routePayload);
         toast.success("Route created successfully!");
       }
-      
+
       notifyDataChanged('transport');
       setShowCreateModal(false);
       setNewRoute({ name: '', vehicleNumber: '', vehicleId: '', driverName: '', driverPhone: '', capacity: '', customData: {} });
@@ -282,11 +282,11 @@ export default function TransportManagement() {
       return;
     }
     if (!activeRouteId || !selectedStudentId) return;
-    
+
     // Check client route capacity for immediate UX feedback
     const route = routes.find(r => r.id === activeRouteId);
     if (!route) return;
-    
+
     if (route.assignedStudents?.length >= route.capacity) {
       toast.error("Cannot assign student. This bus has reached its maximum capacity!");
       return;
@@ -316,14 +316,14 @@ export default function TransportManagement() {
     if (!routeId || !studentId) return;
     try {
       await unassignStudentFromRoute(routeId, { studentId });
-      
+
       if (selectedRouteToView) {
         setSelectedRouteToView(prev => ({
           ...prev,
           assignedStudents: prev.assignedStudents?.filter(id => id !== studentId) || []
         }));
       }
-      
+
       notifyDataChanged('transport');
       toast.success("Student unassigned successfully");
       await loadAllTransportData();
@@ -358,7 +358,7 @@ export default function TransportManagement() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (expiry < today) return 'expired';
-    
+
     const diffTime = expiry - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     if (diffDays <= 30) return 'expiring';
@@ -396,16 +396,16 @@ export default function TransportManagement() {
   // Filtered vehicles
   const filteredVehicles = vehicles.filter(v => {
     const q = vehicleSearchQuery.trim().toLowerCase();
-    const matchesSearch = 
+    const matchesSearch =
       (v.vehicleName || '').toLowerCase().includes(q) ||
       (v.vehicleModel || '').toLowerCase().includes(q) ||
       (v.registrationNumber || '').toLowerCase().includes(q);
 
     const matchesStatus = vehicleStatusFilter === 'all' || v.status === vehicleStatusFilter;
-    
+
     const complianceStatus = getVehicleComplianceStatus(v);
-    const matchesCompliance = 
-      vehicleComplianceFilter === 'all' || 
+    const matchesCompliance =
+      vehicleComplianceFilter === 'all' ||
       complianceStatus === vehicleComplianceFilter;
 
     return matchesSearch && matchesStatus && matchesCompliance;
@@ -559,12 +559,12 @@ export default function TransportManagement() {
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white truncate">Transport Management</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1">Manage bus routes, drivers, school vehicles, and student assignments.</p>
         </div>
-        
+
         {/* Actions based on active tab */}
         {hasCreatePermission && (
           <div className="w-full sm:w-auto">
             {activeTab === 'routes' && (
-              <button 
+              <button
                 onClick={() => {
                   setNewRoute({ name: '', vehicleNumber: '', vehicleId: '', driverName: '', driverPhone: '', capacity: '', customData: {} });
                   setShowCreateModal(true);
@@ -575,7 +575,7 @@ export default function TransportManagement() {
               </button>
             )}
             {activeTab === 'vehicles' && (
-              <button 
+              <button
                 onClick={() => {
                   setNewVehicle({
                     vehicleName: '',
@@ -606,11 +606,10 @@ export default function TransportManagement() {
       <div className="flex items-center gap-2 mb-6 border-b border-slate-200 dark:border-slate-700 pb-3 overflow-x-auto w-full custom-scrollbar">
         <button
           onClick={() => setActiveTab('routes')}
-          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${
-            activeTab === 'routes'
+          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${activeTab === 'routes'
               ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-          }`}
+            }`}
         >
           <Navigation size={18} />
           <span>Transport Routes</span>
@@ -618,11 +617,10 @@ export default function TransportManagement() {
 
         <button
           onClick={() => setActiveTab('vehicles')}
-          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${
-            activeTab === 'vehicles'
+          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${activeTab === 'vehicles'
               ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-          }`}
+            }`}
         >
           <Bus size={18} />
           <span>Vehicle Management</span>
@@ -630,11 +628,10 @@ export default function TransportManagement() {
 
         <button
           onClick={() => setActiveTab('assignments')}
-          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${
-            activeTab === 'assignments'
+          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${activeTab === 'assignments'
               ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-          }`}
+            }`}
         >
           <Users size={18} />
           <span>Student Assignments</span>
@@ -662,7 +659,7 @@ export default function TransportManagement() {
                     <div className="flex items-start justify-between mb-2">
                       <h3 className="font-bold text-lg text-slate-900 dark:text-white leading-tight pr-4 truncate">{route.name}</h3>
                       <div className="flex items-center gap-1 shrink-0">
-                        <button 
+                        <button
                           onClick={() => { setSelectedRouteToView(route); setShowViewModal(true); }}
                           className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
                           title="View Details"
@@ -670,7 +667,7 @@ export default function TransportManagement() {
                           <Eye size={18} />
                         </button>
                         {hasEditPermission && (
-                          <button 
+                          <button
                             onClick={() => { setNewRoute(route); setShowCreateModal(true); }}
                             className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
                             title="Edit Route"
@@ -679,7 +676,7 @@ export default function TransportManagement() {
                           </button>
                         )}
                         {hasDeletePermission && (
-                          <button 
+                          <button
                             onClick={() => setConfirmDeleteState({ isOpen: true, id: route.id, name: route.name })}
                             className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
                             title="Delete Route"
@@ -701,7 +698,7 @@ export default function TransportManagement() {
                       </div>
                       <div className="overflow-hidden">
                         <p className="font-semibold text-slate-900 dark:text-white truncate">{route.driverName || 'No Driver Assigned'}</p>
-                        <p className="text-xs truncate flex items-center gap-1"><Phone size={10}/> {route.driverPhone || 'N/A'}</p>
+                        <p className="text-xs truncate flex items-center gap-1"><Phone size={10} /> {route.driverPhone || 'N/A'}</p>
                       </div>
                     </div>
 
@@ -713,7 +710,7 @@ export default function TransportManagement() {
                         </span>
                       </div>
                       <div className="h-2 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                        <div 
+                        <div
                           className={`h-full rounded-full transition-all duration-500 ${isFull ? 'bg-red-500' : percentage > 80 ? 'bg-amber-500' : 'bg-green-500'}`}
                           style={{ width: `${Math.min(percentage, 100)}%` }}
                         ></div>
@@ -723,12 +720,12 @@ export default function TransportManagement() {
 
                   {hasEditPermission && (
                     <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 mt-auto">
-                      <button 
+                      <button
                         onClick={() => openAssignModal(route.id)}
                         disabled={isFull}
                         className="w-full py-2.5 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:text-primary-700 hover:bg-primary-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-primary-200 dark:hover:border-slate-700 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {isFull ? <><AlertTriangle size={16}/> Bus Full</> : <><Plus size={16}/> Assign Student</>}
+                        {isFull ? <><AlertTriangle size={16} /> Bus Full</> : <><Plus size={16} /> Assign Student</>}
                       </button>
                     </div>
                   )}
@@ -776,9 +773,9 @@ export default function TransportManagement() {
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-300">
                 <Search size={18} />
               </span>
-              <input 
-                type="text" 
-                placeholder="Search vehicles..." 
+              <input
+                type="text"
+                placeholder="Search vehicles..."
                 value={vehicleSearchQuery}
                 onChange={(e) => setVehicleSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm transition-all"
@@ -786,7 +783,7 @@ export default function TransportManagement() {
             </div>
             <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider">
-                <Filter size={14}/> Filters:
+                <Filter size={14} /> Filters:
               </div>
               <select
                 value={vehicleStatusFilter}
@@ -853,15 +850,15 @@ export default function TransportManagement() {
                           <td className="py-4 px-6">
                             {complianceStatus === 'expired' ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-red-100 text-red-700 border border-red-200">
-                                <ShieldAlert size={14}/> Expired Docs
+                                <ShieldAlert size={14} /> Expired Docs
                               </span>
                             ) : complianceStatus === 'expiring' ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-700 border border-amber-200">
-                                <AlertTriangle size={14}/> Expiring (30d)
+                                <AlertTriangle size={14} /> Expiring (30d)
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-green-100 text-green-700 border border-green-200">
-                                <CheckCircle2 size={14}/> All Compliant
+                                <CheckCircle2 size={14} /> All Compliant
                               </span>
                             )}
                           </td>
@@ -879,15 +876,14 @@ export default function TransportManagement() {
                             </div>
                           </td>
                           <td className="py-4 px-6">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                              vehicle.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                            }`}>
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${vehicle.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                              }`}>
                               {vehicle.status}
                             </span>
                           </td>
                           <td className="py-4 px-6 text-right">
                             <div className="flex justify-end gap-2">
-                              <button 
+                              <button
                                 onClick={() => { setSelectedVehicleToView(vehicle); setShowViewVehicleModal(true); }}
                                 className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
                                 title="View Details"
@@ -895,7 +891,7 @@ export default function TransportManagement() {
                                 <Eye size={18} />
                               </button>
                               {hasEditPermission && (
-                                <button 
+                                <button
                                   onClick={() => { setNewVehicle(vehicle); setVehicleErrors({}); setShowVehicleModal(true); }}
                                   className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
                                   title="Edit Vehicle"
@@ -904,7 +900,7 @@ export default function TransportManagement() {
                                 </button>
                               )}
                               {hasDeletePermission && (
-                                <button 
+                                <button
                                   onClick={() => setVehicleConfirmDeleteState({ isOpen: true, id: vehicle.id, name: vehicle.vehicleName || vehicle.registrationNumber })}
                                   className="p-1.5 text-slate-400 dark:text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
                                   title="Delete Vehicle"
@@ -931,9 +927,9 @@ export default function TransportManagement() {
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
             <div className="relative w-full md:max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-300" size={18} />
-              <input 
-                type="text" 
-                placeholder="Search by student name, admission no, or route..." 
+              <input
+                type="text"
+                placeholder="Search by student name, admission no, or route..."
                 value={assignmentSearchQuery}
                 onChange={(e) => setAssignmentSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm transition-all"
@@ -1030,7 +1026,7 @@ export default function TransportManagement() {
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">
                 {newRoute.id ? 'Edit Transport Route' : 'Add New Route'}
               </h3>
-              <button 
+              <button
                 onClick={() => setShowCreateModal(false)}
                 className="p-2 text-slate-400 dark:text-slate-300 hover:text-slate-600 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               >
@@ -1041,24 +1037,24 @@ export default function TransportManagement() {
             <form onSubmit={handleCreateRoute} className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Route Name *</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   required
                   placeholder="e.g. North Campus Express"
                   value={newRoute.name}
-                  onChange={(e) => setNewRoute({...newRoute, name: e.target.value})}
+                  onChange={(e) => setNewRoute({ ...newRoute, name: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Assign School Vehicle</label>
-                <select 
+                <select
                   value={newRoute.vehicleId || ''}
                   onChange={(e) => {
                     const selVeh = vehicles.find(v => v.id === e.target.value);
                     setNewRoute({
-                      ...newRoute, 
+                      ...newRoute,
                       vehicleId: e.target.value,
                       vehicleNumber: selVeh ? selVeh.registrationNumber : ''
                     });
@@ -1076,11 +1072,11 @@ export default function TransportManagement() {
 
               <div>
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Route / Vehicle Number</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder="e.g. TN-38-AB-1234 or Route 04"
                   value={newRoute.vehicleNumber || newRoute.routeNumber || ''}
-                  onChange={(e) => setNewRoute({...newRoute, vehicleNumber: e.target.value, routeNumber: e.target.value})}
+                  onChange={(e) => setNewRoute({ ...newRoute, vehicleNumber: e.target.value, routeNumber: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                 />
               </div>
@@ -1088,21 +1084,21 @@ export default function TransportManagement() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Driver Name</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="e.g. Moorthy"
                     value={newRoute.driverName}
-                    onChange={(e) => setNewRoute({...newRoute, driverName: e.target.value})}
+                    onChange={(e) => setNewRoute({ ...newRoute, driverName: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Driver Phone</label>
-                  <input 
-                    type="tel" 
+                  <input
+                    type="tel"
                     placeholder="10-digit number"
                     value={newRoute.driverPhone}
-                    onChange={(e) => setNewRoute({...newRoute, driverPhone: e.target.value})}
+                    onChange={(e) => setNewRoute({ ...newRoute, driverPhone: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                   />
                 </div>
@@ -1110,13 +1106,13 @@ export default function TransportManagement() {
 
               <div>
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Seating Capacity *</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   min="1"
                   required
                   placeholder="e.g. 30"
                   value={newRoute.capacity}
-                  onChange={(e) => setNewRoute({...newRoute, capacity: e.target.value})}
+                  onChange={(e) => setNewRoute({ ...newRoute, capacity: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                 />
               </div>
@@ -1124,22 +1120,22 @@ export default function TransportManagement() {
               {/* Custom Fields */}
               <div className="pt-2">
                 <CustomFieldsRenderer
-                  moduleName="transport"
+                  moduleKey="transport"
                   customData={newRoute.customData || {}}
-                  onChange={(updatedCustomData) => setNewRoute(prev => ({ ...prev, customData: updatedCustomData }))}
+                  onChange={(k, v) => setNewRoute(prev => ({ ...prev, customData: { ...(prev.customData || {}), [k]: v } }))}
                 />
               </div>
 
               <div className="pt-4 flex justify-end gap-3">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setShowCreateModal(false)}
                   className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   disabled={creating}
                   className="px-5 py-2.5 rounded-xl bg-primary-600 font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
                 >
@@ -1157,7 +1153,7 @@ export default function TransportManagement() {
           <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-100 dark:border-slate-800 animate-scale-up">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">Assign Student to Route</h3>
-              <button 
+              <button
                 onClick={() => setShowAssignModal(false)}
                 className="p-2 text-slate-400 dark:text-slate-300 hover:text-slate-600 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               >
@@ -1168,8 +1164,8 @@ export default function TransportManagement() {
             <form onSubmit={handleAssignStudent} className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Selected Route</label>
-                <select 
-                  value={activeRouteId || ''} 
+                <select
+                  value={activeRouteId || ''}
                   onChange={(e) => setActiveRouteId(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-semibold focus:outline-none"
                 >
@@ -1183,7 +1179,7 @@ export default function TransportManagement() {
 
               <div>
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Student *</label>
-                <select 
+                <select
                   required
                   value={selectedStudentId}
                   onChange={(e) => setSelectedStudentId(e.target.value)}
@@ -1199,15 +1195,15 @@ export default function TransportManagement() {
               </div>
 
               <div className="pt-4 flex justify-end gap-3">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setShowAssignModal(false)}
                   className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   disabled={assigning || !selectedStudentId}
                   className="px-5 py-2.5 rounded-xl bg-primary-600 font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
                 >
@@ -1230,7 +1226,7 @@ export default function TransportManagement() {
                   {selectedRouteToView.vehicleNumber}
                 </span>
               </div>
-              <button 
+              <button
                 onClick={() => setShowViewModal(false)}
                 className="p-2 text-slate-400 dark:text-slate-300 hover:text-slate-600 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               >
@@ -1272,7 +1268,7 @@ export default function TransportManagement() {
                           <p className="text-xs font-mono text-slate-400 dark:text-slate-300">{student?.admissionNumber}</p>
                         </div>
                         {hasEditPermission && (
-                          <button 
+                          <button
                             onClick={() => handleUnassignStudent(selectedRouteToView.id, studentId)}
                             className="text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg transition-colors"
                           >
@@ -1312,7 +1308,7 @@ export default function TransportManagement() {
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">
                 {newVehicle.id ? 'Edit Vehicle Details' : 'Register New Vehicle'}
               </h3>
-              <button 
+              <button
                 onClick={() => setShowVehicleModal(false)}
                 className="p-2 text-slate-400 dark:text-slate-300 hover:text-slate-600 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               >
@@ -1324,42 +1320,41 @@ export default function TransportManagement() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Vehicle Display Name</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="e.g. Yellow Bus 04"
                     value={newVehicle.vehicleName || ''}
-                    onChange={(e) => setNewVehicle({...newVehicle, vehicleName: e.target.value})}
+                    onChange={(e) => setNewVehicle({ ...newVehicle, vehicleName: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Vehicle Make / Model</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="e.g. Tata Starbus 32-Seater"
                     value={newVehicle.vehicleModel || ''}
-                    onChange={(e) => setNewVehicle({...newVehicle, vehicleModel: e.target.value})}
+                    onChange={(e) => setNewVehicle({ ...newVehicle, vehicleModel: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Registration Number *</label>
-                  <input 
+                  <input
                     type="text" required
                     placeholder="e.g. TN 56 K 1146 or MH-12-PQ-4567"
                     value={newVehicle.registrationNumber || ''}
                     onChange={(e) => {
                       const val = e.target.value.toUpperCase();
-                      setNewVehicle({...newVehicle, registrationNumber: val});
+                      setNewVehicle({ ...newVehicle, registrationNumber: val });
                       setVehicleErrors(prev => ({ ...prev, registrationNumber: null }));
                     }}
-                    className={`w-full px-4 py-2.5 rounded-xl border font-mono uppercase ${
-                      vehicleErrors.registrationNumber 
-                        ? 'border-red-500 focus:ring-red-500 bg-red-50/50 dark:bg-red-900/10' 
+                    className={`w-full px-4 py-2.5 rounded-xl border font-mono uppercase ${vehicleErrors.registrationNumber
+                        ? 'border-red-500 focus:ring-red-500 bg-red-50/50 dark:bg-red-900/10'
                         : 'border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900'
-                    }`}
+                      }`}
                   />
                   {vehicleErrors.registrationNumber && (
                     <p className="text-red-600 text-xs mt-1 font-semibold flex items-center gap-1">
@@ -1370,27 +1365,27 @@ export default function TransportManagement() {
 
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Seating Capacity *</label>
-                  <input 
+                  <input
                     type="number" min="1" required
                     placeholder="e.g. 32"
                     value={newVehicle.seatingCapacity || ''}
-                    onChange={(e) => setNewVehicle({...newVehicle, seatingCapacity: e.target.value})}
+                    onChange={(e) => setNewVehicle({ ...newVehicle, seatingCapacity: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Assigned Routes</label>
-                  <select 
+                  <select
                     multiple
                     value={newVehicle.assignedRouteIds || []}
                     onChange={(e) => {
                       const selected = Array.from(e.target.selectedOptions, option => option.value);
-                      setNewVehicle({...newVehicle, assignedRouteIds: selected});
+                      setNewVehicle({ ...newVehicle, assignedRouteIds: selected });
                     }}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900 min-h-[90px]"
                   >
-                  {routes.map(r => {
+                    {routes.map(r => {
                       const owner = r.vehicleId && r.vehicleId !== newVehicle.id
                         ? vehicles.find(v => v.id === r.vehicleId)
                         : null;
@@ -1403,12 +1398,12 @@ export default function TransportManagement() {
                   </select>
                   <p className="text-slate-400 dark:text-slate-300 text-xs mt-1.5">Hold <kbd className="font-mono bg-slate-100 dark:bg-slate-700 px-1 py-0.5 rounded border border-slate-200 dark:border-slate-700">Ctrl</kbd> (or <kbd className="font-mono bg-slate-100 dark:bg-slate-700 px-1 py-0.5 rounded border border-slate-200 dark:border-slate-700">Cmd</kbd> on Mac) to select multiple routes.</p>
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Vehicle Status *</label>
-                  <select 
+                  <select
                     value={newVehicle.status || 'Active'}
-                    onChange={(e) => setNewVehicle({...newVehicle, status: e.target.value})}
+                    onChange={(e) => setNewVehicle({ ...newVehicle, status: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900 appearance-none cursor-pointer"
                   >
                     <option value="Active">Active</option>
@@ -1419,54 +1414,54 @@ export default function TransportManagement() {
 
               <div className="pt-6 border-t border-slate-100 dark:border-slate-800 mt-6">
                 <h4 className="font-bold text-slate-900 dark:text-white mb-4 text-sm uppercase tracking-wider">Compliance & Expiry Dates</h4>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Fitness Certificate (FC) Expiry *</label>
-                    <input 
+                    <input
                       type="date" required
                       value={newVehicle.fcExpiryDate || ''}
-                      onChange={(e) => setNewVehicle({...newVehicle, fcExpiryDate: e.target.value})}
+                      onChange={(e) => setNewVehicle({ ...newVehicle, fcExpiryDate: e.target.value })}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Insurance Expiry Date *</label>
-                    <input 
+                    <input
                       type="date" required
                       value={newVehicle.insuranceExpiryDate || ''}
-                      onChange={(e) => setNewVehicle({...newVehicle, insuranceExpiryDate: e.target.value})}
+                      onChange={(e) => setNewVehicle({ ...newVehicle, insuranceExpiryDate: e.target.value })}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Pollution Certificate (PUCC) Expiry</label>
-                    <input 
+                    <input
                       type="date"
                       value={newVehicle.pollutionCertificateExpiryDate || ''}
-                      onChange={(e) => setNewVehicle({...newVehicle, pollutionCertificateExpiryDate: e.target.value})}
+                      onChange={(e) => setNewVehicle({ ...newVehicle, pollutionCertificateExpiryDate: e.target.value })}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Transport Permit Expiry Date</label>
-                    <input 
+                    <input
                       type="date"
                       value={newVehicle.permitExpiryDate || ''}
-                      onChange={(e) => setNewVehicle({...newVehicle, permitExpiryDate: e.target.value})}
+                      onChange={(e) => setNewVehicle({ ...newVehicle, permitExpiryDate: e.target.value })}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Road Tax Renewal Date</label>
-                    <input 
+                    <input
                       type="date"
                       value={newVehicle.roadTaxExpiryDate || ''}
-                      onChange={(e) => setNewVehicle({...newVehicle, roadTaxExpiryDate: e.target.value})}
+                      onChange={(e) => setNewVehicle({ ...newVehicle, roadTaxExpiryDate: e.target.value })}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                     />
                   </div>
@@ -1474,15 +1469,15 @@ export default function TransportManagement() {
               </div>
 
               <div className="pt-6 flex justify-end gap-3 border-t border-slate-100 dark:border-slate-800">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setShowVehicleModal(false)}
                   className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   disabled={savingVehicle}
                   className="px-5 py-2.5 rounded-xl bg-primary-600 font-semibold text-white hover:bg-primary-700 disabled:opacity-50 shadow-md shadow-primary-500/20"
                 >
@@ -1503,7 +1498,7 @@ export default function TransportManagement() {
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">{selectedVehicleToView.vehicleName || 'Vehicle Information'}</h3>
                 <p className="font-mono text-sm font-bold text-primary-600 dark:text-primary-400 mt-1 uppercase tracking-wide">{selectedVehicleToView.registrationNumber}</p>
               </div>
-              <button 
+              <button
                 onClick={() => setShowViewVehicleModal(false)}
                 className="p-2 text-slate-400 dark:text-slate-300 hover:text-slate-600 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               >
@@ -1524,9 +1519,8 @@ export default function TransportManagement() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-slate-400 dark:text-slate-300 uppercase tracking-wider">Operational Status</p>
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold mt-1 border ${
-                    selectedVehicleToView.status === 'Active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                  }`}>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold mt-1 border ${selectedVehicleToView.status === 'Active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                    }`}>
                     {selectedVehicleToView.status}
                   </span>
                 </div>
@@ -1570,15 +1564,15 @@ export default function TransportManagement() {
                         <div>
                           {status === 'expired' ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-red-100 text-red-700 border border-red-200">
-                              <ShieldAlert size={12}/> Expired
+                              <ShieldAlert size={12} /> Expired
                             </span>
                           ) : status === 'expiring' ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-700 border border-amber-200">
-                              <AlertTriangle size={12}/> Expiring Soon
+                              <AlertTriangle size={12} /> Expiring Soon
                             </span>
                           ) : doc.date ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-green-100 text-green-700 border border-green-200">
-                              <CheckCircle2 size={12}/> Valid
+                              <CheckCircle2 size={12} /> Valid
                             </span>
                           ) : (
                             <span className="text-xs text-slate-400 dark:text-slate-300 italic">No Record</span>
@@ -1595,7 +1589,7 @@ export default function TransportManagement() {
       )}
 
       {/* Delete Route Confirmation */}
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={confirmDeleteState.isOpen}
         title="Delete Transport Route"
         message={`Are you sure you want to delete "${confirmDeleteState.name}"? All student assignments will be unlinked.`}
@@ -1605,7 +1599,7 @@ export default function TransportManagement() {
       />
 
       {/* Delete Vehicle Confirmation */}
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={vehicleConfirmDeleteState.isOpen}
         title="Delete Registered Vehicle"
         message={`Are you sure you want to delete vehicle "${vehicleConfirmDeleteState.name}"?`}

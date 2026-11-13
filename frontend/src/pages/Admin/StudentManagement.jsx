@@ -26,6 +26,9 @@ import { normalizeGender, isMale, isFemale } from '../../utils/genderUtils';
 import { validateName, validateDateOfBirth, validateBloodGroup, validateAadhaarNumber, validatePhone, validateEmail, getTodayDateString } from '../../utils/validationUtils';
 import { notifyDataChanged } from '../../utils/liveData';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
+import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
+import useCustomSchema from '../../hooks/useCustomSchema';
+import { getMissingRequired } from '../../utils/customSchema';
 import { formatDate } from '../../utils/dateUtils';
 export const getInitialStudentFormData = () => ({
   firstName: '', lastName: '', middleName: '', admissionNumber: '', rollNumber: '', classId: '', sectionId: '', status: 'Active',
@@ -95,7 +98,10 @@ export default function StudentManagement() {
   const [formData, setFormData] = useState(getInitialStudentFormData());
   const [addErrors, setAddErrors] = useState({});
   const [customData, setCustomData] = useState({});
-  const [formSchema, setFormSchema] = useState([]);
+  // Admin-defined extra sections/fields (Custom Modules > Form Schema Builder > Student Directory).
+  // Built-in default fields are stripped, so only newly added ones appear.
+  const { sections: studentCustomSections, unmatchedSections: studentUnmatched } = useCustomSchema('students');
+  const formSchema = studentCustomSections.flatMap(sec => sec.fields || []);
   const [photoFile, setPhotoFile] = useState(null);
 
   // Crop state
@@ -566,6 +572,12 @@ export default function StudentManagement() {
       if (rollNumberError) errors.rollNumber = rollNumberError;
       setAddErrors(prev => ({ ...prev, ...errors }));
       toast.error(firstNameError || lastNameError || dobError || bloodGroupError || aadhaarError || parentPhoneError || parentEmailError || admissionNumberError || rollNumberError);
+      return;
+    }
+
+    const missingCustom = getMissingRequired(studentCustomSections, customData);
+    if (missingCustom.length > 0) {
+      toast.error(`Please fill required custom field(s): ${missingCustom.join(', ')}`);
       return;
     }
 
@@ -1340,6 +1352,12 @@ export default function StudentManagement() {
       return;
     }
 
+    const missingCustomEdit = getMissingRequired(studentCustomSections, editCustomData);
+    if (missingCustomEdit.length > 0) {
+      toast.error(`Please fill required custom field(s): ${missingCustomEdit.join(', ')}`);
+      return;
+    }
+
     try {
       setSaving(true);
       const cleanedData = {};
@@ -1703,10 +1721,10 @@ export default function StudentManagement() {
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Student Directory & Admissions</h1>
             <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${isSeatLimitReached
-                ? 'bg-red-100 text-red-700 border-red-200'
-                : isSeatLimitWarning
-                  ? 'bg-amber-100 text-amber-700 border-amber-200'
-                  : 'bg-primary-50 text-primary-700 border-primary-200'
+              ? 'bg-red-100 text-red-700 border-red-200'
+              : isSeatLimitWarning
+                ? 'bg-amber-100 text-amber-700 border-amber-200'
+                : 'bg-primary-50 text-primary-700 border-primary-200'
               }`}>
               Seats: {totalStudents} / {effectiveSeatLimit}
             </span>
@@ -1793,8 +1811,8 @@ export default function StudentManagement() {
           <button
             onClick={() => setActiveDirectoryTab('enrolled')}
             className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${activeDirectoryTab === 'enrolled'
-                ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+              ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
           >
             <GraduationCap size={18} />
@@ -1808,15 +1826,15 @@ export default function StudentManagement() {
           <button
             onClick={() => setActiveDirectoryTab('applications')}
             className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm transition-all relative ${activeDirectoryTab === 'applications'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
           >
             <UserCheck size={18} />
             <span>Admission Applications</span>
             <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${activeDirectoryTab === 'applications'
-                ? 'bg-white/20 text-white'
-                : pendingAppsCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+              ? 'bg-white/20 text-white'
+              : pendingAppsCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
               }`}>
               {admissionApplications.length}
             </span>
@@ -2032,6 +2050,12 @@ export default function StudentManagement() {
                   )}
                 </div>
               </div>
+              <CustomFieldsRenderer
+                moduleKey="students"
+                targets={['personal']}
+                customData={customData}
+                onChange={(k, v) => setCustomData(prev => ({ ...prev, [k]: v }))}
+              />
             </div>
 
             <div className="bg-slate-50/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
@@ -2153,6 +2177,12 @@ export default function StudentManagement() {
                   </div>
                 </div>
               </div>
+              <CustomFieldsRenderer
+                moduleKey="students"
+                targets={['contact', 'address']}
+                customData={customData}
+                onChange={(k, v) => setCustomData(prev => ({ ...prev, [k]: v }))}
+              />
             </div>
 
             <div className="bg-slate-50/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
@@ -2246,6 +2276,12 @@ export default function StudentManagement() {
                   <input type="text" value={formData.subjectsChosen} onChange={(e) => setFormData({ ...formData, subjectsChosen: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" />
                 </div>
               </div>
+              <CustomFieldsRenderer
+                moduleKey="students"
+                targets={['academic']}
+                customData={customData}
+                onChange={(k, v) => setCustomData(prev => ({ ...prev, [k]: v }))}
+              />
             </div>
 
             <div className="bg-slate-50/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
@@ -2272,6 +2308,12 @@ export default function StudentManagement() {
                   <textarea value={formData.otherDetails} onChange={(e) => setFormData({ ...formData, otherDetails: e.target.value })} rows="2" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Special requirements, achievements, or additional remarks"></textarea>
                 </div>
               </div>
+              <CustomFieldsRenderer
+                moduleKey="students"
+                targets={['transport']}
+                customData={customData}
+                onChange={(k, v) => setCustomData(prev => ({ ...prev, [k]: v }))}
+              />
             </div>
 
             <div className="bg-slate-50/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
@@ -2302,9 +2344,25 @@ export default function StudentManagement() {
                   <span className="font-black text-primary-700 text-lg">₹{formData.totalFee || '0'}</span>
                 </div>
               </div>
+              <CustomFieldsRenderer
+                moduleKey="students"
+                targets={['fee']}
+                customData={customData}
+                onChange={(k, v) => setCustomData(prev => ({ ...prev, [k]: v }))}
+              />
             </div>
 
-
+            {studentUnmatched.map(sec => (
+              <div key={sec.id} className="bg-slate-50/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-3 mb-4">{sec.title}</h3>
+                <CustomFieldsRenderer
+                  moduleKey="students"
+                  targets={[`section:${sec.id}`]}
+                  customData={customData}
+                  onChange={(k, v) => setCustomData(prev => ({ ...prev, [k]: v }))}
+                />
+              </div>
+            ))}
 
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3">
               <button
@@ -2807,8 +2865,8 @@ export default function StudentManagement() {
                           <button
                             onClick={() => handleOpenReviewModal(app)}
                             className={`px-3.5 py-1.5 rounded-xl font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all ${app.status === 'Approved'
-                                ? 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
-                                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                              ? 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
+                              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
                               }`}
                             title="Review Application Details & Admit"
                           >
@@ -3065,6 +3123,13 @@ export default function StudentManagement() {
                         <p className="text-slate-950 font-semibold">{selectedStudentToView.studentEmail || selectedStudentToView.studentMail || selectedStudentToView.customData?.studentEmail || selectedStudentToView.customData?.studentMail || '—'}</p>
                       </div>
                     </div>
+                    <CustomFieldsRenderer
+                      moduleKey="students"
+                      readOnly
+                      targets={['personal']}
+                      variant="compact"
+                      customData={selectedStudentToView.customData || {}}
+                    />
                   </div>
 
                   {/* Academic Information */}
@@ -3099,6 +3164,13 @@ export default function StudentManagement() {
                         </div>
                       </div>
                     </div>
+                    <CustomFieldsRenderer
+                      moduleKey="students"
+                      readOnly
+                      targets={['academic']}
+                      variant="compact"
+                      customData={selectedStudentToView.customData || {}}
+                    />
                   </div>
 
                   {/* Parent / Guardian Information */}
@@ -3159,6 +3231,13 @@ export default function StudentManagement() {
                         </div>
                       </div>
                     </div>
+                    <CustomFieldsRenderer
+                      moduleKey="students"
+                      readOnly
+                      targets={['contact']}
+                      variant="compact"
+                      customData={selectedStudentToView.customData || {}}
+                    />
                   </div>
 
                   {/* Address Information */}
@@ -3194,6 +3273,13 @@ export default function StudentManagement() {
                         <p className="text-slate-950 font-semibold">{selectedStudentToView.pincode || selectedStudentToView.customData?.pincode || '—'}</p>
                       </div>
                     </div>
+                    <CustomFieldsRenderer
+                      moduleKey="students"
+                      readOnly
+                      targets={['address']}
+                      variant="compact"
+                      customData={selectedStudentToView.customData || {}}
+                    />
                   </div>
 
                   {/* Other Details */}
@@ -3225,6 +3311,13 @@ export default function StudentManagement() {
                         <p className="text-slate-950 font-semibold whitespace-pre-line">{selectedStudentToView.medicalInfo || selectedStudentToView.customData?.medicalInfo || '—'}</p>
                       </div>
                     </div>
+                    <CustomFieldsRenderer
+                      moduleKey="students"
+                      readOnly
+                      targets={['transport']}
+                      variant="compact"
+                      customData={selectedStudentToView.customData || {}}
+                    />
                   </div>
 
                   {/* Fee Configuration */}
@@ -3258,7 +3351,27 @@ export default function StudentManagement() {
                         <span className="text-primary-700 font-black text-lg">{formatFeeDisplay(selectedStudentToView.totalFee, selectedStudentToView.customData?.totalFee)}</span>
                       </div>
                     </div>
+                    <CustomFieldsRenderer
+                      moduleKey="students"
+                      readOnly
+                      targets={['fee']}
+                      variant="compact"
+                      customData={selectedStudentToView.customData || {}}
+                    />
                   </div>
+
+                  {studentUnmatched.map(sec => (
+                    <div key={sec.id} className="bg-slate-50 dark:bg-slate-800 p-6 rounded-2xl border border-slate-200/60">
+                      <h4 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider mb-4 pb-2 border-b border-slate-200/80">{sec.title}</h4>
+                      <CustomFieldsRenderer
+                        moduleKey="students"
+                        targets={[`section:${sec.id}`]}
+                        readOnly
+                        customData={selectedStudentToView.customData || {}}
+                        variant="compact"
+                      />
+                    </div>
+                  ))}
 
 
 
@@ -3273,8 +3386,8 @@ export default function StudentManagement() {
                             const rate = studentStats.percentage !== undefined ? studentStats.percentage : (studentStats.attendancePercentage ?? 0);
                             return (
                               <span className={`inline-block mt-2 text-xl font-black px-2.5 py-0.5 rounded-full border ${rate >= 75 ? 'bg-green-50 text-green-700 border-green-200' :
-                                  rate >= 50 ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                    'bg-red-50 text-red-700 border-red-200'
+                                rate >= 50 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                  'bg-red-50 text-red-700 border-red-200'
                                 }`}>
                                 {rate}%
                               </span>
@@ -3325,8 +3438,8 @@ export default function StudentManagement() {
                                   <span className="text-slate-400 dark:text-slate-300 ml-2 font-medium">({sessionDisplay})</span>
                                 </div>
                                 <span className={`px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border text-[10px] ${item.status === 'Present' ? 'bg-green-50 text-green-700 border-green-100' :
-                                    item.status === 'Absent' ? 'bg-red-50 text-red-700 border-red-100' :
-                                      'bg-amber-50 text-amber-700 border-amber-100'
+                                  item.status === 'Absent' ? 'bg-red-50 text-red-700 border-red-100' :
+                                    'bg-amber-50 text-amber-700 border-amber-100'
                                   }`}>
                                   {item.status}
                                 </span>
@@ -3534,6 +3647,13 @@ export default function StudentManagement() {
                         {editErrors.studentEmail && <span className="text-red-500 text-xs mt-1 block">{editErrors.studentEmail}</span>}
                       </div>
                     </div>
+                    <CustomFieldsRenderer
+                      moduleKey="students"
+                      targets={['personal']}
+                      variant="compact"
+                      customData={editCustomData}
+                      onChange={(k, v) => setEditCustomData(prev => ({ ...prev, [k]: v }))}
+                    />
                   </div>
 
                   {/* Academic Information Edit */}
@@ -3594,6 +3714,13 @@ export default function StudentManagement() {
                         </select>
                       </div>
                     </div>
+                    <CustomFieldsRenderer
+                      moduleKey="students"
+                      targets={['academic']}
+                      variant="compact"
+                      customData={editCustomData}
+                      onChange={(k, v) => setEditCustomData(prev => ({ ...prev, [k]: v }))}
+                    />
                   </div>
 
                   {/* Parent / Guardian Information Edit */}
@@ -3722,6 +3849,13 @@ export default function StudentManagement() {
                         </div>
                       </div>
                     </div>
+                    <CustomFieldsRenderer
+                      moduleKey="students"
+                      targets={['contact']}
+                      variant="compact"
+                      customData={editCustomData}
+                      onChange={(k, v) => setEditCustomData(prev => ({ ...prev, [k]: v }))}
+                    />
                   </div>
 
                   {/* Address Information Edit */}
@@ -3792,6 +3926,13 @@ export default function StudentManagement() {
                         />
                       </div>
                     </div>
+                    <CustomFieldsRenderer
+                      moduleKey="students"
+                      targets={['address']}
+                      variant="compact"
+                      customData={editCustomData}
+                      onChange={(k, v) => setEditCustomData(prev => ({ ...prev, [k]: v }))}
+                    />
                   </div>
 
                   {/* Other Details Edit */}
@@ -3844,6 +3985,13 @@ export default function StudentManagement() {
                         />
                       </div>
                     </div>
+                    <CustomFieldsRenderer
+                      moduleKey="students"
+                      targets={['transport']}
+                      variant="compact"
+                      customData={editCustomData}
+                      onChange={(k, v) => setEditCustomData(prev => ({ ...prev, [k]: v }))}
+                    />
                   </div>
 
                   {/* Fee Configuration Edit */}
@@ -3891,7 +4039,27 @@ export default function StudentManagement() {
                         <span className="text-primary-700 font-black text-lg">₹{editStudentData.totalFee || '0'}</span>
                       </div>
                     </div>
+                    <CustomFieldsRenderer
+                      moduleKey="students"
+                      targets={['fee']}
+                      variant="compact"
+                      customData={editCustomData}
+                      onChange={(k, v) => setEditCustomData(prev => ({ ...prev, [k]: v }))}
+                    />
                   </div>
+
+                  {studentUnmatched.map(sec => (
+                    <div key={sec.id} className="bg-slate-50/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
+                      <h4 className="text-sm font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-4 pb-2 border-b border-slate-200 dark:border-slate-700">{sec.title}</h4>
+                      <CustomFieldsRenderer
+                        moduleKey="students"
+                        targets={[`section:${sec.id}`]}
+                        customData={editCustomData}
+                        onChange={(k, v) => setEditCustomData(prev => ({ ...prev, [k]: v }))}
+                        variant="compact"
+                      />
+                    </div>
+                  ))}
 
 
 
@@ -4111,8 +4279,8 @@ export default function StudentManagement() {
                     <label
                       key={key}
                       className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer select-none transition-all ${selectedFields[key]
-                          ? 'border-primary-200 bg-primary-50/30 text-primary-900 font-semibold'
-                          : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
+                        ? 'border-primary-200 bg-primary-50/30 text-primary-900 font-semibold'
+                        : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
                         }`}
                     >
                       <input
@@ -4457,8 +4625,8 @@ export default function StudentManagement() {
                       setTimeout(() => setCopiedAdmissionLink(false), 3000);
                     }}
                     className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm ${copiedAdmissionLink
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-primary-600 hover:bg-primary-700 text-white'
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-primary-600 hover:bg-primary-700 text-white'
                       }`}
                   >
                     {copiedAdmissionLink ? <><Check size={16} /> Copied</> : <><Copy size={16} /> Copy</>}
