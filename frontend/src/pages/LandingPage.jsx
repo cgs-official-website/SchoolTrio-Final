@@ -289,7 +289,6 @@ export default function LandingPage() {
               transition={{ duration: 0.8, ease: "easeOut" }}
             >
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-primary-900/50 bg-[#1a1625]/50 backdrop-blur-md text-primary-400 font-bold text-sm mb-8 shadow-sm">
-                <Sparkles size={16} />
                 The Future of Education
               </div>
               

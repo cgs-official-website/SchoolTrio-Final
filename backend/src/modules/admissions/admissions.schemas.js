@@ -127,15 +127,25 @@ export const publicAdmissionSubmitSchema = {
 /**
  * Dynamic Field Schema in Lead Form
  */
-const dynamicFieldSchema = z.object({
-  id: z.string().min(1, 'Field ID is required'),
-  label: z.string().min(1, 'Field label is required').max(200),
-  type: z.enum(validFieldTypes, {
-    errorMap: () => ({ message: `Field type must be one of: ${validFieldTypes.join(', ')}` })
-  }),
-  required: z.boolean().optional().default(false),
-  options: z.array(z.string()).optional().default([])
-});
+const dynamicFieldSchema = z
+  .object({
+    id: z.string().min(1, 'Field ID is required'),
+    label: z.string().min(1, 'Field label is required').max(200),
+    type: z.enum(validFieldTypes, {
+      errorMap: () => ({ message: `Field type must be one of: ${validFieldTypes.join(', ')}` })
+    }),
+    required: z.boolean().optional().default(false),
+    options: z.array(z.string()).optional().default([])
+  })
+  .refine(
+    (field) =>
+      !['dropdown', 'checkbox', 'radio'].includes(field.type) ||
+      field.options.some((o) => o.trim() !== ''),
+    {
+      message: 'Dropdown, checkbox and radio fields must have at least one option',
+      path: ['options']
+    }
+  );
 
 /**
  * Create Dynamic Lead Form Schema

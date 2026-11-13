@@ -23,6 +23,13 @@ import ConfirmModal from '../../components/ConfirmModal';
 import { notifyDataChanged } from '../../utils/liveData';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
+const formatValue = (val) => {
+  if (val === null || val === undefined || val === '') return '';
+  if (Array.isArray(val)) return val.map(formatValue).filter(Boolean).join(', ');
+  if (typeof val === 'object') return Object.values(val).map(formatValue).filter(Boolean).join(' ');
+  return String(val);
+};
+
 export default function LeadsManagement() {
   const { userProfile } = useAuth();
   const schoolId = userProfile?.schoolId;
@@ -73,11 +80,16 @@ export default function LeadsManagement() {
       ]);
 
       const rawLeads = Array.isArray(leadsRes?.data) ? leadsRes.data : [];
-      const normalizedLeads = rawLeads.map(lead => ({
-        ...lead,
-        data: lead.customData || lead.data || {},
-        formTitle: lead.form?.title || lead.formTitle || 'Untitled Form'
-      }));
+      const normalizedLeads = rawLeads.map(lead => {
+        const cd = lead.customData && typeof lead.customData === 'object' ? lead.customData : {};
+        const answers = cd.data && typeof cd.data === 'object' && !Array.isArray(cd.data) ? cd.data : {};
+        return {
+          ...lead,
+          formId: cd.formId || lead.formId || null,
+          formTitle: cd.formTitle || lead.formTitle || 'Untitled Form',
+          data: answers
+        };
+      });
       normalizedLeads.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
       setLeads(normalizedLeads);
 
@@ -126,28 +138,35 @@ export default function LeadsManagement() {
 
   // Form builder: add field to form
   const handleAddField = () => {
-    if (!newFieldLabel.trim()) {
-      toast.error('Field label is required.');
-      return;
-    }
-    const fieldId = 'field_' + Date.now();
-    const parsedOptions = newFieldOptions
-      ? newFieldOptions.split(',').map(o => o.trim()).filter(Boolean)
-      : [];
+  if (!newFieldLabel.trim()) {
+    toast.error('Field label is required.');
+    return;
+  }
 
-    const field = {
-      id: fieldId,
-      label: newFieldLabel,
-      type: newFieldType,
-      required: newFieldRequired,
-      options: parsedOptions
-    };
+  const parsedOptions = newFieldOptions
+    ? newFieldOptions.split(',').map(o => o.trim()).filter(Boolean)
+    : [];
 
-    setFormFields(prev => [...prev, field]);
-    setNewFieldLabel('');
-    setNewFieldRequired(false);
-    setNewFieldOptions('');
+  if (['dropdown', 'checkbox', 'radio'].includes(newFieldType) && parsedOptions.length === 0) {
+    toast.error('Please add at least one option for this field type.');
+    return;
+  }
+
+  const fieldId = 'field_' + Date.now();
+
+  const field = {
+    id: fieldId,
+    label: newFieldLabel.trim(),
+    type: newFieldType,
+    required: newFieldRequired,
+    options: ['dropdown', 'checkbox', 'radio'].includes(newFieldType) ? parsedOptions : []
   };
+
+  setFormFields(prev => [...prev, field]);
+  setNewFieldLabel('');
+  setNewFieldRequired(false);
+  setNewFieldOptions('');
+};
 
   // Form builder: delete field
   const handleRemoveField = (fieldId) => {
@@ -321,8 +340,7 @@ export default function LeadsManagement() {
           } else if (field.key === 'submittedAt') {
             row['Submitted Date'] = lead.submittedAt ? new Date(lead.submittedAt).toLocaleDateString('en-GB') : '-';
           } else {
-            const val = lead.data?.[field.key];
-            row[field.label] = Array.isArray(val) ? val.join(', ') : (val || '');
+            row[field.label] = formatValue(lead.data?.[field.key]);
           }
         });
         return row;
@@ -361,6 +379,18 @@ export default function LeadsManagement() {
     if (status === 'Warm') return 'bg-amber-50 text-amber-600 border-amber-200';
     return 'bg-blue-50 text-blue-600 border-blue-200'; // Cold
   };
+
+  const getLeadName = (lead) => {
+  if (lead.name && lead.name !== 'Prospective Student') return lead.name;
+
+  const form = forms.find(f => f.id === lead.formId);
+  const fields = form?.fields || [];
+  const nameFields = fields.filter(f => /name/i.test(f.label || ''));
+  const nameField = nameFields.find(f => /student/i.test(f.label)) || nameFields[0];
+
+  const val = nameField ? lead.data?.[nameField.id] : null;
+  return typeof val === 'string' && val.trim() ? val.trim() : (lead.name || '');
+};
 
   return (
     <div className="space-y-6 font-sans">
@@ -504,7 +534,7 @@ export default function LeadsManagement() {
                     <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
                       <th className="p-4 text-xs font-bold text-slate-400 dark:text-slate-300 pl-6">Submitted Date</th>
                       <th className="p-4 text-xs font-bold text-slate-400 dark:text-slate-300">Source Form</th>
-                      <th className="p-4 text-xs font-bold text-slate-400 dark:text-slate-300">Primary Contact / Details</th>
+                      <th className="p-4 text-xs font-bold text-slate-400 dark:text-slate-300">Contact Details</th>
                       <th className="p-4 text-xs font-bold text-slate-400 dark:text-slate-300">Status</th>
                       <th className="p-4 text-xs font-bold text-slate-400 dark:text-slate-300 text-right pr-6">Actions</th>
                     </tr>
@@ -512,8 +542,12 @@ export default function LeadsManagement() {
                   <tbody>
                     {filteredLeads.map((lead) => {
                       // Attempt to construct a summary details preview
-                      const values = Object.values(lead.data || {});
-                      const summaryPreview = values.slice(0, 3).map(val => Array.isArray(val) ? val.join(', ') : val).join(' | ');
+                      const contact = [getLeadName(lead), lead.phone, lead.email, lead.gradeInterested].filter(Boolean).join(' | ');
+                      const summaryPreview = contact || Object.values(lead.data || {})
+                        .slice(0, 3)
+                        .map(formatValue)
+                        .filter(Boolean)
+                        .join(' | ');
 
                       return (
                         <tr key={lead.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
@@ -742,7 +776,9 @@ export default function LeadsManagement() {
 
                     {['dropdown', 'checkbox', 'radio'].includes(newFieldType) && (
                       <div className="md:col-span-4 space-y-1">
-                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Options (comma-separated list)</label>
+                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">
+                          Options (comma-separated list) <span className="text-red-500">*</span>
+                        </label>
                         <input 
                           type="text" 
                           placeholder="e.g. Option A, Option B, Option C"
@@ -844,12 +880,11 @@ export default function LeadsManagement() {
                     const matchingForm = forms.find(f => f.id === selectedLead.formId);
                     const matchingField = matchingForm?.fields?.find(fld => fld.id === key);
                     const label = matchingField ? matchingField.label : key;
-
                     return (
                       <div key={key} className="space-y-1">
                         <span className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">{label}</span>
                         <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100 bg-slate-50/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-3 rounded-xl leading-relaxed">
-                          {Array.isArray(val) ? val.join(', ') : (val || '-')}
+                          {formatValue(val) || '-'}
                         </span>
                       </div>
                     );

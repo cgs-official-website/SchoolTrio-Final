@@ -413,7 +413,7 @@ export default function PublicAdmissionForm() {
 
           <div className="text-center sm:text-left flex-1">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100/80 text-emerald-800 text-xs font-bold uppercase tracking-wider mb-2">
-              <Sparkles size={14} /> Official Online Admission Portal
+              Official Online Admission Portal
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
               {school?.schoolName || 'School Student Admission'}

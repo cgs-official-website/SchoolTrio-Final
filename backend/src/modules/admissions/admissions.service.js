@@ -403,14 +403,22 @@ export async function submitPublicLead(schoolId, formId, submissionData) {
     let leadEmail = null;
     let gradeInterested = null;
 
+    const nameFields = fieldList.filter(f => (f.label || '').toLowerCase().includes('name'));
+    const preferredNameField =
+      nameFields.find(f => (f.label || '').toLowerCase().includes('student')) || nameFields[0];
+
+    if (preferredNameField) {
+      const nameVal = rawData[preferredNameField.id];
+      if (typeof nameVal === 'string' && nameVal.trim()) {
+        leadName = nameVal.trim();
+      }
+    }
+
     for (const field of fieldList) {
       const val = rawData[field.id];
       if (!val) continue;
 
       const lbl = (field.label || '').toLowerCase();
-      if (lbl.includes('name') && !leadName.includes(' ') && typeof val === 'string') {
-        leadName = val.trim();
-      }
       if ((lbl.includes('phone') || lbl.includes('mobile') || field.type === 'phone') && !leadPhone && typeof val === 'string') {
         leadPhone = val.trim();
       }
