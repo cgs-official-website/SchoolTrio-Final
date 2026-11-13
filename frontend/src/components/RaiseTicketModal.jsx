@@ -57,11 +57,24 @@ function getTimeMs(val) {
   }
 }
 
+// Central Support Desk API base domain (configurable via VITE_ZUNA_CENTRAL_API_URL, defaults to https://zuna-parent-production.up.railway.app)
+const getZunaCentralApiUrl = () => {
+  let customUrl = (import.meta.env.VITE_ZUNA_CENTRAL_API_URL || '').trim();
+  if (!customUrl) {
+    customUrl = 'https://zuna-parent-production.up.railway.app';
+  }
+  customUrl = customUrl.replace(/\/+$/, '');
+  if (!customUrl.startsWith('http://') && !customUrl.startsWith('https://')) {
+    customUrl = `https://${customUrl}`;
+  }
+  return customUrl;
+};
+
 export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School Administrator', schoolEmail = '' }) {
   const [activeTab, setActiveTab] = useState('raise'); // 'raise' | 'history'
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState('medium');
+  const [priority, setPriority] = useState('MEDIUM');
   const [productSystem, setProductSystem] = useState('School Management System');
   const [productFilter, setProductFilter] = useState('all');
   const [loading, setLoading] = useState(false);
@@ -149,17 +162,45 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
     setSuccessMsg('');
 
     try {
-      const ticketId = `TK-${Math.floor(1000 + Math.random() * 9000)}`;
+      const formattedPriority = (priority || 'MEDIUM').toUpperCase();
+      const payload = {
+        clientName: (schoolName || 'School Administrator').trim(),
+        clientEmail: (schoolEmail || 'admin@school.com').trim(),
+        subject: subject.trim(),
+        description: description.trim(),
+        priority: formattedPriority,
+        productNameSnapshot: 'School Management System'
+      };
+
+      const ingestionEndpoint = `${getZunaCentralApiUrl()}/api/public/tickets/from-web-form`;
+
+      const response = await fetch(ingestionEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok || !result?.success) {
+        const errorText = (typeof result?.error === 'string' ? result.error : result?.error?.message) || result?.message || `Failed with HTTP status ${response.status}`;
+        throw new Error(errorText);
+      }
+
+      const ticketId = result?.data?.ticketId || `TK-${Math.floor(1000 + Math.random() * 9000)}`;
       const newTicket = {
         id: ticketId,
         productId: 'school-management',
         productName: 'School Management System',
-        clientName: schoolName,
-        clientEmail: schoolEmail,
+        productNameSnapshot: 'School Management System',
+        clientName: payload.clientName,
+        clientEmail: payload.clientEmail,
         school: schoolName,
-        subject: subject.trim(),
-        description: description.trim(),
-        priority,
+        subject: payload.subject,
+        description: payload.description,
+        priority: formattedPriority,
         status: 'open',
         createdAt: new Date().toISOString(),
         messages: [
@@ -199,7 +240,7 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
         } catch (bcErr) {}
       }
 
-      setSuccessMsg('✓ Support ticket submitted! Zuna SuperAdmin will reply shortly.');
+      setSuccessMsg(`✓ Ticket #${ticketId} submitted successfully to Zuna Central Support Desk!`);
       setSubject('');
       setDescription('');
       setTimeout(() => {
@@ -207,8 +248,8 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
         setActiveTab('history');
       }, 1500);
     } catch (err) {
-      console.error('Error raising ticket:', err);
-      setErrorMsg('Failed to submit support ticket. Please try again.');
+      console.error('Error raising ticket to public ingestion endpoint:', err);
+      setErrorMsg(`Failed to submit support ticket: ${err.message || 'Please check that the support desk server is reachable.'}`);
     } finally {
       setLoading(false);
     }
@@ -244,7 +285,7 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
   };
 
   const getStatusBadge = (status) => {
-    switch(status) {
+    switch((status || '').toLowerCase()) {
       case 'resolved': return <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-md text-xs font-bold flex items-center gap-1"><LuCircleCheck size={12}/> Resolved</span>;
       case 'in-progress': return <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-md text-xs font-bold flex items-center gap-1"><LuClock size={12}/> In Progress</span>;
       default: return <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-md text-xs font-bold flex items-center gap-1"><LuMessageSquare size={12}/> Open</span>;
@@ -336,10 +377,10 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
                   value={priority}
                   onChange={(e) => setPriority(e.target.value)}
                 >
-                  <option value="low">Low Priority</option>
-                  <option value="medium">Medium Priority</option>
-                  <option value="high">High Priority</option>
-                  <option value="urgent">⚡ Urgent Priority</option>
+                  <option value="LOW">Low Priority</option>
+                  <option value="MEDIUM">Medium Priority</option>
+                  <option value="HIGH">High Priority</option>
+                  <option value="URGENT">⚡ Urgent Priority</option>
                 </select>
               </div>
               <div>
