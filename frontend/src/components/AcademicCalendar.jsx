@@ -79,6 +79,12 @@ export default function AcademicCalendar({ isAdmin }) {
   const [newEvent, setNewEvent] = useState({ title: '', start: '', end: '', type: 'event', isCustomDates: false, customDates: [] });
   const [currentDate, setCurrentDate] = useState(new Date());
 
+  // Past dates are blocked (greyed out in the date picker) when creating a NEW event.
+  // Editing an existing event keeps its original dates untouched.
+  const todayStr = formatLocalDate(new Date());
+  const isCreating = !selectedEvent;
+  const minDateForNew = isCreating ? todayStr : undefined;
+
   const fetchEvents = useCallback(async () => {
     try {
       const res = await calendarApi.listEvents();
@@ -149,6 +155,13 @@ export default function AcademicCalendar({ isAdmin }) {
     if (!isAdmin) return;
     // Block double-click / double-submit while a save is already running
     if (savingRef.current) return;
+    if (!selectedEvent) {
+      const pickedDates = newEvent.isCustomDates ? (newEvent.customDates || []) : [newEvent.start, newEvent.end].filter(Boolean);
+      if (pickedDates.some(d => d < todayStr)) {
+        toast.error("Events cannot be created for past dates.");
+        return;
+      }
+    }
     savingRef.current = true;
     setIsSaving(true);
 
@@ -401,6 +414,7 @@ export default function AcademicCalendar({ isAdmin }) {
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Start Date</label>
                     <input
                       type="date" required={!newEvent.isCustomDates}
+                      min={minDateForNew}
                       value={newEvent.start} onChange={e => setNewEvent({ ...newEvent, start: e.target.value })}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500"
                     />
@@ -409,6 +423,7 @@ export default function AcademicCalendar({ isAdmin }) {
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">End Date</label>
                     <input
                       type="date" required={!newEvent.isCustomDates}
+                      min={isCreating ? (newEvent.start && newEvent.start > todayStr ? newEvent.start : todayStr) : undefined}
                       value={newEvent.end} onChange={e => setNewEvent({ ...newEvent, end: e.target.value })}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500"
                     />
@@ -421,6 +436,7 @@ export default function AcademicCalendar({ isAdmin }) {
                     <input
                       type="date"
                       id="customDateInput"
+                      min={minDateForNew}
                       className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                     />
                     <button
@@ -428,6 +444,10 @@ export default function AcademicCalendar({ isAdmin }) {
                       onClick={() => {
                         const dateInput = document.getElementById('customDateInput');
                         const dateVal = dateInput?.value;
+                        if (dateVal && isCreating && dateVal < todayStr) {
+                          toast.error("Past dates are not allowed.");
+                          return;
+                        }
                         if (dateVal && !newEvent.customDates.includes(dateVal)) {
                           setNewEvent({ ...newEvent, customDates: [...newEvent.customDates, dateVal].sort() });
                           if (dateInput) dateInput.value = '';

@@ -26,7 +26,8 @@ import {
   LuPencil as Edit3,
   LuClock as Clock,
   LuArrowRight as ArrowRight,
-  LuTrash2 as Trash2
+  LuTrash2 as Trash2,
+  LuChevronRight as ChevronRight
 } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 import ReportTemplateBuilder from './ReportTemplateBuilder';
@@ -132,6 +133,7 @@ export default function ExamManagement() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [editingExamId, setEditingExamId] = useState(null);
+  const [viewingExam, setViewingExam] = useState(null); // read-only 'View details' modal
   const [allSubjects, setAllSubjects] = useState([]);
   const [examProgress, setExamProgress] = useState(null);
   const [viewingProgressExam, setViewingProgressExam] = useState(null);
@@ -663,18 +665,18 @@ export default function ExamManagement() {
     return selectableReportClassOptions.find(u => u.id === selectedReportUnitId) || null;
   }, [selectableReportClassOptions, selectedReportUnitId]);
 
-   const examsForSelectedUnit = useMemo(() => {
-  if (!selectedReportUnit) return [];
-  const { classId, sectionId } = selectedReportUnit;
-  const norm = (s) => (s || '').trim().toLowerCase();
-  const rank = (e) => (e.sectionId ? 3 : e.classId ? 2 : 1); // section > class > all-classes
+  const examsForSelectedUnit = useMemo(() => {
+    if (!selectedReportUnit) return [];
+    const { classId, sectionId } = selectedReportUnit;
+    const norm = (s) => (s || '').trim().toLowerCase();
+    const rank = (e) => (e.sectionId ? 3 : e.classId ? 2 : 1); // section > class > all-classes
 
-  const matches = exams.filter(e =>
-    (!e.classId || e.classId === classId) &&
-    (!e.sectionId || e.sectionId === sectionId)
-  );
+    const matches = exams.filter(e =>
+      (!e.classId || e.classId === classId) &&
+      (!e.sectionId || e.sectionId === sectionId)
+    );
 
-  const byKey = new Map();
+    const byKey = new Map();
     matches.forEach(e => {
       const key = `${norm(e.name)}|${e.academicYear || ''}|${norm(e.term)}`;
       const current = byKey.get(key);
@@ -866,13 +868,6 @@ export default function ExamManagement() {
                           </div>
                         </div>
                         <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-1">{exam.name}</h3>
-                          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
-                            {exam.classId
-                              ? (selectableReportClassOptions.find(u =>
-                                  u.classId === exam.classId && (u.sectionId || null) === (exam.sectionId || null)
-                                )?.label || classes.find(c => c.id === exam.classId)?.name || 'Class')
-                              : 'All Classes'}
-                          </p>                        
                         <div className="flex flex-col gap-2 text-sm text-slate-500 dark:text-slate-400 mb-4">
                           <div className="flex items-center gap-2 font-medium text-slate-600 dark:text-slate-300">
                             <FileText size={16} className="text-primary-500" />
@@ -888,18 +883,13 @@ export default function ExamManagement() {
                               {exam.startDate ? new Date(exam.startDate).toLocaleDateString('en-GB') : '-'} - {exam.endDate ? new Date(exam.endDate).toLocaleDateString('en-GB') : '-'}
                             </div>
                           )}
-                          {exam.subjectsConfig && Array.isArray(exam.subjectsConfig) && exam.subjectsConfig.length > 0 && (
-                            <div className="text-xs bg-slate-50 dark:bg-slate-800 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 mt-1">
-                              <span className="font-bold text-slate-700 dark:text-slate-300">{exam.subjectsConfig.length} Subjects Configured</span>
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {exam.subjectsConfig.map((sc, i) => (
-                                  <span key={i} className="px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-[11px] text-slate-600 dark:text-slate-300">
-                                    {sc.subjectName || 'Subject'} ({sc.maxMarks}m){sc.examDate ? ` · ${new Date(`${sc.examDate}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}` : ''}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => setViewingExam(exam)}
+                            className="self-start mt-1 inline-flex items-center gap-0.5 text-xs font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-400 hover:underline transition-colors"
+                          >
+                            View details <ChevronRight size={14} />
+                          </button>
                         </div>
                       </div>
 
@@ -967,49 +957,49 @@ export default function ExamManagement() {
             <div className="flex flex-col h-full">
               <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row gap-4 items-end bg-slate-50/50 dark:bg-slate-800/50">
                 <div className="flex-1 w-full">
-                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Class</label>
-                <select
-                  value={selectedReportUnitId}
-                  onChange={(e) => {
-                    const newUnitId = e.target.value;
-                    setSelectedReportUnitId(newUnitId);
-                    const unit = selectableReportClassOptions.find(u => u.id === newUnitId);
-                    setSelectedClassId(unit?.classId || '');
-                    setSelectedExamId('');   
-                    setReportData(null);
-                  }}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200! bg-white! text-black! focus:ring-2 focus:ring-primary-500"
-                >
-                  <option value="" className="text-black bg-white dark:bg-slate-900">-- Choose Class --</option>
-                  {selectableReportClassOptions.map(opt => (
-                    <option key={opt.id} value={opt.id} className="text-black bg-white dark:bg-slate-900">
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Class</label>
+                  <select
+                    value={selectedReportUnitId}
+                    onChange={(e) => {
+                      const newUnitId = e.target.value;
+                      setSelectedReportUnitId(newUnitId);
+                      const unit = selectableReportClassOptions.find(u => u.id === newUnitId);
+                      setSelectedClassId(unit?.classId || '');
+                      setSelectedExamId('');
+                      setReportData(null);
+                    }}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200! bg-white! text-black! focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="" className="text-black bg-white dark:bg-slate-900">-- Choose Class --</option>
+                    {selectableReportClassOptions.map(opt => (
+                      <option key={opt.id} value={opt.id} className="text-black bg-white dark:bg-slate-900">
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div className="flex-1 w-full">
-                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Exam</label>
-                <select
-                  value={selectedExamId}
-                  disabled={!selectedReportUnitId}
-                  onChange={(e) => {
-                    setSelectedExamId(e.target.value);
-                    setReportData(null);
-                  }}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200! bg-white! text-black! focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
-                >
-                  <option value="" className="text-black bg-white dark:bg-slate-900">
-                    {selectedReportUnitId ? '-- Choose Exam --' : 'Select a class first'}
-                  </option>
-                  {examsForSelectedUnit.map(e => (
-                    <option key={e.id} value={e.id} className="text-black bg-white dark:bg-slate-900">
-                      {e.name}{e.term ? ` · ${e.term}` : ''}{e.academicYear ? ` (${e.academicYear})` : ''}
+                <div className="flex-1 w-full">
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Exam</label>
+                  <select
+                    value={selectedExamId}
+                    disabled={!selectedReportUnitId}
+                    onChange={(e) => {
+                      setSelectedExamId(e.target.value);
+                      setReportData(null);
+                    }}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200! bg-white! text-black! focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+                  >
+                    <option value="" className="text-black bg-white dark:bg-slate-900">
+                      {selectedReportUnitId ? '-- Choose Exam --' : 'Select a class first'}
                     </option>
-                  ))}
-                </select>
-              </div>
+                    {examsForSelectedUnit.map(e => (
+                      <option key={e.id} value={e.id} className="text-black bg-white dark:bg-slate-900">
+                        {e.name}{e.term ? ` · ${e.term}` : ''}{e.academicYear ? ` (${e.academicYear})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <button
                   onClick={generateReportCard}
                   disabled={!selectedExamId || (!selectedReportUnitId && !selectedClassId) || generatingReport}
@@ -1688,6 +1678,107 @@ export default function ExamManagement() {
           </div>
         </div>
       )}
+
+      {/* View Exam Details Modal (read-only; mirrors the fields of the edit form) */}
+      {viewingExam && (() => {
+        const vStatus = viewingExam.status || 'DRAFT';
+        const vFinalized = vStatus === 'FINALIZED';
+        const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB') : '-');
+        const subjects = Array.isArray(viewingExam.subjectsConfig) ? viewingExam.subjectsConfig : [];
+        const Field = ({ label, value }) => (
+          <div>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">{label}</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">{value || '-'}</p>
+          </div>
+        );
+        return (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6" onClick={() => setViewingExam(null)}>
+            <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-3xl shadow-2xl overflow-hidden animate-fade-in-up flex flex-col max-h-[92vh]" onClick={(e) => e.stopPropagation()}>
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800 shrink-0">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <FileText className="text-primary-600" /> Exam Details
+                  <span className={`ml-2 px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${vFinalized
+                    ? 'bg-purple-100 text-purple-800'
+                    : vStatus === 'PUBLISHED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                    {vStatus}
+                  </span>
+                </h2>
+                <button onClick={() => setViewingExam(null)} className="p-2 text-slate-400 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+                <Field label="Exam Name" value={viewingExam.name} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <Field label="Exam Type" value={viewingExam.examType} />
+                  <Field label="Term" value={viewingExam.term} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <Field label="Target Class & Section" value={getExamClassSectionLabel(viewingExam, classes)} />
+                  <Field label="Academic Year" value={viewingExam.academicYear} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <Field label="Start Date" value={fmtDate(viewingExam.startDate)} />
+                  <Field label="End Date" value={fmtDate(viewingExam.endDate)} />
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-3">
+                    Subjects & Mark Scheme ({subjects.length} Subject{subjects.length === 1 ? '' : 's'} Configured)
+                  </h4>
+                  {subjects.length === 0 ? (
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl text-center text-xs text-slate-500">
+                      No subjects configured for this exam.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {subjects.map((sc, idx) => (
+                        <div key={sc.subjectId || idx} className="p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+                          <span className="font-bold text-sm text-slate-900 dark:text-white block mb-2">{sc.subjectName || 'Subject'}</span>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            <div>
+                              <span className="text-[10px] text-slate-400 block font-semibold">Exam Date</span>
+                              <span className="font-bold text-slate-700 dark:text-slate-200">{sc.examDate ? new Date(`${sc.examDate}T00:00:00`).toLocaleDateString('en-GB') : '-'}</span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-400 block font-semibold">Max</span>
+                              <span className="font-bold text-slate-700 dark:text-slate-200">{sc.maxMarks ?? '-'}</span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-400 block font-semibold">Pass</span>
+                              <span className="font-bold text-slate-700 dark:text-slate-200">{sc.passMarks ?? '-'}</span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-400 block font-semibold">Weightage %</span>
+                              <span className="font-bold text-slate-700 dark:text-slate-200">{sc.weightage ?? 100}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-6 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 shrink-0">
+                <button type="button" onClick={() => setViewingExam(null)} className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors">
+                  Close
+                </button>
+                {!vFinalized && (
+                  <button
+                    type="button"
+                    onClick={() => { const ex = viewingExam; setViewingExam(null); openEditModal(ex); }}
+                    className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 rounded-xl shadow-sm transition-colors"
+                  >
+                    <Edit3 size={14} /> Edit
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Create Exam Modal */}
       {showCreateModal && (

@@ -31,6 +31,21 @@ export async function uploadAcademicResourceFile(req, res, next) {
   try {
     const schoolId = req.tenant?.schoolId;
     if (!req.file) throw new ValidationError('No file provided');
+    const declaredType = String(req.body?.type || '').toLowerCase();
+    const TYPE_RULES = {
+      document: { exts: ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'csv', 'rtf', 'odt'], mime: null },
+      video: { exts: ['mp4', 'webm', 'mov', 'mkv', 'avi', 'm4v'], mime: 'video/' },
+      image: { exts: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'], mime: 'image/' }
+    };
+    if (declaredType === 'link') throw new ValidationError('A link resource cannot have a file upload');
+    const rule = TYPE_RULES[declaredType];
+    if (rule) {
+      const ext = (req.file.originalname.split('.').pop() || '').toLowerCase();
+      const mimeOk = rule.mime ? (req.file.mimetype || '').startsWith(rule.mime) : false;
+      if (!mimeOk && !rule.exts.includes(ext)) {
+        throw new ValidationError(`The selected file is not a valid ${declaredType} file`);
+      }
+    }
     const fileUrl = await storeResourceFile(req.file, schoolId, req);
     return ApiResponse.success(
       res,

@@ -113,8 +113,9 @@ export async function deleteAcademicResource(id) {
  * @param {File} file - File to upload (max 3MB)
  * @returns {Promise<{ success: boolean, data: { fileUrl: string, fileName: string, size: number } }>}
  */
-export async function uploadAcademicResourceFile(file) {
+export async function uploadAcademicResourceFile(file, type) {
   const formData = new FormData();
+  if (type) formData.append('type', type); // must come before the file so the server can validate it
   formData.append('file', file);
   return apiClient('/api/v1/academic-resources/upload', {
     method: 'POST',

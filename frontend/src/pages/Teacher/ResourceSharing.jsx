@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { LuFolderDown, LuSearch, LuPlus, LuFileText, LuLink, LuVideo, LuImage, LuTrash2, LuDownload, LuExternalLink, LuX, LuChevronDown, LuCheck } from 'react-icons/lu';
+import { LuFolderDown, LuSearch, LuPlus, LuFileText, LuLink, LuVideo, LuImage, LuTrash2, LuDownload, LuExternalLink, LuX, LuChevronDown, LuCheck, LuFolderUp } from 'react-icons/lu';
 import { useAuth } from '../../context/AuthContext';
 import { listAcademicResources, createAcademicResource, deleteAcademicResource, uploadAcademicResourceFile, getResourceUploadConfig } from '../../api/academic-resources';
 import { listClasses } from '../../api/classes';
@@ -21,6 +21,41 @@ function describeApiError(err, fallback) {
     : '';
   const base = err.message || fallback;
   return detail ? `${base} (${detail})` : base;
+}
+
+/** What each Resource Type accepts (extensions are checked alongside the MIME type). */
+const RESOURCE_TYPE_RULES = {
+  document: {
+    label: 'Document',
+    accept: '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.rtf,.odt',
+    exts: ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'csv', 'rtf', 'odt'],
+    mimePrefix: null,
+    hint: 'PDF, Word, PowerPoint, Excel or text files'
+  },
+  video: {
+    label: 'Video',
+    accept: 'video/*,.mp4,.webm,.mov,.mkv,.avi,.m4v',
+    exts: ['mp4', 'webm', 'mov', 'mkv', 'avi', 'm4v'],
+    mimePrefix: 'video/',
+    hint: 'Video files (MP4, WebM, MOV, MKV, AVI)'
+  },
+  image: {
+    label: 'Image',
+    accept: 'image/*,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg',
+    exts: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'],
+    mimePrefix: 'image/',
+    hint: 'Images only (PNG, JPG, GIF, WebP, SVG)'
+  }
+};
+
+/** Returns an error message when the file does not match the chosen resource type, else ''. */
+function validateFileForType(file, type) {
+  const rule = RESOURCE_TYPE_RULES[type];
+  if (!rule || !file) return '';
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const mimeOk = rule.mimePrefix ? (file.type || '').startsWith(rule.mimePrefix) : false;
+  if (mimeOk || rule.exts.includes(ext)) return '';
+  return `"${file.name}" is not a valid ${rule.label.toLowerCase()} file. Allowed: ${rule.hint}.`;
 }
 
 /**
@@ -138,6 +173,9 @@ export default function ResourceSharing() {
   // null => admin (every class/section/subject); array => only the targets this teacher may post to
   const [allowedTargets, setAllowedTargets] = useState(null);
 
+  // Admin => every class/section; teacher => ONLY what they handle (none until the server answers)
+  const effectiveTargets = isAdmin ? null : (allowedTargets || []);
+
   // One option per Class + Section (class without sections => single option)
   const targetOptions = [];
   for (const c of classes) {
@@ -151,8 +189,8 @@ export default function ResourceSharing() {
       }))
       : [{ key: `${c.id}:`, classId: c.id, sectionId: null, label: formatClassSection({ name: c.name }) }];
     for (const opt of candidates) {
-      if (!allowedTargets) { targetOptions.push({ ...opt, allSubjects: true, subjectIds: [] }); continue; }
-      const match = allowedTargets.find(t => t.classId === opt.classId && (t.sectionId || null) === opt.sectionId);
+      if (!effectiveTargets) { targetOptions.push({ ...opt, allSubjects: true, subjectIds: [] }); continue; }
+      const match = effectiveTargets.find(t => t.classId === opt.classId && (t.sectionId || null) === opt.sectionId);
       if (match) targetOptions.push({ ...opt, allSubjects: !!match.allSubjects, subjectIds: match.subjectIds || [] });
     }
   }
@@ -169,9 +207,12 @@ export default function ResourceSharing() {
   const selectedTargets = targetOptions.filter(o => selectedKeys.includes(o.key));
   const sendToAll = targetOptions.length > 1 && selectedTargets.length === targetOptions.length;
   // A subject is selectable only if the sender may post it to EVERY selected class/section
-  const selectableSubjects = !allowedTargets || selectedTargets.length === 0
+  // (teacher: class teacher of the section => every subject; subject teacher => only the subjects they teach there)
+  const selectableSubjects = !effectiveTargets
     ? subjects
-    : subjects.filter(sub => selectedTargets.every(o => o.allSubjects || o.subjectIds.includes(sub.id)));
+    : selectedTargets.length === 0
+      ? []
+      : subjects.filter(sub => selectedTargets.every(o => o.allSubjects || o.subjectIds.includes(sub.id)));
 
   // Drop the chosen subject if the class/section selection no longer allows it
   useEffect(() => {
@@ -180,6 +221,9 @@ export default function ResourceSharing() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedKeys, allowedTargets]);
+
+  // "General / None" is only for admins and class teachers (subject teachers must pick their subject)
+  const canUseGeneral = !effectiveTargets || (selectedTargets.length > 0 && selectedTargets.every(o => o.allSubjects));
   const fetchMetadata = useCallback(async () => {
     if (!schoolId) return;
     try {
@@ -328,23 +372,39 @@ export default function ResourceSharing() {
       toast.error("Please select at least one class / section (or All Class).");
       return;
     }
+    if (!isAdmin && !formData.subjectId && !canUseGeneral) {
+      toast.error("Please select the subject you teach for this class / section.");
+      return;
+    }
     const isLinkType = formData.type === 'link';
     const typedUrl = (formData.url || '').trim();
+    const isValidUrl = (u) => {
+      try { const x = new URL(u); return x.protocol === 'http:' || x.protocol === 'https:'; } catch { return false; }
+    };
     if (isLinkType) {
       if (!typedUrl) {
         toast.error("Please paste the web link.");
         return;
       }
-      if (!/^https?:\/\/\S+$/i.test(typedUrl)) {
-        toast.error("Link must start with http:// or https://");
+      if (!isValidUrl(typedUrl)) {
+        toast.error("Please enter a valid link starting with http:// or https://");
         return;
       }
-    } else if (!selectedFile && !typedUrl) {
-      toast.error("Please select a file or provide a link.");
-      return;
-    } else if (!selectedFile && typedUrl && !/^https?:\/\/\S+$/i.test(typedUrl)) {
-      toast.error("Link must start with http:// or https://");
-      return;
+    } else {
+      if (!selectedFile && !typedUrl) {
+        toast.error(formData.type === 'video'
+          ? "Please upload a video file or paste a video link."
+          : `Please select a ${formData.type} file to upload.`);
+        return;
+      }
+      if (selectedFile) {
+        const fileError = validateFileForType(selectedFile, formData.type);
+        if (fileError) { toast.error(fileError); return; }
+      }
+      if (!selectedFile && typedUrl && !isValidUrl(typedUrl)) {
+        toast.error("Please enter a valid link starting with http:// or https://");
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -354,7 +414,7 @@ export default function ResourceSharing() {
       let fileUrl = typedUrl;
       if (selectedFile && !isLinkType) {
         try {
-          const uploadRes = await uploadAcademicResourceFile(selectedFile);
+          const uploadRes = await uploadAcademicResourceFile(selectedFile, formData.type);
           fileUrl = uploadRes?.data?.fileUrl || uploadRes?.fileUrl || '';
           if (!fileUrl) throw new Error('Upload did not return a file URL');
         } catch (uploadError) {
@@ -520,7 +580,7 @@ export default function ResourceSharing() {
                           </p>
                         </div>
                       </div>
-                      {isMulti && (
+                      {isAdmin && isMulti && (
                         <span
                           className="shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 whitespace-nowrap"
                           title={rowLabels.join(', ')}
@@ -542,9 +602,11 @@ export default function ResourceSharing() {
                       <span className="px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider bg-primary-50 text-primary-600">
                         {resourceSubject}
                       </span>
-                      <span className={`px-2.5 py-1 rounded-lg text-xs font-bold tracking-wider ${resource.audience === 'teachers_students' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                        {resource.audience === 'teachers_students' ? 'Teachers + Students' : 'Teachers only'}
-                      </span>
+                      {isAdmin && (
+                        <span className={`px-2.5 py-1 rounded-lg text-xs font-bold tracking-wider ${resource.audience === 'teachers_students' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                          {resource.audience === 'teachers_students' ? 'Teachers + Students' : 'Teachers only'}
+                        </span>
+                      )}
                     </div>
 
                     <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center mt-auto">
@@ -635,7 +697,11 @@ export default function ResourceSharing() {
                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-200 mb-2">Resource Type</label>
                 <select
                   value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  onChange={(e) => {
+                    // a file/link chosen for one type is not valid for another -> start clean
+                    setFormData({ ...formData, type: e.target.value, url: '' });
+                    setSelectedFile(null);
+                  }}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:outline-none text-sm font-medium"
                 >
                   <option value="document">Document (PDF/Doc)</option>
@@ -665,7 +731,9 @@ export default function ResourceSharing() {
                   onChange={(e) => setFormData({ ...formData, subjectId: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:outline-none text-sm font-medium"
                 >
-                  <option value="">General / None</option>
+                  {canUseGeneral
+                    ? <option value="">General / None</option>
+                    : <option value="" disabled>Select your subject</option>}
                   {selectableSubjects.map(s => (
                     <option key={s.id} value={s.id}>
                       {s.name}
@@ -673,9 +741,13 @@ export default function ResourceSharing() {
                   ))}
                 </select>
                 <p className="text-xs text-slate-400 dark:text-slate-300 mt-1.5">
-                  {formData.subjectId
-                    ? "Shared only with this section's class teacher and the teacher of this subject."
-                    : "General: shared with the class teacher and every teacher of this section."}
+                  {isAdmin
+                    ? (formData.subjectId
+                      ? "Shared only with this section's class teacher and the teacher of this subject."
+                      : "General: shared with the class teacher and every teacher of this section.")
+                    : (canUseGeneral
+                      ? "Class teacher: choose any subject, or General for the whole section."
+                      : "Only the subjects you teach in the selected class / section are listed.")}
                 </p>
               </div>
 
@@ -696,19 +768,26 @@ export default function ResourceSharing() {
 
               {formData.type !== 'link' && (
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-200 mb-2">Upload File</label>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-200 mb-2">Upload {RESOURCE_TYPE_RULES[formData.type]?.label || 'File'}</label>
                   <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-200 dark:border-slate-700 border-dashed rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer relative group">
                     <div className="space-y-1 text-center">
-                      <LuFolderDown className="mx-auto h-12 w-12 text-slate-400 dark:text-slate-300 group-hover:text-primary-500 transition-colors" />
+                      <LuFolderUp className="mx-auto h-12 w-12 text-slate-400 dark:text-slate-300 group-hover:text-primary-500 transition-colors" />
                       <div className="flex text-sm text-slate-600 dark:text-slate-300 justify-center">
                         <label className="relative cursor-pointer bg-white dark:bg-slate-900 rounded-md font-bold text-primary-600 hover:text-primary-700 focus-within:outline-none">
                           <span>{selectedFile ? 'Change file' : 'Select a file'}</span>
                           <input
                             type="file"
+                            accept={RESOURCE_TYPE_RULES[formData.type]?.accept}
                             className="sr-only"
                             onChange={(e) => {
                               const file = e.target.files[0];
                               if (file) {
+                                const fileError = validateFileForType(file, formData.type);
+                                if (fileError) {
+                                  toast.error(fileError);
+                                  e.target.value = '';
+                                  return;
+                                }
                                 if (uploadLimit && file.size > uploadLimit.bytes) {
                                   toast.error(`File "${file.name}" exceeds the ${uploadLimit.mb}MB size limit.`);
                                   e.target.value = '';
@@ -723,7 +802,7 @@ export default function ResourceSharing() {
                           />
                         </label>
                       </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">{uploadLimit ? `Any file up to ${uploadLimit.mb}MB` : 'Select a file to upload'}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{`${RESOURCE_TYPE_RULES[formData.type]?.hint || 'Select a file'}${uploadLimit ? ` · up to ${uploadLimit.mb}MB` : ''}`}</p>
                       {selectedFile && (
                         <div className="mt-2 p-2 bg-slate-100/80 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between gap-3">
                           <span className="truncate max-w-[200px]">{selectedFile.name}</span>
@@ -745,23 +824,29 @@ export default function ResourceSharing() {
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={(e) => handleSubmit(e, 'teachers')}
-                title="Only the class teacher and the subject teacher of the selected section will get this"
-                className="px-5 py-2 border border-primary-600 text-primary-700 hover:bg-primary-50 dark:hover:bg-slate-700 rounded-xl text-sm font-bold shadow-sm transition-colors disabled:opacity-50"
-              >
-                {submittingAudience === 'teachers' ? 'Sending...' : 'Send to Teachers'}
-              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={(e) => handleSubmit(e, 'teachers')}
+                  title="Only the class teacher and the subject teacher of the selected section will get this"
+                  className="px-5 py-2 border border-primary-600 text-primary-700 hover:bg-primary-50 dark:hover:bg-slate-700 rounded-xl text-sm font-bold shadow-sm transition-colors disabled:opacity-50"
+                >
+                  {submittingAudience === 'teachers' ? 'Sending...' : 'Send to Teachers'}
+                </button>
+              )}
               <button
                 type="button"
                 disabled={submitting}
                 onClick={(e) => handleSubmit(e, 'teachers_students')}
-                title="Teachers of the selected section, plus the students (and their parents) in that section"
+                title={isAdmin
+                  ? 'Teachers of the selected section, plus the students (and their parents) in that section'
+                  : 'Send to the students (and parents) of the selected class / section'}
                 className="px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-bold shadow-sm transition-colors disabled:opacity-50"
               >
-                {submittingAudience === 'teachers_students' ? 'Sending...' : 'Send to Teachers & Students'}
+                {submittingAudience === 'teachers_students'
+                  ? 'Sending...'
+                  : (isAdmin ? 'Send to Teachers & Students' : 'Send to Students')}
               </button>
             </div>
           </form>

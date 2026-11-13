@@ -29,16 +29,16 @@ const TimePicker12Hour = ({ value, onChange, required }) => {
     setHour(h);
     setMinute(m);
     setPeriod(p);
-    
+
     if (h && m) {
       let h24 = parseInt(h, 10);
       if (p === 'PM' && h24 !== 12) h24 += 12;
       if (p === 'AM' && h24 === 12) h24 = 0;
-      
+
       const time24 = `${h24.toString().padStart(2, '0')}:${m}`;
       onChange(time24);
     } else {
-      onChange(''); 
+      onChange('');
     }
   };
 
@@ -47,26 +47,26 @@ const TimePicker12Hour = ({ value, onChange, required }) => {
 
   return (
     <div className="flex w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 focus-within:ring-2 focus-within:ring-primary-500 overflow-hidden divide-x divide-slate-200 dark:divide-slate-700">
-      <select 
+      <select
         required={required}
-        value={hour} 
+        value={hour}
         onChange={(e) => handleChange(e.target.value, minute, period)}
         className="flex-1 px-3 py-2.5 bg-transparent border-none focus:ring-0 text-slate-700 dark:text-slate-200 appearance-none text-center cursor-pointer outline-none"
       >
         <option value="" disabled>HH</option>
         {hours.map(h => <option key={h} value={h}>{h}</option>)}
       </select>
-      <select 
+      <select
         required={required}
-        value={minute} 
+        value={minute}
         onChange={(e) => handleChange(hour, e.target.value, period)}
         className="flex-1 px-3 py-2.5 bg-transparent border-none focus:ring-0 text-slate-700 dark:text-slate-200 appearance-none text-center cursor-pointer outline-none"
       >
         <option value="" disabled>MM</option>
         {minutes.map(m => <option key={m} value={m}>{m}</option>)}
       </select>
-      <select 
-        value={period} 
+      <select
+        value={period}
         onChange={(e) => handleChange(hour, minute, e.target.value)}
         className="flex-1 px-3 py-2.5 bg-transparent border-none focus:ring-0 text-slate-700 dark:text-slate-200 appearance-none text-center cursor-pointer font-bold outline-none"
       >
@@ -89,6 +89,7 @@ export default function PTMScheduler() {
 
   // Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [viewingMeeting, setViewingMeeting] = useState(null); // 'View Details' modal
   const [creating, setCreating] = useState(false);
   const [newMeeting, setNewMeeting] = useState({
     studentId: '',
@@ -219,7 +220,7 @@ export default function PTMScheduler() {
 
   const getStatusBadge = (status) => {
     const s = status?.toLowerCase();
-    switch(s) {
+    switch (s) {
       case 'confirmed': return <span className="flex items-center gap-1 px-2.5 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-bold uppercase tracking-wider"><LuCircleCheck size={14} /> Confirmed</span>;
       case 'pending': return <span className="flex items-center gap-1 px-2.5 py-1 bg-amber-100 text-amber-700 rounded-lg text-xs font-bold uppercase tracking-wider"><LuClock size={14} /> Pending</span>;
       case 'cancelled': return <span className="flex items-center gap-1 px-2.5 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-bold uppercase tracking-wider"><LuCircleX size={14} /> Cancelled</span>;
@@ -229,7 +230,7 @@ export default function PTMScheduler() {
 
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
-  
+
   const displayedMeetings = meetings.filter(m => {
     if (activeTab === 'upcoming') {
       return m.date >= todayStr;
@@ -273,13 +274,13 @@ export default function PTMScheduler() {
 
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
         <div className="flex border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 px-6 pt-4 shrink-0">
-          <button 
+          <button
             onClick={() => setActiveTab('upcoming')}
             className={`px-6 py-3 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'upcoming' ? 'border-primary-600 text-primary-700 bg-white dark:bg-slate-900' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100/50'}`}
           >
             <LuCalendarCheck size={18} /> Upcoming Meetings
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('past')}
             className={`px-6 py-3 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'past' ? 'border-primary-600 text-primary-700 bg-white dark:bg-slate-900' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100/50'}`}
           >
@@ -303,7 +304,7 @@ export default function PTMScheduler() {
                   </div>
                   {getStatusBadge(meeting.status)}
                 </div>
-                
+
                 <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 mb-4 flex-1">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -319,10 +320,10 @@ export default function PTMScheduler() {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="flex justify-between items-center pt-2">
                   <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-lg">Class PTM</span>
-                  
+
                   {meeting.status?.toLowerCase() === 'pending' ? (
                     <div className="flex gap-2">
                       <button onClick={() => updateMeetingStatus(meeting.id, 'cancelled')} className="px-4 py-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">Decline</button>
@@ -331,7 +332,7 @@ export default function PTMScheduler() {
                   ) : meeting.status?.toLowerCase() === 'confirmed' && activeTab === 'upcoming' ? (
                     <button onClick={() => updateMeetingStatus(meeting.id, 'cancelled')} className="text-sm font-bold text-red-600 hover:text-red-700">Cancel</button>
                   ) : (
-                    <button className="text-sm font-bold text-primary-600 hover:text-primary-700">View Details &rarr;</button>
+                    <button type="button" onClick={() => setViewingMeeting(meeting)} className="text-sm font-bold text-primary-600 hover:text-primary-700">View Details &rarr;</button>
                   )}
                 </div>
               </div>
@@ -344,6 +345,51 @@ export default function PTMScheduler() {
           </div>
         </div>
       </div>
+
+      {/* View Details Modal */}
+      {viewingMeeting && (() => {
+        const m = viewingMeeting;
+        const dateObj = m.date ? new Date(m.date) : null;
+        const dateLabel = dateObj && !Number.isNaN(dateObj.getTime())
+          ? dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+          : '-';
+        const rows = [
+          ['Parent', m.parentName],
+          ['Student', m.studentName],
+          ['Date', dateLabel],
+          ['Time', formatTime12hr(m.time || m.timeSlot) || '-'],
+          ['Meeting Type', m.type ? m.type.charAt(0).toUpperCase() + m.type.slice(1) : '-'],
+          ['Teacher', m.teacherName],
+          ['Class', m.className],
+          ['Notes', m.notes || m.agenda || m.remarks],
+        ].filter(([, v]) => v);
+        return (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setViewingMeeting(null)}>
+            <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <LuCalendarClock className="text-primary-600" /> Meeting Details
+                </h2>
+                <button onClick={() => setViewingMeeting(null)} className="p-2 text-slate-400 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full transition-colors">
+                  <LuX size={18} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>{getStatusBadge(m.status)}</div>
+                {rows.map(([label, value]) => (
+                  <div key={label}>
+                    <p className="text-xs font-bold text-slate-400 dark:text-slate-300 uppercase tracking-wider mb-1">{label}</p>
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                <button onClick={() => setViewingMeeting(null)} className="px-5 py-2 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors">Close</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Create Modal */}
       {showCreateModal && (
@@ -360,10 +406,10 @@ export default function PTMScheduler() {
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Student</label>
-                  <select 
+                  <select
                     required
                     value={newMeeting.studentId}
-                    onChange={(e) => setNewMeeting({...newMeeting, studentId: e.target.value})}
+                    onChange={(e) => setNewMeeting({ ...newMeeting, studentId: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                   >
                     <option value="">-- Choose Student --</option>
@@ -372,32 +418,32 @@ export default function PTMScheduler() {
                     ))}
                   </select>
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Date</label>
-                    <input 
+                    <input
                       type="date" required min={todayStr}
                       value={newMeeting.date}
-                      onChange={(e) => setNewMeeting({...newMeeting, date: e.target.value})}
+                      onChange={(e) => setNewMeeting({ ...newMeeting, date: e.target.value })}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Time</label>
-                    <TimePicker12Hour 
+                    <TimePicker12Hour
                       required
                       value={newMeeting.time}
-                      onChange={(val) => setNewMeeting({...newMeeting, time: val})}
+                      onChange={(val) => setNewMeeting({ ...newMeeting, time: val })}
                     />
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Meeting Type</label>
-                  <select 
+                  <select
                     value={newMeeting.type}
-                    onChange={(e) => setNewMeeting({...newMeeting, type: e.target.value})}
+                    onChange={(e) => setNewMeeting({ ...newMeeting, type: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                   >
                     <option value="online">Online (Video Call)</option>
