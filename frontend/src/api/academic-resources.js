@@ -106,7 +106,48 @@ export async function deleteAcademicResource(id) {
   });
 }
 
+/**
+ * Uploads a resource file to the backend (Cloudinary if configured, else server storage).
+ * Calls POST /api/v1/academic-resources/upload (multipart/form-data).
+ *
+ * @param {File} file - File to upload (max 3MB)
+ * @returns {Promise<{ success: boolean, data: { fileUrl: string, fileName: string, size: number } }>}
+ */
+export async function uploadAcademicResourceFile(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiClient('/api/v1/academic-resources/upload', {
+    method: 'POST',
+    body: formData
+  });
+}
+
+/**
+ * Fetches upload constraints (max file size) configured on the server.
+ * @returns {Promise<{ success: boolean, data: { maxFileSizeBytes: number, maxFileSizeMb: number } }>}
+ */
+export async function getResourceUploadConfig() {
+  return apiClient('/api/v1/academic-resources/upload-config', { method: 'GET' });
+}
+
+/**
+ * Resources shared with a student (parent / student self-service view).
+ * Calls GET /api/v1/academic-resources/student/:studentId.
+ *
+ * @param {string} studentId - Student UUID
+ * @param {Object} [params={}] - { type, subjectId, search, page, limit }
+ */
+export async function listStudentResources(studentId, params = {}) {
+  const qs = buildQueryString(params, ['type', 'subjectId', 'search', 'page', 'limit']);
+  return apiClient(`/api/v1/academic-resources/student/${encodeURIComponent(studentId)}${qs}`, {
+    method: 'GET'
+  });
+}
+
 export const academicResourcesApi = {
+  listStudentResources,
+  getResourceUploadConfig,
+  uploadAcademicResourceFile,
   listAcademicResources,
   getAcademicResource,
   createAcademicResource,

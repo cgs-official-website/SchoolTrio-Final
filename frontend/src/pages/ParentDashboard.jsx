@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { getMyChildren, linkChild } from '../api/parents';
 import { getStudentInvoices } from '../api/invoices';
 import TopNavbar from '../components/TopNavbar';
-import { LuCircleUser as UserCircle, LuLogOut as LogOut, LuSquareCheck as CheckSquare, LuGraduationCap as GraduationCap, LuCreditCard as CreditCard, LuLink as LinkIcon, LuBell as Bell, LuX as X, LuFileText as FileText, LuCalendar as Calendar, LuCoffee as Coffee, LuTrendingUp as TrendingUp, LuCalendarClock as CalendarClock, LuMessageSquare as MessageSquare, LuUsers as Users, LuChevronDown as ChevronDown, LuPlus as Plus, LuBookOpen as BookOpen } from 'react-icons/lu';
+import { LuCircleUser as UserCircle, LuLogOut as LogOut, LuSquareCheck as CheckSquare, LuGraduationCap as GraduationCap, LuCreditCard as CreditCard, LuLink as LinkIcon, LuBell as Bell, LuX as X, LuFileText as FileText, LuCalendar as Calendar, LuCoffee as Coffee, LuTrendingUp as TrendingUp, LuCalendarClock as CalendarClock, LuMessageSquare as MessageSquare, LuUsers as Users, LuChevronDown as ChevronDown, LuPlus as Plus, LuBookOpen as BookOpen, LuFolderDown as FolderDown } from 'react-icons/lu';
 import useSchoolBranding from '../hooks/useSchoolBranding';
 import { useNotifications } from '../context/NotificationContext';
 import { useLiveDataRefresh } from '../hooks/useLiveDataRefresh';
@@ -66,6 +66,7 @@ const NAV_ITEMS = [
   { name: 'Library', path: '/parent/library', icon: BookOpen, moduleKey: 'library' },
   { name: 'Canteen', path: '/parent/canteen', icon: Coffee },
   { name: 'Homework', path: '/parent/homework', icon: FileText, moduleKey: 'homework' },
+  { name: 'Resources', path: '/parent/resources', icon: FolderDown },
   { name: 'Report Card', path: '/parent/grades', icon: GraduationCap },
   { name: 'Fees & Payments', path: '/parent/fees', icon: CreditCard, moduleKey: 'fees' },
   { name: 'Leave Requests', path: '/parent/leaves', icon: Calendar },
@@ -533,8 +534,8 @@ export default function ParentDashboard() {
                     key={child.id || idx}
                     onClick={() => handleSwitchChild(child.id)}
                     className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${child.id === activeStudentId
-                        ? 'bg-primary-50 dark:bg-primary-900/40 text-primary-700 dark:text-primary-200 font-bold'
-                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white font-medium'
+                      ? 'bg-primary-50 dark:bg-primary-900/40 text-primary-700 dark:text-primary-200 font-bold'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white font-medium'
                       }`}
                   >
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm font-bold ${child.id === activeStudentId ? 'bg-primary-200 text-primary-800' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
@@ -590,8 +591,8 @@ export default function ParentDashboard() {
                   <span>{item.name}</span>
                   {item.moduleKey === 'fees' && unpaidFeeCount > 0 ? (
                     <span className={`text-[10px] font-black px-2 py-0.5 rounded-full select-none shrink-0 ml-auto animate-pulse ${hasOverdueFees
-                        ? 'bg-red-600 text-white shadow-sm shadow-red-500/50'
-                        : 'bg-amber-500 text-white shadow-sm shadow-amber-500/50'
+                      ? 'bg-red-600 text-white shadow-sm shadow-red-500/50'
+                      : 'bg-amber-500 text-white shadow-sm shadow-amber-500/50'
                       }`}>
                       {hasOverdueFees ? `${unpaidFeeCount} Overdue` : `${unpaidFeeCount} Due`}
                     </span>

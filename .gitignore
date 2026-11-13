@@ -48,6 +48,10 @@ screenshots/
 test-reports/
 coverage/
 
+# Uploaded Files
+uploads/
+**/uploads/
+
 # IDE & Editor files
 .vscode/*
 !.vscode/extensions.json

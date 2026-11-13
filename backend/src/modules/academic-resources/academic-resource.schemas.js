@@ -1,6 +1,13 @@
+/* global URL */
 import { z } from 'zod';
 
 export const ALLOWED_RESOURCE_TYPES = ['document', 'video', 'image', 'link'];
+
+/** teachers = class/subject teachers only; teachers_students = teachers + students/parents of the section */
+export const RESOURCE_AUDIENCES = ['teachers', 'teachers_students'];
+const audienceSchema = z.enum(RESOURCE_AUDIENCES, {
+  errorMap: () => ({ message: "Audience must be 'teachers' or 'teachers_students'" })
+});
 
 export const resourceTypeEnumSchema = z
   .enum(['document', 'video', 'image', 'link', 'Document', 'Video', 'Image', 'Link'], {
@@ -26,6 +33,7 @@ export const resourceUrlSchema = z
 
 export const listAcademicResourcesQuerySchema = z.object({
   classId: z.string().uuid({ message: 'classId must be a valid UUID' }).optional(),
+  sectionId: z.string().uuid({ message: 'sectionId must be a valid UUID' }).optional(),
   subjectId: z.string().uuid({ message: 'subjectId must be a valid UUID' }).optional(),
   type: resourceTypeEnumSchema.optional(),
   uploaderId: z.string().uuid({ message: 'uploaderId must be a valid UUID' }).optional(),
@@ -33,6 +41,23 @@ export const listAcademicResourcesQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20)
 });
+
+export const studentResourcesParamsSchema = z.object({
+  studentId: z.string().uuid({ message: 'studentId must be a valid UUID' })
+});
+
+export const studentResourcesQuerySchema = z.object({
+  type: resourceTypeEnumSchema.optional(),
+  subjectId: z.string().uuid({ message: 'subjectId must be a valid UUID' }).optional(),
+  search: z.string().trim().max(100, { message: 'Search term must not exceed 100 characters' }).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20)
+});
+
+export const listStudentResourcesSchema = {
+  params: studentResourcesParamsSchema,
+  query: studentResourcesQuerySchema
+};
 
 export const listAcademicResourcesSchema = {
   query: listAcademicResourcesQuerySchema
@@ -53,9 +78,11 @@ export const createAcademicResourceBodySchema = z.object({
     .min(1, { message: 'Title cannot be empty' })
     .max(200, { message: 'Title must not exceed 200 characters' }),
   classId: z.string({ required_error: 'classId is required' }).uuid({ message: 'classId must be a valid UUID' }),
+  sectionId: z.string().uuid({ message: 'sectionId must be a valid UUID' }).optional().nullable(),
   subjectId: z.string().uuid({ message: 'subjectId must be a valid UUID' }).optional().nullable(),
   fileUrl: resourceUrlSchema.optional().nullable(),
   type: resourceTypeEnumSchema.default('document'),
+  audience: audienceSchema.default('teachers'),
   description: z.string().trim().max(5000, { message: 'Description must not exceed 5000 characters' }).optional().nullable()
 });
 
@@ -72,9 +99,11 @@ export const updateAcademicResourceBodySchema = z
       .max(200, { message: 'Title must not exceed 200 characters' })
       .optional(),
     classId: z.string().uuid({ message: 'classId must be a valid UUID' }).optional(),
+    sectionId: z.string().uuid({ message: 'sectionId must be a valid UUID' }).optional().nullable(),
     subjectId: z.string().uuid({ message: 'subjectId must be a valid UUID' }).optional().nullable(),
     fileUrl: resourceUrlSchema.optional().nullable(),
     type: resourceTypeEnumSchema.optional(),
+    audience: audienceSchema.optional(),
     description: z.string().trim().max(5000, { message: 'Description must not exceed 5000 characters' }).optional().nullable()
   })
   .refine(data => Object.keys(data).length > 0, {

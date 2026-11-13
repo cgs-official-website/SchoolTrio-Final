@@ -9,6 +9,61 @@ import { prisma } from '../../database/prisma.client.js';
  * 3. Supports transaction propagation via optional `tx` parameter.
  */
 
+const RESOURCE_INCLUDE = {
+  class: { select: { id: true, name: true } },
+  section: { select: { id: true, name: true } },
+  subject: { select: { id: true, name: true, code: true } }
+};
+
+/**
+ * Student ids a parent user is linked to (tenant scoped).
+ */
+export async function findAuthorizedStudentIdsForParent(schoolId, userId, tx = prisma) {
+  const profile = await tx.parentProfile.findFirst({
+    where: { userId, schoolId },
+    select: { id: true, user: { select: { isActive: true } } }
+  });
+  if (!profile || profile.user?.isActive === false) return [];
+  const links = await tx.parentStudentLink.findMany({
+    where: { parentProfileId: profile.id, schoolId },
+    select: { studentId: true }
+  });
+  return links.map(l => l.studentId);
+}
+
+/**
+ * Class + section of a student (tenant scoped).
+ */
+export async function findStudentPlacement(schoolId, studentId, tx = prisma) {
+  return tx.student.findFirst({
+    where: { id: studentId, schoolId },
+    select: { id: true, classId: true, sectionId: true }
+  });
+}
+
+/**
+ * Verifies that a Section exists within the tenant and belongs to the given class.
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} sectionId - Section UUID
+ * @param {Object} [tx=prisma] - Transaction client
+ * @returns {Promise<Object|null>}
+ */
+export async function findSectionInTenant(schoolId, sectionId, tx = prisma) {
+  if (!sectionId) return null;
+  return tx.section.findFirst({
+    where: { id: sectionId, schoolId },
+    select: { id: true, name: true, classId: true }
+  });
+}
+
+/**
+ * Counts sections of a class.
+ */
+export async function countSectionsOfClass(schoolId, classId, tx = prisma) {
+  return tx.section.count({ where: { schoolId, classId } });
+}
+
 /**
  * Verifies that a Class exists within the tenant.
  *
@@ -70,21 +125,7 @@ export async function findAcademicResourceById(schoolId, id, tx = prisma) {
       id,
       schoolId
     },
-    include: {
-      class: {
-        select: {
-          id: true,
-          name: true
-        }
-      },
-      subject: {
-        select: {
-          id: true,
-          name: true,
-          code: true
-        }
-      }
-    }
+    include: RESOURCE_INCLUDE
   });
 }
 
@@ -98,7 +139,7 @@ export async function findAcademicResourceById(schoolId, id, tx = prisma) {
  */
 export async function findAcademicResourceWithLock(schoolId, id, tx) {
   const rows = await tx.$queryRaw`
-    SELECT id, school_id AS "schoolId", uploader_id AS "uploaderId", class_id AS "classId", subject_id AS "subjectId", title, file_url AS "fileUrl", file_type AS "fileType", description, created_at AS "createdAt", updated_at AS "updatedAt"
+    SELECT id, school_id AS "schoolId", uploader_id AS "uploaderId", class_id AS "classId", section_id AS "sectionId", subject_id AS "subjectId", title, file_url AS "fileUrl", file_type AS "fileType", description, created_at AS "createdAt", updated_at AS "updatedAt"
     FROM academic_resources
     WHERE id = ${id}::uuid AND school_id = ${schoolId}::uuid
     FOR UPDATE
@@ -122,6 +163,10 @@ function buildWhereClause(schoolId, filters = {}) {
     where.classId = filters.classId;
   }
 
+  if (filters.sectionId) {
+    where.sectionId = filters.sectionId;
+  }
+
   if (filters.subjectId) {
     where.subjectId = filters.subjectId;
   }
@@ -134,11 +179,30 @@ function buildWhereClause(schoolId, filters = {}) {
     where.uploaderId = filters.uploaderId;
   }
 
+  // Teacher visibility: list of OR clauses built by the service (class teacher / subject teacher / own uploads)
+  if (Array.isArray(filters.visibilityOr)) {
+    where.AND = [...(where.AND || []), { OR: filters.visibilityOr }];
+  }
+
+  // Student / parent view: only resources shared with students, for the student's class + section
+  if (filters.studentTarget) {
+    const { classId, sectionId } = filters.studentTarget;
+    where.audience = 'teachers_students';
+    where.classId = classId;
+    where.AND = [
+      ...(where.AND || []),
+      { OR: sectionId ? [{ sectionId }, { sectionId: null }] : [{ sectionId: null }] }
+    ];
+  }
+
   if (filters.search && filters.search.trim()) {
     const term = filters.search.trim();
     where.OR = [
       { title: { contains: term, mode: 'insensitive' } },
-      { subject: { name: { contains: term, mode: 'insensitive' } } }
+      { description: { contains: term, mode: 'insensitive' } },
+      { subject: { name: { contains: term, mode: 'insensitive' } } },
+      { class: { name: { contains: term, mode: 'insensitive' } } },
+      { section: { name: { contains: term, mode: 'insensitive' } } }
     ];
   }
 
@@ -162,21 +226,7 @@ export async function listAcademicResources(schoolId, filters = {}, pagination =
 
   return tx.academicResource.findMany({
     where,
-    include: {
-      class: {
-        select: {
-          id: true,
-          name: true
-        }
-      },
-      subject: {
-        select: {
-          id: true,
-          name: true,
-          code: true
-        }
-      }
-    },
+    include: RESOURCE_INCLUDE,
     orderBy: {
       createdAt: 'desc'
     },
@@ -212,27 +262,15 @@ export async function createAcademicResource(schoolId, data, tx = prisma) {
       schoolId,
       title: data.title,
       classId: data.classId,
+      sectionId: data.sectionId || null,
       subjectId: data.subjectId || null,
       uploaderId: data.uploaderId,
       fileUrl: data.fileUrl || null,
       fileType: data.type ? data.type.toLowerCase() : 'document',
+      audience: data.audience || 'teachers',
       description: data.description || null
     },
-    include: {
-      class: {
-        select: {
-          id: true,
-          name: true
-        }
-      },
-      subject: {
-        select: {
-          id: true,
-          name: true,
-          code: true
-        }
-      }
-    }
+    include: RESOURCE_INCLUDE
   });
 }
 
@@ -250,10 +288,12 @@ export async function updateAcademicResource(schoolId, id, data, tx = prisma) {
 
   if (data.title !== undefined) updateData.title = data.title;
   if (data.classId !== undefined) updateData.classId = data.classId;
+  if (data.sectionId !== undefined) updateData.sectionId = data.sectionId;
   if (data.subjectId !== undefined) updateData.subjectId = data.subjectId;
   if (data.fileUrl !== undefined) updateData.fileUrl = data.fileUrl;
   if (data.type !== undefined) updateData.fileType = data.type ? data.type.toLowerCase() : null;
   if (data.description !== undefined) updateData.description = data.description;
+  if (data.audience !== undefined) updateData.audience = data.audience;
 
   return tx.academicResource.update({
     where: {
@@ -261,21 +301,7 @@ export async function updateAcademicResource(schoolId, id, data, tx = prisma) {
       schoolId
     },
     data: updateData,
-    include: {
-      class: {
-        select: {
-          id: true,
-          name: true
-        }
-      },
-      subject: {
-        select: {
-          id: true,
-          name: true,
-          code: true
-        }
-      }
-    }
+    include: RESOURCE_INCLUDE
   });
 }
 

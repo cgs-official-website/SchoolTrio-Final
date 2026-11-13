@@ -4,9 +4,53 @@ import * as academicResourceSchemas from './academic-resource.schemas.js';
 import { authenticate } from '../../middleware/auth.middleware.js';
 import { tenantContext } from '../../middleware/tenant.middleware.js';
 import { requirePermission } from '../../middleware/rbac.middleware.js';
+import { handleUpload } from './academic-resource.upload.js';
 import { validate } from '../../middleware/validate.middleware.js';
+import { ForbiddenError } from '../../utils/app-error.js';
 
 const academicResourceRouter = Router();
+
+/**
+ * 0. Upload resource file (must be registered before '/:id')
+ * POST /api/v1/academic-resources/upload
+ */
+academicResourceRouter.post(
+  '/upload',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('resources', 'create'),
+  handleUpload,
+  academicResourceController.uploadAcademicResourceFile
+);
+
+academicResourceRouter.get(
+  '/upload-config',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('resources', 'read'),
+  academicResourceController.getUploadConfig
+);
+
+/**
+ * Parent / student self-service: resources shared with the student's class + section.
+ * Registered before '/:id'. Institutional staff use the regular list instead.
+ * GET /api/v1/academic-resources/student/:studentId
+ */
+const requireParentOrStudent = (req, res, next) => {
+  const user = req.auth || req.user;
+  const role = String(user?.systemRole || user?.role || '').toUpperCase();
+  if (role === 'PARENT' || role === 'STUDENT') return next();
+  return next(new ForbiddenError('Only parents and students can use this view'));
+};
+
+academicResourceRouter.get(
+  '/student/:studentId',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requireParentOrStudent,
+  validate(academicResourceSchemas.listStudentResourcesSchema),
+  academicResourceController.listStudentAcademicResources
+);
 
 /**
  * 1. List Academic Resources Endpoint

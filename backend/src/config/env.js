@@ -20,6 +20,8 @@ export const envSchema = z.object({
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(100),
 
   // Cloudinary credentials (Optional during foundation phase)
+  RESOURCE_MAX_UPLOAD_MB: z.coerce.number().positive().max(50).default(3),
+  RESOURCE_CLOUDINARY_FOLDER: z.string().default('academic-resources'),
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),
