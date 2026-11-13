@@ -283,7 +283,7 @@ export async function findAuthorizedClassIdsForParent(schoolId, userId, tx = pri
 
   const links = await tx.parentStudentLink.findMany({
     where: {
-      parentId: parentProfile.id,
+      parentProfileId: parentProfile.id,
       schoolId
     },
     select: {
@@ -399,7 +399,7 @@ export async function findAuthorizedSectionIdsForParent(schoolId, userId, classI
   if (!parentProfile) return [];
 
   const links = await tx.parentStudentLink.findMany({
-    where: { parentId: parentProfile.id, schoolId },
+    where: { parentProfileId: parentProfile.id, schoolId },
     select: { student: { select: { classId: true, sectionId: true } } }
   });
 

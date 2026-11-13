@@ -37,10 +37,6 @@ export const allNavItems = [
   { name: 'Calendar', path: '/admin/calendar', icon: Calendar, moduleKey: 'calendar' },
   { name: 'Exams & Results', path: '/admin/exams', icon: FileText, moduleKey: 'exams' },
   { name: 'Homework', path: '/admin/homework', icon: BookOpen, moduleKey: 'homework' },
-  // Modules that used to exist only in the Teacher portal; shown here when the role is given access
-  { name: 'Lesson Plans', path: '/admin/lesson-plans', icon: ClipboardList, moduleKey: 'lesson_plans' },
-  { name: 'Resource Sharing', path: '/admin/resources', icon: Files, moduleKey: 'resources' },
-  { name: 'Performance', path: '/admin/performance', icon: BarChart2, moduleKey: 'performance' },
   { name: 'PTM Scheduler', path: '/admin/ptm', icon: Users, moduleKey: 'ptm' },
   { name: 'Fees & Payments', path: '/admin/fees', icon: CreditCard, moduleKey: 'fees' },
   { name: 'Transport', path: '/admin/transport', icon: Bus, moduleKey: 'transport' },

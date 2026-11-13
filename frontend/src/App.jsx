@@ -28,6 +28,7 @@ const PublicLeadForm = lazy(() => import('./pages/PublicLeadForm'));
 const PublicAdmissionForm = lazy(() => import('./pages/PublicAdmissionForm'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const Unauthorized = lazy(() => import('./pages/Unauthorized'));
+const ParentTimetable = lazy(() => import('./pages/Parent/ParentTimetable'));
 
 // Super Admin Workflow
 const SuperAdminDashboard = lazy(() => import('./pages/SuperAdminDashboard'));
@@ -302,6 +303,7 @@ function App() {
                 <Route index element={<StudentOverview />} />
                 <Route path="children" element={<MyChildren />} />
                 <Route path="attendance" element={<ParentAttendance />} />
+                <Route path="timetable" element={<ParentTimetable />} />
                 <Route path="library" element={<ParentLibrary />} />
                 <Route path="resources" element={<ParentResources />} />
                 <Route path="homework" element={<HomeworkOverview />} />

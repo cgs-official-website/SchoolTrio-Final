@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { LuCalendarDays, LuClock, LuBookOpen, LuMapPin, LuDownload as LuFileDown, LuX } from 'react-icons/lu';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { LuCalendarDays, LuClock, LuBookOpen, LuUser, LuCoffee, LuUtensils, LuDownload as LuFileDown, LuX } from 'react-icons/lu';
 import { useAuth } from '../../context/AuthContext';
-import { getMyTimetable } from '../../api/timetables';
+import { getMyTimetable, getTimetableTemplate } from '../../api/timetables';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
+
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const EMPTY_WEEK = { Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [] };
 
 const formatTime12hr = (time24) => {
   if (!time24) return '';
@@ -22,22 +25,18 @@ const getClassLabel = (slot) => {
   return [cls, sec].filter(Boolean).join(' - ');
 };
 
+const subjectOf = (p) => p.subjectName || (typeof p.subject === 'object' && p.subject !== null ? (p.subject.name || p.subject.code || '') : (p.subject || '')) || 'Subject';
+const teacherOf = (p) => p.teacherName || (typeof p.teacher === 'object' && p.teacher !== null ? (p.teacher.name || '') : (p.teacher || ''));
+
 export default function TeacherTimetable() {
   const { userProfile } = useAuth();
   const schoolId = userProfile?.schoolId;
 
-  const [currentWeek] = useState('This Week');
   const [viewType, setViewType] = useState('subject'); // 'subject' or 'class'
   const [isClassTeacher, setIsClassTeacher] = useState(false);
-  const [classTimetable, setClassTimetable] = useState({
-    Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: []
-  });
-  const [subjectTimetable, setSubjectTimetable] = useState({
-    Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: []
-  });
-  const [schedule, setSchedule] = useState({
-    Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: []
-  });
+  const [classTimetable, setClassTimetable] = useState(EMPTY_WEEK);
+  const [subjectTimetable, setSubjectTimetable] = useState(EMPTY_WEEK);
+  const [template, setTemplate] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [showExportModal, setShowExportModal] = useState(false);
@@ -70,27 +69,33 @@ export default function TeacherTimetable() {
     setSelectedFields(updated);
   };
 
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const schedule = useMemo(
+    () => (viewType === 'class' && isClassTeacher ? classTimetable : subjectTimetable),
+    [viewType, isClassTeacher, classTimetable, subjectTimetable]
+  );
+  const showingClassView = viewType === 'class' && isClassTeacher;
+
+  const todayName = DAYS[new Date().getDay() - 1] || null;
 
   const handleExport = () => {
-    const exportData = [];
+    const activeFields = Object.keys(selectedFields).filter(k => selectedFields[k]);
+    if (activeFields.length === 0) {
+      toast.error("Please select at least one column to export.");
+      return;
+    }
 
-    days.forEach(day => {
-      const daySlots = schedule[day] || [];
-      daySlots.forEach(slot => {
+    const exportData = [];
+    DAYS.forEach(day => {
+      (schedule[day] || []).forEach(slot => {
         const row = { "Day": day };
         const timeStr = slot.time || `${formatTime12hr(slot.startTime)} - ${formatTime12hr(slot.endTime)}`;
-        const subjectStr = slot.subjectName || (typeof slot.subject === 'object' && slot.subject !== null ? (slot.subject.name || slot.subject.code || '') : (slot.subject || ''));
-        const classStr = getClassLabel(slot);
-        // const roomStr = slot.roomNumber || slot.room || 'Room (Auto)';
-        const roomStr = slot.roomNumber || slot.room;
-        const teacherStr = slot.teacherName || (typeof slot.teacher === 'object' && slot.teacher !== null ? (slot.teacher.name || '') : (slot.teacher || 'Unassigned'));
+        const roomStr = slot.roomNumber || slot.room || '';
 
         if (selectedFields.time) row["Time Slot"] = timeStr;
-        if (selectedFields.subject) row["Subject Name"] = subjectStr;
-        if (selectedFields.class) row["Class / Section"] = classStr;
+        if (selectedFields.subject) row["Subject Name"] = subjectOf(slot);
+        if (selectedFields.class) row["Class / Section"] = getClassLabel(slot);
         if (selectedFields.room) row["Room / Location"] = roomStr;
-        if (selectedFields.teacher) row["Teacher Name"] = teacherStr;
+        if (selectedFields.teacher) row["Teacher Name"] = teacherOf(slot) || 'Unassigned';
 
         exportData.push(row);
       });
@@ -101,17 +106,11 @@ export default function TeacherTimetable() {
       return;
     }
 
-    const activeFields = Object.keys(selectedFields).filter(k => selectedFields[k]);
-    if (activeFields.length === 0) {
-      toast.error("Please select at least one column to export.");
-      return;
-    }
-
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Weekly Timetable");
 
-    const rawName = exportFileName.trim() || (viewType === 'class' ? "My_Class_Timetable" : "My_Subject_Timetable");
+    const rawName = exportFileName.trim() || (showingClassView ? "My_Class_Timetable" : "My_Subject_Timetable");
     const finalFileName = rawName.toLowerCase().endsWith('.xlsx') ? rawName : `${rawName}.xlsx`;
 
     XLSX.writeFile(workbook, finalFileName);
@@ -120,21 +119,16 @@ export default function TeacherTimetable() {
   };
 
   const fetchMyTimetable = useCallback(async () => {
-    setLoading(true);
     try {
-      const res = await getMyTimetable();
+      const [res, tpl] = await Promise.all([
+        getMyTimetable(),
+        getTimetableTemplate().catch(() => null)
+      ]);
       const data = res.data || {};
       setIsClassTeacher(Boolean(data.isClassTeacher));
-
-      const subSched = data.subjectSchedule || {
-        Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: []
-      };
-      const clsSched = data.classSchedule || {
-        Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: []
-      };
-
-      setSubjectTimetable(subSched);
-      setClassTimetable(clsSched);
+      setSubjectTimetable(data.subjectSchedule || EMPTY_WEEK);
+      setClassTimetable(data.classSchedule || EMPTY_WEEK);
+      setTemplate(tpl?.data || null);
     } catch (err) {
       console.error("Error loading teacher timetable:", err);
       toast.error(err.message || "Failed to load timetable.");
@@ -152,13 +146,35 @@ export default function TeacherTimetable() {
   // Live data synchronization for timetables
   useLiveDataRefresh(fetchMyTimetable, [fetchMyTimetable], ['timetables', 'timetable']);
 
-  useEffect(() => {
-    if (viewType === 'class' && isClassTeacher) {
-      setSchedule(classTimetable);
-    } else {
-      setSchedule(subjectTimetable);
-    }
-  }, [viewType, subjectTimetable, classTimetable, isClassTeacher]);
+  const slotIdOf = (p) => {
+    if (p?.templateSlotId) return p.templateSlotId;
+    return template?.slots?.find(
+      (s) => s.slotType === 'PERIOD' && s.startTime === p?.startTime && s.endTime === p?.endTime
+    )?.id || null;
+  };
+
+  const PeriodCard = ({ p }) => (
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 shadow-sm h-full min-w-0">
+      <div className="font-bold text-slate-900 dark:text-white flex items-start gap-1.5 leading-tight break-words [overflow-wrap:anywhere]">
+        <LuBookOpen size={14} className="text-primary-500 shrink-0 mt-0.5" />
+        {subjectOf(p)}
+      </div>
+      {showingClassView ? (
+        teacherOf(p) && (
+          <div className="mt-2 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded-lg inline-flex items-center gap-1.5 border border-slate-100 dark:border-slate-800 max-w-full">
+            <LuUser size={12} className="text-slate-400 dark:text-slate-300 shrink-0" />
+            <span className="truncate">{teacherOf(p)}</span>
+          </div>
+        )
+      ) : (
+        getClassLabel(p) && (
+          <div className="mt-2 text-xs font-semibold text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 px-2 py-1 rounded-lg inline-block max-w-full truncate">
+            {getClassLabel(p)}
+          </div>
+        )
+      )}
+    </div>
+  );
 
   if (loading) {
     return (
@@ -167,6 +183,8 @@ export default function TeacherTimetable() {
       </div>
     );
   }
+
+  const hasAnyPeriod = DAYS.some((d) => (schedule[d] || []).length > 0);
 
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto h-full flex flex-col min-w-0 w-full">
@@ -188,17 +206,13 @@ export default function TeacherTimetable() {
               <option value="class">My Class Timetable</option>
             </select>
           )}
-          <div className="w-full sm:w-auto text-center bg-white dark:bg-slate-900 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-700 dark:text-slate-200 shadow-sm">
-            {currentWeek}
-          </div>
           <button
             onClick={() => {
-              const hasData = Object.values(schedule).some(slots => slots && slots.length > 0);
-              if (!hasData) {
+              if (!hasAnyPeriod) {
                 toast.error("No timetable data available to export.");
                 return;
               }
-              setExportFileName(viewType === 'class' ? "My_Class_Timetable" : "My_Subject_Timetable");
+              setExportFileName(showingClassView ? "My_Class_Timetable" : "My_Subject_Timetable");
               setShowExportModal(true);
             }}
             className="w-full sm:w-auto justify-center inline-flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 shadow-md shadow-primary-600/10 transition-all active:scale-[0.98]"
@@ -210,49 +224,121 @@ export default function TeacherTimetable() {
       </div>
 
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
-        <div className="flex-1 overflow-auto p-2 sm:p-6 custom-scrollbar">
-          <div className="grid grid-cols-1 xl:grid-cols-6 gap-6 min-w-[1000px] xl:min-w-0 items-start">
-            {days.map(day => (
-              <div key={day} className="flex flex-col min-w-0 bg-slate-50/50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 p-3">
-                <div className="text-center pb-4 mb-4 border-b border-slate-200 dark:border-slate-700">
-                  <h3 className="text-lg font-black text-slate-900 dark:text-white">{day}</h3>
-                </div>
-
-                <div className="flex-1 min-w-0 space-y-4">
-                  {schedule[day]?.length > 0 ? schedule[day].map(period => (
-                    <div key={period.id} className="min-w-0 overflow-hidden bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-slate-700 hover:shadow-md transition-all group">
-                      <div className="flex items-start gap-2 text-xs font-bold text-primary-600 mb-2 flex-wrap">
-                        <LuClock size={14} />
-                        {period.time || (period.startTime && period.endTime ? `${formatTime12hr(period.startTime)} - ${formatTime12hr(period.endTime)}` : '')}
-                      </div>
-                      <h4 className="text-base font-bold text-slate-900 dark:text-white mb-1 break-words [overflow-wrap:anywhere]">{period.subjectName || period.subject?.name || period.subject || 'Subject'}</h4>
-                      <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-3">{getClassLabel(period)}</p>
-                      {viewType === 'class' && (period.teacherName || (typeof period.teacher === 'object' && period.teacher !== null ? period.teacher?.name : period.teacher)) && (
-                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3">Teacher: {period.teacherName || (typeof period.teacher === 'object' && period.teacher !== null ? period.teacher?.name : period.teacher)}</p>
-                      )}
-
-                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs font-semibold text-slate-500 dark:text-slate-400 pt-3 border-t border-slate-100 dark:border-slate-800">
-                        {/* <span className="flex items-center gap-1"><LuMapPin size={12} /> {period.roomNumber || period.room || 'Room (Auto)'}</span>
-                        <span className="flex items-center gap-1 text-primary-500 group-hover:text-primary-600 cursor-pointer"><LuBookOpen size={12} /> Prep</span> */}
-                      </div>
-                    </div>
-                  )) : (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-300 py-10 opacity-60">
-                      <LuCalendarDays size={32} className="mb-2" />
-                      <p className="text-sm font-bold">No Classes</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+        {!hasAnyPeriod ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-slate-300 py-16">
+            <LuCalendarDays size={40} className="mb-3 opacity-60" />
+            <p className="font-bold">No classes scheduled yet.</p>
           </div>
-        </div>
+        ) : template ? (
+          <div className="flex-1 overflow-auto custom-scrollbar">
+            <div className="min-w-[980px]">
+              <div
+                className="grid bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10"
+                style={{ gridTemplateColumns: '150px repeat(6, minmax(0, 1fr))' }}
+              >
+                <div className="p-4 text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-300">Period</div>
+                {DAYS.map((day) => (
+                  <div
+                    key={day}
+                    className={`p-4 text-center font-bold uppercase tracking-wider text-sm border-l border-slate-200 dark:border-slate-700 ${day === todayName ? 'text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30' : 'text-slate-700 dark:text-slate-200'}`}
+                  >
+                    {day}
+                  </div>
+                ))}
+              </div>
+
+              {template.slots.map((tSlot) => {
+                if (tSlot.slotType !== 'PERIOD') {
+                  return (
+                    <div key={tSlot.id} className="flex items-center justify-center gap-2 py-2 px-4 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-300 text-xs font-bold">
+                      {tSlot.slotType === 'LUNCH' ? <LuUtensils size={14} /> : <LuCoffee size={14} />}
+                      {tSlot.label} · {formatTime12hr(tSlot.startTime)} - {formatTime12hr(tSlot.endTime)}
+                    </div>
+                  );
+                }
+                return (
+                  <div
+                    key={tSlot.id}
+                    className="grid border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50"
+                    style={{ gridTemplateColumns: '150px repeat(6, minmax(0, 1fr))' }}
+                  >
+                    <div className="p-3 bg-white dark:bg-slate-900">
+                      <div className="text-sm font-bold text-slate-800 dark:text-slate-100">{tSlot.label}</div>
+                      <div className="text-xs font-semibold text-primary-600 mt-1 flex items-center gap-1.5">
+                        <LuClock size={12} />
+                        {formatTime12hr(tSlot.startTime)} - {formatTime12hr(tSlot.endTime)}
+                      </div>
+                    </div>
+                    {DAYS.map((day) => {
+                      const matches = (schedule[day] || []).filter((x) => slotIdOf(x) === tSlot.id);
+                      return (
+                        <div key={day} className="p-2 border-l border-slate-200 dark:border-slate-700 min-h-[80px] space-y-2">
+                          {matches.length > 0 ? (
+                            matches.map((p) => <PeriodCard key={p.id} p={p} />)
+                          ) : (
+                            <div className="h-full min-h-[64px] flex items-center justify-center text-xs text-slate-300 dark:text-slate-500 font-semibold">
+                              {showingClassView ? '—' : 'Free'}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+
+              {(() => {
+                const others = DAYS.flatMap((day) => (schedule[day] || []).filter((p) => !slotIdOf(p)).map((p) => ({ day, p })));
+                if (others.length === 0) return null;
+                return (
+                  <div className="m-4 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                    <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3">Other periods</h4>
+                    <div className="space-y-2">
+                      {others.map(({ day, p }) => (
+                        <div key={`${day}-${p.id}`} className="text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2">
+                          {day} · {formatTime12hr(p.startTime)} - {formatTime12hr(p.endTime)} · {subjectOf(p)}
+                          {showingClassView
+                            ? (teacherOf(p) ? ` · ${teacherOf(p)}` : '')
+                            : (getClassLabel(p) ? ` · ${getClassLabel(p)}` : '')}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-auto p-2 sm:p-6 custom-scrollbar">
+            <div className="grid grid-cols-1 xl:grid-cols-6 gap-6 min-w-[1000px] xl:min-w-0 items-start">
+              {DAYS.map((day) => (
+                <div key={day} className="flex flex-col min-w-0 bg-slate-50/50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 p-3">
+                  <div className="text-center pb-4 mb-4 border-b border-slate-200 dark:border-slate-700">
+                    <h3 className={`text-lg font-black ${day === todayName ? 'text-primary-600' : 'text-slate-900 dark:text-white'}`}>{day}</h3>
+                  </div>
+                  <div className="space-y-3">
+                    {(schedule[day] || []).length > 0 ? schedule[day].map((p) => (
+                      <div key={p.id}>
+                        <div className="text-xs font-bold text-primary-600 mb-1 flex items-center gap-1.5">
+                          <LuClock size={12} />
+                          {formatTime12hr(p.startTime)} - {formatTime12hr(p.endTime)}
+                        </div>
+                        <PeriodCard p={p} />
+                      </div>
+                    )) : (
+                      <p className="text-sm font-bold text-slate-400 dark:text-slate-300 text-center py-6 opacity-60">No Classes</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {showExportModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden transform transition-all flex flex-col max-h-[85vh]">
-            {/* Modal Header */}
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">Export Timetable</h3>
@@ -266,9 +352,7 @@ export default function TeacherTimetable() {
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
-              {/* File Name Input */}
               <div className="space-y-1.5 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">File Name</label>
                 <div className="relative">
@@ -283,7 +367,6 @@ export default function TeacherTimetable() {
                 </div>
               </div>
 
-              {/* Select All / Deselect All Controls */}
               <div className="flex gap-3">
                 <button
                   type="button"
@@ -301,7 +384,6 @@ export default function TeacherTimetable() {
                 </button>
               </div>
 
-              {/* Checkbox Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 {availableFieldsList.map((field) => (
                   <label
@@ -320,7 +402,6 @@ export default function TeacherTimetable() {
               </div>
             </div>
 
-            {/* Modal Footer */}
             <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 flex items-center justify-end gap-3 shrink-0">
               <button
                 type="button"

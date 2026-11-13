@@ -14,7 +14,7 @@ import {
   LuCheck as Check, 
   LuX as X, 
   LuClock as Clock, 
-  LuSparkles as Sparkles, 
+  LuClipboardCheck as ClipboardCheck, 
   LuRotateCcw as ResetIcon,
   LuCalendar as CalendarIcon
 } from 'react-icons/lu';
@@ -235,7 +235,7 @@ export default function CanteenManagement() {
 
         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 p-6 shadow-sm flex items-center gap-5">
           <div className="w-12 h-12 rounded-2xl bg-primary-50 text-primary-600 flex items-center justify-center font-bold">
-            <Sparkles size={24} />
+            <ClipboardCheck size={24} />
           </div>
           <div>
             <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Today's Approved</p>

@@ -13,7 +13,7 @@ import {
   LuGraduationCap as GraduationCap,
   LuSchool as SchoolIcon,
   LuArrowUpRight as ArrowUpRight,
-  LuSparkles as Sparkles,
+  LuUserCheck as UserCheck,
   LuIdCard as IdCard,
   LuCheck as Check,
   LuUnlink as UnlinkIcon
@@ -395,7 +395,7 @@ export default function MyChildren() {
 
         <div className="bg-gradient-to-br from-primary-600 to-indigo-700 p-5 rounded-2xl shadow-md text-white flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0">
-            <Sparkles size={24} className="text-white" />
+            <UserCheck size={24} className="text-white" />
           </div>
           <div className="min-w-0">
             <p className="text-xs font-bold text-white/80 uppercase tracking-wider">Currently Viewing</p>

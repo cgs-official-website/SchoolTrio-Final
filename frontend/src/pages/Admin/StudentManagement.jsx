@@ -11,7 +11,7 @@ import {
   LuGraduationCap as GraduationCap, LuCloudUpload as UploadCloud, LuFileText as FileText,
   LuExternalLink as ExternalLink, LuX as X, LuEye as Eye, LuTrash2 as Trash, LuDownload as Download,
   LuFileDown as FileDown, LuLink as LinkIcon, LuShare2 as Share2, LuCheck as Check, LuClock as Clock,
-  LuTriangleAlert as AlertTriangle, LuSparkles as Sparkles, LuCopy as Copy, LuMail as Mail,
+  LuTriangleAlert as AlertTriangle, LuClipboardCheck as ClipboardCheck, LuCopy as Copy, LuMail as Mail,
   LuUserCheck as UserCheck, LuBookOpen as BookOpen, LuPhone as Phone, LuMapPin as MapPin,
   LuCalendar as Calendar, LuArrowRight as ArrowRight
 } from 'react-icons/lu';
@@ -4198,7 +4198,7 @@ export default function StudentManagement() {
               {selectedAppForReview.status !== 'Approved' && (
                 <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-200 p-6 rounded-2xl shadow-sm">
                   <div className="flex items-center gap-2 text-emerald-900 font-bold text-base mb-4">
-                    <Sparkles size={20} className="text-emerald-600" />
+                    <ClipboardCheck size={20} className="text-emerald-600" />
                     <span>Admit to Student Directory - Assignment Configuration</span>
                   </div>
                   <div className="grid sm:grid-cols-2 gap-4">
