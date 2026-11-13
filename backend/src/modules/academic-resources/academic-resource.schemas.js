@@ -71,20 +71,36 @@ export const academicResourceIdParamSchema = {
   params: academicResourceIdParamsSchema
 };
 
-export const createAcademicResourceBodySchema = z.object({
-  title: z
-    .string({ required_error: 'Title is required' })
-    .trim()
-    .min(1, { message: 'Title cannot be empty' })
-    .max(200, { message: 'Title must not exceed 200 characters' }),
+/** One class (+ optional section) the resource is sent to */
+export const resourceTargetSchema = z.object({
   classId: z.string({ required_error: 'classId is required' }).uuid({ message: 'classId must be a valid UUID' }),
-  sectionId: z.string().uuid({ message: 'sectionId must be a valid UUID' }).optional().nullable(),
-  subjectId: z.string().uuid({ message: 'subjectId must be a valid UUID' }).optional().nullable(),
-  fileUrl: resourceUrlSchema.optional().nullable(),
-  type: resourceTypeEnumSchema.default('document'),
-  audience: audienceSchema.default('teachers'),
-  description: z.string().trim().max(5000, { message: 'Description must not exceed 5000 characters' }).optional().nullable()
+  sectionId: z.string().uuid({ message: 'sectionId must be a valid UUID' }).optional().nullable()
 });
+
+export const createAcademicResourceBodySchema = z
+  .object({
+    title: z
+      .string({ required_error: 'Title is required' })
+      .trim()
+      .min(1, { message: 'Title cannot be empty' })
+      .max(200, { message: 'Title must not exceed 200 characters' }),
+    // Single target (legacy) ...
+    classId: z.string().uuid({ message: 'classId must be a valid UUID' }).optional(),
+    sectionId: z.string().uuid({ message: 'sectionId must be a valid UUID' }).optional().nullable(),
+    // ... or many targets (multi class / section select) ...
+    targets: z.array(resourceTargetSchema).min(1, { message: 'Select at least one class' }).max(500).optional(),
+    // ... or every class + section the sender is allowed to post to ("All Class")
+    allClasses: z.boolean().optional(),
+    subjectId: z.string().uuid({ message: 'subjectId must be a valid UUID' }).optional().nullable(),
+    fileUrl: resourceUrlSchema.optional().nullable(),
+    type: resourceTypeEnumSchema.default('document'),
+    audience: audienceSchema.default('teachers'),
+    description: z.string().trim().max(5000, { message: 'Description must not exceed 5000 characters' }).optional().nullable()
+  })
+  .refine(d => d.allClasses === true || !!d.classId || (Array.isArray(d.targets) && d.targets.length > 0), {
+    message: 'Select at least one class / section (or All Class)',
+    path: ['targets']
+  });
 
 export const createAcademicResourceSchema = {
   body: createAcademicResourceBodySchema

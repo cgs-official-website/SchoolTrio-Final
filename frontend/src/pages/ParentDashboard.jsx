@@ -66,7 +66,7 @@ const NAV_ITEMS = [
   { name: 'Library', path: '/parent/library', icon: BookOpen, moduleKey: 'library' },
   { name: 'Canteen', path: '/parent/canteen', icon: Coffee },
   { name: 'Homework', path: '/parent/homework', icon: FileText, moduleKey: 'homework' },
-  { name: 'Resources', path: '/parent/resources', icon: FolderDown },
+  { name: 'Resources', path: '/parent/resources', icon: FolderDown, moduleKey: 'resources' },
   { name: 'Report Card', path: '/parent/grades', icon: GraduationCap },
   { name: 'Fees & Payments', path: '/parent/fees', icon: CreditCard, moduleKey: 'fees' },
   { name: 'Leave Requests', path: '/parent/leaves', icon: Calendar },

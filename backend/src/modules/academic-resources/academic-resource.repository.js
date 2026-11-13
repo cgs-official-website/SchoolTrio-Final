@@ -139,7 +139,7 @@ export async function findAcademicResourceById(schoolId, id, tx = prisma) {
  */
 export async function findAcademicResourceWithLock(schoolId, id, tx) {
   const rows = await tx.$queryRaw`
-    SELECT id, school_id AS "schoolId", uploader_id AS "uploaderId", class_id AS "classId", section_id AS "sectionId", subject_id AS "subjectId", title, file_url AS "fileUrl", file_type AS "fileType", description, created_at AS "createdAt", updated_at AS "updatedAt"
+    SELECT id, school_id AS "schoolId", uploader_id AS "uploaderId", class_id AS "classId", section_id AS "sectionId", subject_id AS "subjectId", title, file_url AS "fileUrl", file_type AS "fileType", description, audience, batch_id AS "batchId", all_classes AS "allClasses", created_at AS "createdAt", updated_at AS "updatedAt"
     FROM academic_resources
     WHERE id = ${id}::uuid AND school_id = ${schoolId}::uuid
     FOR UPDATE
@@ -268,6 +268,8 @@ export async function createAcademicResource(schoolId, data, tx = prisma) {
       fileUrl: data.fileUrl || null,
       fileType: data.type ? data.type.toLowerCase() : 'document',
       audience: data.audience || 'teachers',
+      batchId: data.batchId || null,
+      allClasses: data.allClasses === true,
       description: data.description || null
     },
     include: RESOURCE_INCLUDE
@@ -318,6 +320,20 @@ export async function deleteAcademicResource(schoolId, id, tx = prisma) {
     where: {
       id,
       schoolId
+    }
+  });
+}
+
+/**
+ * Deletes every resource of one send (batch) within tenant.
+ * ownerUserId = restrict to rows uploaded by that user (non-admin); null = whole batch (admin).
+ */
+export async function deleteAcademicResourcesByBatch(schoolId, batchId, ownerUserId = null, tx = prisma) {
+  return tx.academicResource.deleteMany({
+    where: {
+      schoolId,
+      batchId,
+      ...(ownerUserId ? { uploaderId: ownerUserId } : {})
     }
   });
 }

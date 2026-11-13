@@ -32,6 +32,17 @@ academicResourceRouter.get(
 );
 
 /**
+ * Sidebar "Resources" unread badge (parent / teacher / staff). Registered before '/:id'.
+ * GET /api/v1/academic-resources/unread-count
+ */
+academicResourceRouter.get(
+  '/unread-count',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  academicResourceController.getUnreadResourceCount
+);
+
+/**
  * Parent / student self-service: resources shared with the student's class + section.
  * Registered before '/:id'. Institutional staff use the regular list instead.
  * GET /api/v1/academic-resources/student/:studentId

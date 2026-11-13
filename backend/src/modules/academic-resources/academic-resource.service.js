@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { prisma } from '../../database/prisma.client.js';
 import * as academicResourceRepo from './academic-resource.repository.js';
 import { createAuditLog } from '../audit/audit.repository.js';
@@ -9,6 +10,7 @@ import {
 } from '../../utils/app-error.js';
 import { hasAdminPanelScope } from '../../utils/access-scope.js';
 import { getTeacherAssignments } from '../classes/class.service.js';
+import { notifyResourceRecipients, RESOURCE_NOTIFICATION_TYPE, resourceMessagePrefix } from './academic-resource.notify.js';
 
 const ADMIN_ROLE_SET = new Set([
   'SUPER_ADMIN',
@@ -323,6 +325,8 @@ export function formatAcademicResourceDto(resource, uploaderNameOrMap) {
     type: resource.fileType || 'document',
     description: resource.description || null,
     audience: resource.audience || 'teachers',
+    batchId: resource.batchId || null,
+    allClasses: resource.allClasses === true,
     createdAt: resource.createdAt,
     updatedAt: resource.updatedAt
   };
@@ -437,6 +441,64 @@ export async function listAcademicResourcesForStudent(schoolId, actor, studentId
 }
 
 /**
+ * Unread badge count for the sidebar "Resources" item (parent / teacher / staff).
+ *
+ * Counts the resources that are CURRENTLY visible to the user (a deleted send never counts) and
+ * were shared after the user last opened the Resources module. "Last opened" is derived from the
+ * user's unread resource alerts: an unread alert means the module was not opened since it was sent,
+ * so every visible resource sent from the oldest unread alert onward is unseen.
+ * One send to many classes counts once.
+ *
+ * @param {string} schoolId
+ * @param {Object} actor
+ * @returns {Promise<number>}
+ */
+export async function countUnreadResources(schoolId, actor) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required to count unread resources');
+  }
+  const userId = actor?.id || actor?.userId;
+  if (!userId || isAcademicResourceAdmin(actor)) return 0;
+
+  const oldestUnread = await prisma.notification.findFirst({
+    where: { schoolId, userId, type: RESOURCE_NOTIFICATION_TYPE, read: false },
+    orderBy: { createdAt: 'asc' },
+    select: { createdAt: true }
+  });
+  if (!oldestUnread) return 0;
+
+  // the alert is written right after the resource rows, so allow a small margin
+  const since = new Date(new Date(oldestUnread.createdAt).getTime() - 15 * 1000);
+  const role = String(actor?.systemRole || actor?.role || '').toUpperCase();
+
+  let where;
+  if (role === 'PARENT') {
+    const studentIds = await academicResourceRepo.findAuthorizedStudentIdsForParent(schoolId, userId);
+    const placements = await Promise.all(studentIds.map(id => academicResourceRepo.findStudentPlacement(schoolId, id)));
+    const targetOr = placements
+      .filter(p => p?.classId)
+      .map(p => ({
+        classId: p.classId,
+        OR: p.sectionId ? [{ sectionId: p.sectionId }, { sectionId: null }] : [{ sectionId: null }]
+      }));
+    if (targetOr.length === 0) return 0;
+    where = { schoolId, audience: 'teachers_students', createdAt: { gte: since }, OR: targetOr };
+  } else {
+    const access = await getResourceAccess(schoolId, actor);
+    if (!access) return 0;
+    where = {
+      schoolId,
+      createdAt: { gte: since },
+      uploaderId: { not: userId },
+      OR: buildVisibilityOr(access)
+    };
+  }
+
+  const rows = await prisma.academicResource.findMany({ where, select: { id: true, batchId: true } });
+  return new Set(rows.map(r => r.batchId || r.id)).size;
+}
+
+/**
  * Retrieves a single Academic Resource by ID within tenant context.
  *
  * @param {string} schoolId - Tenant UUID
@@ -468,12 +530,69 @@ export async function getAcademicResourceById(schoolId, id, actor = null) {
 }
 
 /**
- * Creates a new Academic Resource.
+ * Expands the requested targets (single / many / "All Class") into validated
+ * [{ classId, sectionId, label }] entries for this school.
+ */
+async function resolveCreateTargets(schoolId, payload, access) {
+  const classes = await prisma.class.findMany({
+    where: { schoolId },
+    select: { id: true, name: true, sections: { select: { id: true, name: true } } }
+  });
+  const classMap = new Map(classes.map(c => [c.id, c]));
+  const labelOf = (c, sec) => (sec ? `${c.name} - ${sec.name}` : c.name);
+
+  // "All Class": every class/section (admin) or every one the teacher is allowed to post to
+  if (payload.allClasses === true) {
+    const subjectId = payload.subjectId || null;
+    const all = [];
+    for (const c of classes) {
+      if (c.sections.length > 0) {
+        for (const sec of c.sections) all.push({ classId: c.id, sectionId: sec.id, label: labelOf(c, sec) });
+      } else {
+        all.push({ classId: c.id, sectionId: null, label: labelOf(c) });
+      }
+    }
+    const allowed = all.filter(t => accessCoversTarget(access, { ...t, subjectId }));
+    if (allowed.length === 0) {
+      throw new ForbiddenError('You do not handle any class / section that this resource can be shared with');
+    }
+    return allowed;
+  }
+
+  const requested = Array.isArray(payload.targets) && payload.targets.length > 0
+    ? payload.targets
+    : [{ classId: payload.classId, sectionId: payload.sectionId || null }];
+
+  const seen = new Set();
+  const resolved = [];
+  for (const t of requested) {
+    const c = classMap.get(t.classId);
+    if (!c) throw new NotFoundError('Class not found in this school');
+    const sectionId = t.sectionId || null;
+    let sec = null;
+    if (sectionId) {
+      sec = c.sections.find(s => s.id === sectionId);
+      if (!sec) throw new ValidationError('Selected section does not belong to the selected class');
+    } else if (c.sections.length > 0) {
+      throw new ValidationError(`Please select a section for ${c.name}`);
+    }
+    const key = `${c.id}:${sectionId || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    resolved.push({ classId: c.id, sectionId, label: labelOf(c, sec) });
+  }
+  return resolved;
+}
+
+/**
+ * Creates Academic Resource(s): one record per selected class/section so that the existing
+ * class-teacher / subject-teacher / student / parent visibility rules keep working unchanged.
+ * Recipients (class teacher, subject teachers, parents for teachers_students) are notified.
  *
  * @param {string} schoolId - Tenant UUID
  * @param {Object} actor - Authenticated user context
- * @param {Object} payload - Validated create payload
- * @returns {Promise<Object>} Created AcademicResource DTO
+ * @param {Object} payload - Validated create payload (classId | targets[] | allClasses)
+ * @returns {Promise<Array<Object>>} Created AcademicResource DTOs
  */
 export async function createAcademicResource(schoolId, actor, payload) {
   if (!schoolId) {
@@ -484,75 +603,102 @@ export async function createAcademicResource(schoolId, actor, payload) {
     throw new ForbiddenError('Authenticated user identifier missing');
   }
 
-  // 1. Verify Class belongs to tenant
-  const classRecord = await academicResourceRepo.findClassInTenant(schoolId, payload.classId);
-  if (!classRecord) {
-    throw new NotFoundError('Class not found in this school');
-  }
-
-  // 2. Section: required when the class has sections, and must belong to that class
-  const sectionId = payload.sectionId || null;
-  if (sectionId) {
-    const sectionRecord = await academicResourceRepo.findSectionInTenant(schoolId, sectionId);
-    if (!sectionRecord || sectionRecord.classId !== payload.classId) {
-      throw new ValidationError('Selected section does not belong to the selected class');
-    }
-  } else if ((await academicResourceRepo.countSectionsOfClass(schoolId, payload.classId)) > 0) {
-    throw new ValidationError('Please select a section for this class');
-  }
-
-  // 3. Verify Subject belongs to tenant if provided (empty = General)
-  if (payload.subjectId) {
-    const subjectRecord = await academicResourceRepo.findSubjectInTenant(schoolId, payload.subjectId);
+  // 1. Subject belongs to tenant if provided (empty = General)
+  const subjectId = payload.subjectId || null;
+  if (subjectId) {
+    const subjectRecord = await academicResourceRepo.findSubjectInTenant(schoolId, subjectId);
     if (!subjectRecord) {
       throw new NotFoundError('Subject not found in this school');
     }
   }
 
-  // 4. Non-admin staff: class teacher of the section, or teacher of that subject in that section
+  // 2. Resolve + validate every class / section target
   const access = await getResourceAccess(schoolId, actor);
-  if (!accessCoversTarget(access, { classId: payload.classId, sectionId, subjectId: payload.subjectId || null })) {
-    throw new ForbiddenError(
-      payload.subjectId
-        ? 'You can only share a subject resource with a section where you are the class teacher or teach that subject'
-        : 'You can only share resources with sections you handle'
-    );
+  const targets = await resolveCreateTargets(schoolId, payload, access);
+
+  // 3. Non-admin staff: class teacher of EVERY selected section, or teacher of that subject there
+  for (const t of targets) {
+    if (!accessCoversTarget(access, { classId: t.classId, sectionId: t.sectionId, subjectId })) {
+      throw new ForbiddenError(
+        subjectId
+          ? `You can only share a subject resource with sections where you are the class teacher or teach that subject (${t.label})`
+          : `You can only share resources with sections you handle (${t.label})`
+      );
+    }
   }
 
-  const created = await academicResourceRepo.createAcademicResource(schoolId, {
-    title: payload.title,
-    classId: payload.classId,
-    sectionId,
-    subjectId: payload.subjectId || null,
-    uploaderId,
-    fileUrl: payload.fileUrl || null,
-    type: payload.type || 'document',
-    audience: payload.audience || 'teachers',
-    description: payload.description || null
-  });
+  const audience = payload.audience || 'teachers';
+  const batchId = crypto.randomUUID(); // every class/section of this send shares it -> ONE card in the UI
+  const allClasses = payload.allClasses === true;
+  const createdRecords = await prisma.$transaction(
+    async tx => {
+      const rows = [];
+      for (const t of targets) {
+        rows.push(
+          await academicResourceRepo.createAcademicResource(
+            schoolId,
+            {
+              title: payload.title,
+              classId: t.classId,
+              sectionId: t.sectionId,
+              subjectId,
+              uploaderId,
+              fileUrl: payload.fileUrl || null,
+              type: payload.type || 'document',
+              audience,
+              batchId,
+              allClasses,
+              description: payload.description || null
+            },
+            tx
+          )
+        );
+      }
+      return rows;
+    },
+    { timeout: 30000, maxWait: 10000 }
+  );
 
   // Non-blocking Audit Logging
   createAuditLog({
     schoolId,
     entityType: 'AcademicResource',
-    entityId: created.id,
+    entityId: createdRecords[0].id,
     actionPerformed: 'ACADEMIC_RESOURCE_CREATED',
     userName: actor.email || actor.name || 'User',
     userRole: actor.systemRole || actor.role || 'TEACHER',
     modifiedFields: {
-      title: created.title,
-      classId: created.classId,
-      sectionId: created.sectionId,
-      subjectId: created.subjectId,
-      audience: created.audience,
-      fileType: created.fileType
+      title: payload.title,
+      targetCount: createdRecords.length,
+      targets: targets.map(t => t.label),
+      batchId,
+      allClasses,
+      subjectId,
+      audience,
+      fileType: createdRecords[0].fileType
     }
   }).catch(err => {
     console.error('[AUDIT LOG WARNING] Failed to record academic resource creation audit log:', err.message);
   });
 
+  // Non-blocking: tell class teacher / subject teachers (and parents when audience = teachers_students)
+  const labelByKey = new Map(targets.map(t => [`${t.classId}:${t.sectionId || ''}`, t.label]));
+  notifyResourceRecipients(
+    schoolId,
+    createdRecords.map(r => ({
+      classId: r.classId,
+      sectionId: r.sectionId || null,
+      subjectId: r.subjectId || null,
+      audience: r.audience,
+      label: labelByKey.get(`${r.classId}:${r.sectionId || ''}`) || ''
+    })),
+    { uploaderId, title: payload.title, allClasses }
+  ).catch(err => {
+    console.error('[RESOURCE NOTIFY WARNING] Failed to notify resource recipients:', err.message);
+  });
+
   const nameMap = await resolveUploaderNames(schoolId, [uploaderId]);
-  return formatAcademicResourceDto(created, nameMap);
+  return createdRecords.map(r => formatAcademicResourceDto(r, nameMap));
 }
 
 /**
@@ -686,8 +832,19 @@ export async function deleteAcademicResource(schoolId, actor, id) {
         throw new ForbiddenError('You are only authorized to delete your own resources');
       }
 
+      // A send to many classes is ONE card: deleting it removes it for every class teacher,
+      // subject teacher, student and parent it was sent to.
+      if (record.batchId) {
+        const removed = await academicResourceRepo.deleteAcademicResourcesByBatch(
+          schoolId,
+          record.batchId,
+          isAdmin ? null : userId,
+          tx
+        );
+        return { ...record, deletedCount: removed.count };
+      }
       await academicResourceRepo.deleteAcademicResource(schoolId, id, tx);
-      return record;
+      return { ...record, deletedCount: 1 };
     },
     { timeout: 15000, maxWait: 10000 }
   );
@@ -700,10 +857,25 @@ export async function deleteAcademicResource(schoolId, actor, id) {
     actionPerformed: 'ACADEMIC_RESOURCE_DELETED',
     userName: actor.email || actor.name || 'User',
     userRole: actor.systemRole || actor.role || 'USER',
-    modifiedFields: { id, title: existing.title }
+    modifiedFields: { id, title: existing.title, batchId: existing.batchId || null, deletedCount: existing.deletedCount }
   }).catch(err => {
     console.error('[AUDIT LOG WARNING] Failed to record academic resource deletion audit log:', err.message);
   });
+
+  // Remove the matching "new resource" alerts so the Resources unread badge never counts a deleted send
+  const sentAt = new Date(existing.createdAt).getTime();
+  prisma.notification
+    .deleteMany({
+      where: {
+        schoolId,
+        type: RESOURCE_NOTIFICATION_TYPE,
+        message: { startsWith: resourceMessagePrefix(existing.title) },
+        createdAt: { gte: new Date(sentAt - 60 * 1000), lte: new Date(sentAt + 10 * 60 * 1000) }
+      }
+    })
+    .catch(err => {
+      console.error('[RESOURCE NOTIFY WARNING] Failed to clean up resource notifications:', err.message);
+    });
 
   return {
     success: true,

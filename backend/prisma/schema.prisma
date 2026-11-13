@@ -503,6 +503,9 @@ model AcademicResource {
   fileType    String?  @map("file_type") @db.VarChar(50)
   description String?  @db.Text
   audience    String   @default("teachers") @db.VarChar(20)
+  // One "send" = one batch (many class/section rows share the same batchId; UI shows them as ONE card)
+  batchId     String?  @map("batch_id") @db.Uuid
+  allClasses  Boolean  @default(false) @map("all_classes")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -514,6 +517,7 @@ model AcademicResource {
   @@unique([schoolId, id])
   @@index([schoolId, classId])
   @@index([schoolId, sectionId])
+  @@index([schoolId, batchId])
   @@map("academic_resources")
 }
 

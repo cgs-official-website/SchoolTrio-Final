@@ -3,11 +3,15 @@ import { useAuth } from './AuthContext';
 import { noticesApi } from '../api/notices';
 import { chatsApi } from '../api/chats';
 import { notificationsApi } from '../api/notifications';
+import { getUnreadResourceCount } from '../api/academic-resources';
 import { homeworkApi } from '../api/homework';
 import { leavesApi } from '../api/leaves';
 import { canteenApi } from '../api/canteen';
 import { complaintsApi } from '../api/complaints';
-import { LIVE_DATA_EVENT, LIVE_DATA_CHANNEL, LIVE_DATA_STORAGE_KEY } from '../utils/liveData';
+import { LIVE_DATA_EVENT, LIVE_DATA_CHANNEL, LIVE_DATA_STORAGE_KEY, notifyDataChanged } from '../utils/liveData';
+
+// Same type string the backend stores for "new resource shared" alerts (academic-resource.notify.js)
+const RESOURCE_NOTIFICATION_TYPE = 'resource';
 
 const NotificationContext = createContext();
 
@@ -25,7 +29,8 @@ export const NotificationProvider = ({ children }) => {
     leaves: 0,
     canteen: 0,
     chats: 0,
-    notifications: 0
+    notifications: 0,
+    resources: 0
   });
 
   const [lastViewed, setLastViewed] = useState({
@@ -50,15 +55,23 @@ export const NotificationProvider = ({ children }) => {
         notices.forEach(n => {
           const alreadyViewed = n.viewedBy?.some(v => v && (v.uid === currentUserId || v.userId === currentUserId || v.parentUserId === currentUserId));
           if (!alreadyViewed && n.id) {
-            noticesApi.markNoticeViewed(n.id).catch(() => {});
+            noticesApi.markNoticeViewed(n.id).catch(() => { });
           }
         });
-      }).catch(() => {});
+      }).catch(() => { });
+    }
+
+    // Opening Resources = the user has seen the new resources: mark those alerts read (per user, server side)
+    if (moduleKey === 'resources') {
+      notificationsApi
+        .markAllNotificationsRead({ type: RESOURCE_NOTIFICATION_TYPE })
+        .then(() => notifyDataChanged('notifications'))
+        .catch(() => { });
     }
 
     // Auto-mark personal notifications as read when notifications panel is opened
     if (moduleKey === 'notifications') {
-      notificationsApi.markAllNotificationsRead().catch(() => {});
+      notificationsApi.markAllNotificationsRead().catch(() => { });
     }
   }, [userProfile?.id, userProfile?.userId, userProfile?.uid, currentUser?.uid]);
 
@@ -71,7 +84,8 @@ export const NotificationProvider = ({ children }) => {
         leaves: 0,
         canteen: 0,
         chats: 0,
-        notifications: 0
+        notifications: 0,
+        resources: 0
       });
       return;
     }
@@ -195,6 +209,22 @@ export const NotificationProvider = ({ children }) => {
       }
     };
 
+    // 8. Resources Unread Fetch (REST API: resources still visible to this user and shared since they last opened Resources)
+    const fetchResourceUnread = async () => {
+      if (role !== 'parent' && role !== 'teacher' && role !== 'staff') return;
+      try {
+        const res = await getUnreadResourceCount();
+        if (!isMounted) return;
+        const count = typeof res?.data?.count === 'number' ? res.data.count : (typeof res?.count === 'number' ? res.count : 0);
+        if (!isMounted) return;
+        setUnreadCounts(prev => ({ ...prev, resources: count }));
+      } catch (err) {
+        console.error("Error fetching resources unread count from REST:", err);
+      }
+    };
+
+    fetchResourceUnread();
+
     const handleLiveDataUpdate = (entity) => {
       if (!isMounted) return;
       if (entity === 'notices' || entity === 'all') fetchNoticeUnread();
@@ -204,6 +234,7 @@ export const NotificationProvider = ({ children }) => {
       if (entity === 'complaints' || entity === 'all') fetchComplaintsPending();
       if (entity === 'chats' || entity === 'all') fetchChatUnread();
       if (entity === 'notifications' || entity === 'all') fetchNotificationUnread();
+      if (entity === 'resources' || entity === 'notifications' || entity === 'all') fetchResourceUnread();
     };
 
     const handleCustomEvent = (event) => {
@@ -220,7 +251,7 @@ export const NotificationProvider = ({ children }) => {
           const updatedEntity = msgEvent.data?.entity || 'all';
           handleLiveDataUpdate(updatedEntity);
         };
-      } catch {}
+      } catch { }
     }
 
     const handleStorage = (storageEvent) => {
@@ -229,7 +260,7 @@ export const NotificationProvider = ({ children }) => {
           const data = JSON.parse(storageEvent.newValue);
           const updatedEntity = data?.entity || 'all';
           handleLiveDataUpdate(updatedEntity);
-        } catch {}
+        } catch { }
       }
     };
     window.addEventListener('storage', handleStorage);
@@ -244,6 +275,7 @@ export const NotificationProvider = ({ children }) => {
         fetchLeavesPending();
         fetchCanteenPending();
         fetchComplaintsPending();
+        fetchResourceUnread();
       }
     };
 
@@ -259,6 +291,7 @@ export const NotificationProvider = ({ children }) => {
         fetchLeavesPending();
         fetchCanteenPending();
         fetchComplaintsPending();
+        fetchResourceUnread();
       }
     }, 15000);
 
@@ -272,7 +305,7 @@ export const NotificationProvider = ({ children }) => {
       if (bc) {
         try {
           bc.close();
-        } catch {}
+        } catch { }
       }
     };
   }, [schoolId, role, currentUser, userProfile?.id, userProfile?.uid, userProfile?.userId]);

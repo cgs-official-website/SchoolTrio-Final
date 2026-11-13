@@ -9,6 +9,7 @@ import { requestTimeoutMiddleware } from './middleware/timeout.middleware.js';
 import { errorMiddleware, notFoundHandler } from './middleware/error.middleware.js';
 import healthRoutes from './modules/health/health.routes.js';
 import apiV1Router from './routes/index.js';
+import { UPLOADS_ROOT } from './modules/academic-resources/academic-resource.upload.js';
 
 /**
  * Creates and configures the Express application.
@@ -39,6 +40,17 @@ export const createApp = () => {
   // 3. Request Body Parsers
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+  // 3b. Serve locally stored uploads (resource files when Cloudinary is not configured).
+  //     cross-origin so the frontend (another port/domain) can open / embed them.
+  app.use(
+    '/uploads',
+    (req, res, next) => {
+      res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+      next();
+    },
+    express.static(UPLOADS_ROOT, { index: false, dotfiles: 'ignore' })
+  );
 
   // 4. Mount Root Health Endpoints (for load balancers and orchestrators)
   app.use('/health', healthRoutes);

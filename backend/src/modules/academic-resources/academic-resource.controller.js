@@ -84,6 +84,20 @@ export async function listStudentAcademicResources(req, res, next) {
 }
 
 /**
+ * Unread count for the sidebar Resources badge.
+ * GET /api/v1/academic-resources/unread-count
+ */
+export async function getUnreadResourceCount(req, res, next) {
+  try {
+    const schoolId = req.tenant?.schoolId;
+    const count = await academicResourceService.countUnreadResources(schoolId, req.auth || req.user);
+    return ApiResponse.success(res, { count }, 'Unread resource count retrieved successfully', 200);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
  * Retrieves a single academic resource by ID.
  * GET /api/v1/academic-resources/:id
  */
@@ -174,6 +188,7 @@ export async function deleteAcademicResource(req, res, next) {
 }
 
 export const academicResourceController = {
+  getUnreadResourceCount,
   listStudentAcademicResources,
   getUploadConfig,
   uploadAcademicResourceFile,

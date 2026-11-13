@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { LuFolderDown, LuSearch, LuPlus, LuFileText, LuLink, LuVideo, LuImage, LuTrash2, LuDownload, LuExternalLink, LuX } from 'react-icons/lu';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { LuFolderDown, LuSearch, LuPlus, LuFileText, LuLink, LuVideo, LuImage, LuTrash2, LuDownload, LuExternalLink, LuX, LuChevronDown, LuCheck } from 'react-icons/lu';
 import { useAuth } from '../../context/AuthContext';
 import { listAcademicResources, createAcademicResource, deleteAcademicResource, uploadAcademicResourceFile, getResourceUploadConfig } from '../../api/academic-resources';
 import { listClasses } from '../../api/classes';
 import { listSubjects } from '../../api/subjects';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
-import usePermissions from '../../hooks/usePermissions';
 import { sortClassesAscending, formatClassSection } from '../../utils/classSorting';
 import { notifyDataChanged } from '../../utils/liveData';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
@@ -24,16 +23,102 @@ function describeApiError(err, fallback) {
   return detail ? `${base} (${detail})` : base;
 }
 
+/**
+ * Multi-select dropdown for Class / Section.
+ * First row = "All Class" (selects / clears every option), then one checkbox row per class-section.
+ */
+function ClassSectionMultiSelect({ options, selectedKeys, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const allSelected = options.length > 0 && selectedKeys.length === options.length;
+  const selectedOptions = options.filter(o => selectedKeys.includes(o.key));
+  const summary = allSelected
+    ? `All Class (${options.length})`
+    : selectedOptions.length === 0
+      ? 'Select class / section'
+      : selectedOptions.length <= 2
+        ? selectedOptions.map(o => o.label).join(', ')
+        : `${selectedOptions.length} classes selected`;
+
+  const term = query.trim().toLowerCase();
+  const visible = term ? options.filter(o => o.label.toLowerCase().includes(term)) : options;
+
+  const toggleOne = (key) => {
+    onChange(selectedKeys.includes(key) ? selectedKeys.filter(k => k !== key) : [...selectedKeys, key]);
+  };
+  const toggleAll = () => onChange(allSelected ? [] : options.map(o => o.key));
+
+  const Box = ({ checked }) => (
+    <span className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center ${checked ? 'bg-primary-600 border-primary-600 text-white' : 'border-slate-300 dark:border-slate-600'}`}>
+      {checked && <LuCheck size={12} />}
+    </span>
+  );
+
+  return (
+    <div ref={wrapRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:outline-none text-sm font-medium flex items-center justify-between gap-2 text-left"
+      >
+        <span className="truncate">{summary}</span>
+        <LuChevronDown size={16} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+          <div className="p-2 border-b border-slate-100 dark:border-slate-800">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search class..."
+              className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+          <div className="max-h-56 overflow-y-auto custom-scrollbar">
+            <button
+              type="button"
+              onClick={toggleAll}
+              className="w-full px-4 py-2 flex items-center gap-3 text-sm font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800"
+            >
+              <Box checked={allSelected} /> All Class
+            </button>
+            {visible.map(o => (
+              <button
+                key={o.key}
+                type="button"
+                onClick={() => toggleOne(o.key)}
+                className="w-full px-4 py-2 flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                <Box checked={selectedKeys.includes(o.key)} /> {o.label}
+              </button>
+            ))}
+            {visible.length === 0 && <p className="px-4 py-3 text-xs text-slate-400">No class matches "{query}".</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ResourceSharing() {
   const { userProfile, currentUser } = useAuth();
   const schoolId = userProfile?.schoolId;
   const currentUserId = userProfile?.id || userProfile?.userId || currentUser?.id || currentUser?.uid;
-  const { canDelete } = usePermissions();
   const isAdmin = userProfile?.role?.toLowerCase() === 'admin' ||
     userProfile?.role?.toLowerCase() === 'superadmin' ||
     userProfile?.systemRole?.toLowerCase() === 'admin' ||
     userProfile?.systemRole?.toLowerCase() === 'super_admin';
-  const hasDeletePermission = isAdmin || canDelete('resources');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('all');
@@ -74,20 +159,27 @@ export default function ResourceSharing() {
   const [formData, setFormData] = useState({
     title: '',
     type: 'document',
-    classId: '',
-    sectionId: '',
     subjectId: '',
     url: '',
     description: ''
   });
+  // Selected class/section option keys (multi-select; "All Class" = every option)
+  const [selectedKeys, setSelectedKeys] = useState([]);
 
-  // Section picked in the form + the subjects the user may choose for it
-  const selectedTarget = targetOptions.find(
-    o => o.classId === formData.classId && (o.sectionId || '') === (formData.sectionId || '')
-  ) || null;
-  const selectableSubjects = !allowedTargets || !selectedTarget || selectedTarget.allSubjects
+  const selectedTargets = targetOptions.filter(o => selectedKeys.includes(o.key));
+  const sendToAll = targetOptions.length > 1 && selectedTargets.length === targetOptions.length;
+  // A subject is selectable only if the sender may post it to EVERY selected class/section
+  const selectableSubjects = !allowedTargets || selectedTargets.length === 0
     ? subjects
-    : subjects.filter(sub => selectedTarget.subjectIds.includes(sub.id));
+    : subjects.filter(sub => selectedTargets.every(o => o.allSubjects || o.subjectIds.includes(sub.id)));
+
+  // Drop the chosen subject if the class/section selection no longer allows it
+  useEffect(() => {
+    if (formData.subjectId && !selectableSubjects.some(sub => sub.id === formData.subjectId)) {
+      setFormData(prev => ({ ...prev, subjectId: '' }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKeys, allowedTargets]);
   const fetchMetadata = useCallback(async () => {
     if (!schoolId) return;
     try {
@@ -184,12 +276,11 @@ export default function ResourceSharing() {
     setFormData({
       title: '',
       type: 'document',
-      classId: targetOptions[0]?.classId || '',
-      sectionId: targetOptions[0]?.sectionId || '',
       subjectId: '',
       url: '',
       description: ''
     });
+    setSelectedKeys(targetOptions[0] ? [targetOptions[0].key] : []);
     setSelectedFile(null);
     setShowModal(true);
   };
@@ -212,7 +303,11 @@ export default function ResourceSharing() {
     try {
       await deleteAcademicResource(resourceId);
       toast.success("Resource deleted successfully!");
-      setResources(prev => prev.filter(r => r.id !== resourceId));
+      // backend deletes the whole send (every class it went to) -> drop all rows of that batch
+      setResources(prev => {
+        const target = prev.find(r => r.id === resourceId);
+        return prev.filter(r => r.id !== resourceId && !(target?.batchId && r.batchId === target.batchId));
+      });
       notifyDataChanged('resources');
     } catch (error) {
       console.error('Delete resource error:', error);
@@ -229,12 +324,8 @@ export default function ResourceSharing() {
       toast.error("Please provide a resource title.");
       return;
     }
-    if (!formData.classId) {
-      toast.error("Please select a class and section.");
-      return;
-    }
-    if (selectedTarget && selectedTarget.sectionId && !formData.sectionId) {
-      toast.error("Please select a section.");
+    if (selectedTargets.length === 0) {
+      toast.error("Please select at least one class / section (or All Class).");
       return;
     }
     const isLinkType = formData.type === 'link';
@@ -275,8 +366,11 @@ export default function ResourceSharing() {
 
       const payload = {
         title: formData.title.trim(),
-        classId: formData.classId,
-        sectionId: formData.sectionId || null,
+        // "All Class" ticked -> backend expands it; otherwise the exact picked class/sections.
+        // Either way it is ONE send = ONE card.
+        ...(sendToAll
+          ? { allClasses: true }
+          : { targets: selectedTargets.map(o => ({ classId: o.classId, sectionId: o.sectionId || null })) }),
         subjectId: formData.subjectId || null, // empty = General (shared with every teacher of the section)
         fileUrl: fileUrl || null,
         type: formData.type || 'document',
@@ -285,16 +379,20 @@ export default function ResourceSharing() {
       };
 
       const res = await createAcademicResource(payload);
-      const createdRecord = res?.data || res;
+      const raw = res?.data || res;
+      const createdRecords = Array.isArray(raw) ? raw : (raw?.id ? [raw] : []);
+      const count = createdRecords.length || selectedTargets.length;
+      const where = count > 1 ? ` (${count} classes)` : '';
 
       toast.success(audience === 'teachers_students'
-        ? "Resource sent to teachers and students."
-        : "Resource sent to teachers.");
+        ? `Resource sent to teachers and students${where}.`
+        : `Resource sent to teachers${where}.`);
       setSelectedFile(null);
       setShowModal(false);
 
-      if (createdRecord?.id) {
-        setResources(prev => [createdRecord, ...prev.filter(r => r.id !== createdRecord.id)]);
+      if (createdRecords.length > 0) {
+        const ids = new Set(createdRecords.map(r => r.id));
+        setResources(prev => [...createdRecords, ...prev.filter(r => !ids.has(r.id))]);
       }
       notifyDataChanged('resources');
       fetchResources(true);
@@ -307,10 +405,21 @@ export default function ResourceSharing() {
     }
   };
 
-  const filteredResources = resources.filter(r => {
+  // One send (batch) = one card, even when it went to many classes / sections
+  const groupedResources = (() => {
+    const map = new Map();
+    for (const r of resources) {
+      const key = r.batchId || r.id;
+      if (!map.has(key)) map.set(key, { ...r, rows: [r] });
+      else map.get(key).rows.push(r);
+    }
+    return Array.from(map.values());
+  })();
+
+  const filteredResources = groupedResources.filter(r => {
     const term = searchTerm.trim().toLowerCase();
     const matchesSearch = !term || [
-      r.title, r.subjectName, r.subject, r.className, r.sectionName, r.class,
+      r.title, r.subjectName, r.subject, ...r.rows.map(x => `${x.className || ''} ${x.sectionName || ''}`), r.class,
       r.description, r.uploaderName, r.type, r.fileType
     ].some(v => String(v || '').toLowerCase().includes(term));
 
@@ -382,19 +491,25 @@ export default function ResourceSharing() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {filteredResources.map(resource => {
                 const resourceUrl = resource.fileUrl || resource.url;
-                const resourceClass = resource.className
-                  ? formatClassSection({ name: resource.className, section: resource.sectionName })
-                  : (resource.class || 'All Classes');
+                const rowLabels = resource.rows.map(x => (x.className
+                  ? formatClassSection({ name: x.className, section: x.sectionName })
+                  : (x.class || 'All Classes')));
+                const isMulti = resource.rows.length > 1;
+                const isAllClasses = resource.allClasses === true && isMulti;
+                const resourceClass = rowLabels[0];
+                const classChip = isMulti
+                  ? `${rowLabels.slice(0, 2).join(', ')}${rowLabels.length > 2 ? ` +${rowLabels.length - 2}` : ''}`
+                  : resourceClass;
                 const resourceSubject = resource.subjectName || resource.subject || 'General';
                 const resourceType = resource.type || resource.fileType || 'document';
                 const resourceDate = resource.createdAt || resource.date;
-                const isOwner = currentUserId && (resource.uploaderId === currentUserId || resource.teacherId === currentUserId);
-                const canDeleteThis = hasDeletePermission || isOwner;
+                // Delete lives in the admin portal only (deletes the send for every recipient)
+                const canDeleteThis = isAdmin;
 
                 return (
                   <div key={resource.id} className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-slate-700 hover:shadow-md transition-all group flex flex-col">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-3">
+                    <div className="flex justify-between items-start mb-4 gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
                         {getTypeIcon(resourceType)}
                         <div>
                           <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-tight line-clamp-2" title={resource.title}>
@@ -405,12 +520,25 @@ export default function ResourceSharing() {
                           </p>
                         </div>
                       </div>
+                      {isMulti && (
+                        <span
+                          className="shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 whitespace-nowrap"
+                          title={rowLabels.join(', ')}
+                        >
+                          {isAllClasses ? 'To All Class' : `${resource.rows.length} Classes`}
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex flex-wrap gap-2 mb-6">
-                      <span className="px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-                        {resourceClass}
-                      </span>
+                      {!isAllClasses && (
+                        <span
+                          className="px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                          title={rowLabels.join(', ')}
+                        >
+                          {classChip}
+                        </span>
+                      )}
                       <span className="px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider bg-primary-50 text-primary-600">
                         {resourceSubject}
                       </span>
@@ -424,15 +552,6 @@ export default function ResourceSharing() {
                         {resourceDate ? new Date(resourceDate).toLocaleDateString('en-GB') : 'No Date'}
                       </span>
                       <div className="flex gap-2">
-                        {canDeleteThis && (
-                          <button
-                            onClick={() => handleDeleteClick(resource.id, resource.title)}
-                            className="p-2 text-slate-400 dark:text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
-                            title="Delete"
-                          >
-                            <LuTrash2 size={16} />
-                          </button>
-                        )}
                         <a
                           href={resourceUrl || '#'}
                           onClick={(e) => {
@@ -452,6 +571,15 @@ export default function ResourceSharing() {
                             <LuDownload size={16} />
                           )}
                         </a>
+                        {canDeleteThis && (
+                          <button
+                            onClick={() => handleDeleteClick(resource.id, resource.title)}
+                            className="p-2 text-slate-400 dark:text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                            title="Delete"
+                          >
+                            <LuTrash2 size={16} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -518,30 +646,13 @@ export default function ResourceSharing() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-slate-700 dark:text-slate-200 mb-2">Class / Section</label>
+                <label className="block text-sm font-bold text-slate-700 dark:text-slate-200 mb-2">Class / Section <span className="font-medium text-slate-400">(select one or many)</span></label>
                 {targetOptions.length > 0 ? (
-                  <select
-                    value={selectedTarget ? selectedTarget.key : ''}
-                    onChange={(e) => {
-                      const opt = targetOptions.find(o => o.key === e.target.value);
-                      if (!opt) return;
-                      const allowedForOpt = !allowedTargets || opt.allSubjects ? null : opt.subjectIds;
-                      setFormData(prev => ({
-                        ...prev,
-                        classId: opt.classId,
-                        sectionId: opt.sectionId || '',
-                        // keep the subject only if it is still allowed for the new section
-                        subjectId: prev.subjectId && (!allowedForOpt || allowedForOpt.includes(prev.subjectId)) ? prev.subjectId : ''
-                      }));
-                    }}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:outline-none text-sm font-medium"
-                  >
-                    {targetOptions.map(o => (
-                      <option key={o.key} value={o.key}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                  <ClassSectionMultiSelect
+                    options={targetOptions}
+                    selectedKeys={selectedKeys}
+                    onChange={setSelectedKeys}
+                  />
                 ) : (
                   <p className="text-xs text-slate-400">No classes available. You can only share with sections you handle (class teacher or subject teacher).</p>
                 )}

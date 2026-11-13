@@ -144,7 +144,18 @@ export async function listStudentResources(studentId, params = {}) {
   });
 }
 
+/**
+ * Unread count for the sidebar Resources badge (resources shared since the user last opened the module).
+ * Calls GET /api/v1/academic-resources/unread-count.
+ *
+ * @returns {Promise<{ success: boolean, data: { count: number } }>}
+ */
+export async function getUnreadResourceCount() {
+  return apiClient('/api/v1/academic-resources/unread-count', { method: 'GET' });
+}
+
 export const academicResourcesApi = {
+  getUnreadResourceCount,
   listStudentResources,
   getResourceUploadConfig,
   uploadAcademicResourceFile,
