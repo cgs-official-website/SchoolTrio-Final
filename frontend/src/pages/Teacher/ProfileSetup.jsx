@@ -19,6 +19,10 @@ import {
   LuCircleCheck
 } from 'react-icons/lu';
 import { normalizeGender } from '../../utils/genderUtils';
+import CustomFieldsRenderer from '../../components/CustomFieldsRenderer';
+import useCustomSchema from '../../hooks/useCustomSchema';
+import { getMissingRequired, resolveTarget } from '../../utils/customSchema';
+import { uploadCustomDataFiles } from '../../utils/cloudinary';
 import {
   validateProfile,
   sanitizeField,
@@ -29,7 +33,19 @@ import {
 } from '../../utils/profileValidation';
 
 export default function ProfileSetup() {
-  const { currentUser, updateProfileData } = useAuth();
+  const { currentUser, userProfile, updateProfileData } = useAuth();
+  // Admin-defined fields (Custom Modules > Staff Directory). Shown inside the matching card below;
+  // sections that match no card get a card of their own.
+  const { sections: customSections } = useCustomSchema('staff');
+  const [customValues, setCustomValues] = useState({});
+  const handleCustomChange = (k, v) => setCustomValues(prev => ({ ...prev, [k]: v }));
+  const extraCustomSections = customSections.filter(sec => {
+    const t = resolveTarget('staff', sec.title);
+    return t === null || t === 'Uploads';
+  });
+  const renderCustom = (targets) => (
+    <CustomFieldsRenderer moduleKey="staff" targets={targets} customData={customValues} onChange={handleCustomChange} />
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [staffId, setStaffId] = useState(null);
@@ -107,6 +123,7 @@ export default function ProfileSetup() {
         const custom = (typeof data.customData === 'object' && data.customData !== null)
           ? data.customData
           : {};
+        setCustomValues(custom);
         const quals = (typeof data.qualifications === 'object' && data.qualifications !== null)
           ? data.qualifications
           : ((typeof custom.qualifications === 'object' && custom.qualifications !== null) ? custom.qualifications : {});
@@ -222,8 +239,20 @@ export default function ProfileSetup() {
       return;
     }
 
+    const missingCustom = getMissingRequired(customSections, customValues);
+    if (missingCustom.length > 0) {
+      toast.error(`Please fill required field(s): ${missingCustom.join(', ')}`);
+      return;
+    }
+
     setSaving(true);
     try {
+      // Only the admin-defined field ids are sent (backend merges them into the staff's customData)
+      const customFieldIds = customSections.flatMap(sec => (sec.fields || []).map(f => f.id));
+      const rawCustomPick = {};
+      customFieldIds.forEach(id => { if (customValues[id] !== undefined) rawCustomPick[id] = customValues[id]; });
+      const customPick = await uploadCustomDataFiles(rawCustomPick, userProfile?.schoolId, 'staff');
+
       const financialData = {
         bankAccountNumber: formData.bankAccountNumber || '',
         bankName: formData.bankName || '',
@@ -276,6 +305,7 @@ export default function ProfileSetup() {
           taxIdDetails: formData.taxIdDetails || ''
         },
         customData: {
+          ...customPick,
           firstName: formData.firstName.trim(),
           lastName: formData.lastName.trim(),
           fatherGuardianName: formData.fatherGuardianName || '',
@@ -294,8 +324,8 @@ export default function ProfileSetup() {
         const uFin = (typeof updated.financial === 'object' && updated.financial !== null)
           ? updated.financial
           : ((typeof updated.customData?.financial === 'object' && updated.customData?.financial !== null)
-              ? updated.customData.financial
-              : {});
+            ? updated.customData.financial
+            : {});
         setFormData(prev => ({
           ...prev,
           bankAccountNumber: uFin.bankAccountNumber ?? prev.bankAccountNumber,
@@ -309,7 +339,10 @@ export default function ProfileSetup() {
       // Reload what the server actually stored, then tell the dashboard banner to recalculate
       try {
         const fresh = await staffApi.getStaffMe();
-        if (fresh?.data) setServerDoc(fresh.data);
+        if (fresh?.data) {
+          setServerDoc(fresh.data);
+          if (fresh.data.customData && typeof fresh.data.customData === 'object') setCustomValues(fresh.data.customData);
+        }
       } catch { /* non-fatal */ }
       if (updateProfileData) {
         await updateProfileData();
@@ -489,6 +522,7 @@ export default function ProfileSetup() {
               {errors.fatherGuardianName && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.fatherGuardianName}</p>}
             </div>
           </div>
+          {renderCustom(['Personal'])}
         </div>
 
         {/* Address */}
@@ -500,6 +534,7 @@ export default function ProfileSetup() {
             <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Residential Address <span className="text-red-500">*</span></label>
             <textarea name="residentialAddress" value={formData.residentialAddress} onChange={handleChange} onBlur={handleBlur} aria-invalid={errors.residentialAddress ? "true" : "false"} rows="3" placeholder="Enter your full residential address" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none resize-none transition-all text-sm"></textarea>
           </div>
+          {renderCustom(['Address'])}
         </div>
 
         {/* Educational details */}
@@ -529,6 +564,7 @@ export default function ProfileSetup() {
               {errors.yearOfPassing && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.yearOfPassing}</p>}
             </div>
           </div>
+          {renderCustom(['Educational'])}
         </div>
 
         {/* Professional Details */}
@@ -563,6 +599,7 @@ export default function ProfileSetup() {
               {errors.professionalCertifications && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.professionalCertifications}</p>}
             </div>
           </div>
+          {renderCustom(['Professional'])}
         </div>
 
         {/* Identity & Government IDs */}
@@ -614,6 +651,7 @@ export default function ProfileSetup() {
               {errors.taxIdDetails && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.taxIdDetails}</p>}
             </div>
           </div>
+          {renderCustom(['Government & Identity', 'Employment'])}
         </div>
 
         {/* Bank Details */}
@@ -643,7 +681,18 @@ export default function ProfileSetup() {
               {errors.ifscCode && <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">{errors.ifscCode}</p>}
             </div>
           </div>
+          {renderCustom(['Banking'])}
         </div>
+
+        {/* Admin-defined sections that have no matching card above */}
+        {extraCustomSections.map(sec => (
+          <div key={sec.id} className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 transition-all hover:shadow-md">
+            <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 mb-4">
+              <LuUser className="text-primary-500" /> {sec.title}
+            </h2>
+            {renderCustom([`section:${sec.id}`])}
+          </div>
+        ))}
 
         {/* Reset Password Section */}
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 transition-all hover:shadow-md">

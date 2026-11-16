@@ -78,6 +78,7 @@ const SECTION_TARGETS = {
         'Employment': ['employment', 'employment details'],
         'Banking': ['banking', 'banking details', 'bank details'],
         'Uploads': ['uploads', 'upload', 'documents', 'document uploads'],
+        'Address': ['address details', 'address', 'address information', 'residential address'],
     },
     students: {
         'personal': ['student details', 'personal information', 'personal details', 'personal'],

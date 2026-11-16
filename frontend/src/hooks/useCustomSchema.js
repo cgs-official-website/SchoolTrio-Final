@@ -12,12 +12,12 @@ import { useLiveDataRefresh } from './useLiveDataRefresh';
  */
 export default function useCustomSchema(moduleKey) {
     const { userProfile } = useAuth();
-    const schoolId = userProfile?.schoolId;
+    const ready = !!userProfile; // wait until the user is signed in (any role)
     const [sections, setSections] = useState([]);
     const [loading, setLoading] = useState(true);
 
     const load = useCallback(async () => {
-        if (!schoolId || !moduleKey) return;
+        if (!ready || !moduleKey) return;
         try {
             const res = await getFormSchema(moduleKey);
             const data = res?.data || res;
@@ -28,7 +28,7 @@ export default function useCustomSchema(moduleKey) {
         } finally {
             setLoading(false);
         }
-    }, [schoolId, moduleKey]);
+    }, [ready, moduleKey]);
 
     useEffect(() => { load(); }, [load]);
     useLiveDataRefresh(load, [load], 'forms');

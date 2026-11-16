@@ -12,11 +12,13 @@ export const customModulesRouter = Router();
 // Form Schemas Endpoints (mounted before /:id parameter routes to avoid collisions)
 // ===========================================================================
 
+// Any authenticated user of the tenant may READ a form schema: teachers, students etc. need the
+// admin-defined extra fields to render their own forms (e.g. Teacher Profile). Editing/deleting a
+// schema stays restricted to form-builder permissions below.
 customModulesRouter.get(
   '/schemas/:moduleKey',
   authenticate,
   tenantContext({ requireTenant: true }),
-  requirePermission('form-builder', 'read'),
   customModulesController.getFormSchema
 );
 

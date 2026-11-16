@@ -20,9 +20,9 @@ import { getMissingRequired, resolveTarget } from '../../utils/customSchema';
 
 // Which admin-defined sections (by built-in tab) show inside each tab of the View/Edit staff modal.
 const STAFF_VIEW_TAB_TARGETS = {
-  'Personal Details': ['Personal'],
-  'Personal Info': ['Personal'],
-  'Personal': ['Personal'],
+  'Personal Details': ['Personal', 'Address'],
+  'Personal Info': ['Personal', 'Address'],
+  'Personal': ['Personal', 'Address'],
   'Education & Work': ['Educational', 'Professional', 'Employment'],
   'Identity & Banking': ['Government & Identity', 'Banking'],
   'Documents': ['Uploads']
@@ -3043,7 +3043,7 @@ export default function StaffAssignment() {
                   section they were added to; new sections (no matching tab) get their own tab named after the section. */}
               <CustomFieldsRenderer
                 moduleKey="staff"
-                targets={[addStaffActiveTab]}
+                targets={addStaffActiveTab === 'Personal' ? ['Personal', 'Address'] : [addStaffActiveTab]}
                 variant="compact"
                 customData={newStaff.customData}
                 onChange={(k, v) => setNewStaff(prev => ({ ...prev, customData: { ...(prev.customData || {}), [k]: v } }))}
