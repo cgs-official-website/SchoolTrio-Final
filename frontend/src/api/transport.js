@@ -280,3 +280,57 @@ export async function unassignStudentFromRoute(routeId, payload) {
     body: JSON.stringify(body)
   });
 }
+
+// ============================================================
+// TRANSPORT V2: BUS STOPS, BUS FEES, STUDENT MAPPINGS
+// ============================================================
+
+const withQuery = (path, params = {}, keys = []) => `${path}${buildQueryString(params, keys)}`;
+
+export async function listBusStops(params = {}) {
+  return apiClient(withQuery('/api/v1/transport/bus-stops', params, ['search', 'routeId']), { method: 'GET' });
+}
+
+export async function listBusSlabs() {
+  return apiClient('/api/v1/transport/slabs', { method: 'GET' });
+}
+
+export async function createBusStop(payload) {
+  return apiClient('/api/v1/transport/bus-stops', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function updateBusStop(id, payload) {
+  return apiClient(`/api/v1/transport/bus-stops/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+}
+
+export async function deleteBusStop(id) {
+  return apiClient(`/api/v1/transport/bus-stops/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function listBusFees(params = {}) {
+  return apiClient(withQuery('/api/v1/transport/fees', params, ['kind', 'search']), { method: 'GET' });
+}
+
+export async function createBusFee(payload) {
+  return apiClient('/api/v1/transport/fees', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function updateBusFee(id, payload) {
+  return apiClient(`/api/v1/transport/fees/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+}
+
+export async function deleteBusFee(id) {
+  return apiClient(`/api/v1/transport/fees/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function createStudentMappings(payload) {
+  return apiClient('/api/v1/transport/mappings', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function updateStudentMapping(studentId, payload) {
+  return apiClient(`/api/v1/transport/mappings/${encodeURIComponent(studentId)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+}
+
+export async function deleteStudentMapping(studentId) {
+  return apiClient(`/api/v1/transport/mappings/${encodeURIComponent(studentId)}`, { method: 'DELETE' });
+}

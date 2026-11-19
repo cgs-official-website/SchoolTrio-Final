@@ -115,7 +115,7 @@ export async function createVehicle(schoolId, data, actor = {}) {
       capacity: vehicle.capacity,
       status: vehicle.status
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
   return vehicle;
 }
@@ -150,7 +150,7 @@ export async function updateVehicle(schoolId, id, data, actor = {}) {
     userName: actor?.name || actor?.email || 'Administrator',
     userRole: actor?.role || actor?.systemRole || null,
     modifiedFields: data
-  }).catch(() => {});
+  }).catch(() => { });
 
   return updated;
 }
@@ -177,7 +177,7 @@ export async function deleteVehicle(schoolId, id, actor = {}) {
     modifiedFields: {
       deletedRegistrationNumber: existing.registrationNumber
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
   return { message: 'Vehicle deleted successfully', id };
 }
@@ -249,7 +249,7 @@ export async function createRoute(schoolId, data, actor = {}) {
       vehicleId: route.vehicleId,
       driverName: route.driverName
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
   return route;
 }
@@ -286,7 +286,7 @@ export async function updateRoute(schoolId, id, data, actor = {}) {
     userName: actor?.name || actor?.email || 'Administrator',
     userRole: actor?.role || actor?.systemRole || null,
     modifiedFields: data
-  }).catch(() => {});
+  }).catch(() => { });
 
   return updated;
 }
@@ -313,7 +313,7 @@ export async function deleteRoute(schoolId, id, actor = {}) {
     modifiedFields: {
       deletedRouteName: existing.name
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
   return { message: 'Route deleted successfully', id };
 }
@@ -354,7 +354,7 @@ export async function createRouteStop(schoolId, routeId, data, actor = {}) {
       stopName: stop.stopName,
       pickupTime: stop.pickupTime
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
   return stop;
 }
@@ -379,7 +379,7 @@ export async function updateRouteStop(schoolId, id, data, actor = {}) {
     userName: actor?.name || actor?.email || 'Administrator',
     userRole: actor?.role || actor?.systemRole || null,
     modifiedFields: data
-  }).catch(() => {});
+  }).catch(() => { });
 
   return updated;
 }
@@ -406,9 +406,15 @@ export async function deleteRouteStop(schoolId, id, actor = {}) {
     modifiedFields: {
       deletedStopName: existing.stopName
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
   return { message: 'Route stop deleted successfully', id };
+}
+
+// Guardian contact details are only for staff views, never parent/student scoped responses
+function stripGuardianContacts(assignment) {
+  const { parents: _parents, ...rest } = assignment;
+  return rest;
 }
 
 // ============================================================
@@ -430,7 +436,7 @@ export async function listStudentAssignments(schoolId, query = {}, actor = {}) {
       return [];
     }
     const allAssignments = await transportRepository.findStudentAssignments(schoolId, filterOptions);
-    return allAssignments.filter(a => authorizedStudentIds.includes(a.id));
+    return allAssignments.filter(a => authorizedStudentIds.includes(a.id)).map(stripGuardianContacts);
   }
 
   // 2. Student Scope Enforcement
@@ -441,7 +447,7 @@ export async function listStudentAssignments(schoolId, query = {}, actor = {}) {
       return [];
     }
     const allAssignments = await transportRepository.findStudentAssignments(schoolId, filterOptions);
-    return allAssignments.filter(a => a.id === student.id);
+    return allAssignments.filter(a => a.id === student.id).map(stripGuardianContacts);
   }
 
   // 3. Teacher Scope Enforcement
@@ -452,7 +458,8 @@ export async function listStudentAssignments(schoolId, query = {}, actor = {}) {
     }
   }
 
-  return transportRepository.findStudentAssignments(schoolId, filterOptions);
+  const results = await transportRepository.findStudentAssignments(schoolId, filterOptions);
+  return isTeacher(actor) && !actor.hasPermission ? results.map(stripGuardianContacts) : results;
 }
 
 /**
@@ -521,7 +528,7 @@ export async function assignStudentToRoute(schoolId, routeId, data, actor = {}) 
       routeId,
       pickupStopId
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
   return updatedStudent;
 }
@@ -558,7 +565,7 @@ export async function unassignStudentFromRoute(schoolId, routeId, data, actor = 
       studentId,
       previousRouteId: routeId
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
   return updatedStudent;
 }
