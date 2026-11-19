@@ -8,11 +8,38 @@ import { TableSkeleton } from '../../components/Skeleton';
 import toast from 'react-hot-toast';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 
+const resolveHeadedSectionId = (userProfile, classId, sections = []) => {
+  if (!sections.length) return null;
+
+  const staff = userProfile?.staffProfile || userProfile || {};
+  const staffIds = [staff.id, userProfile?.staffId, userProfile?.staffProfileId].filter(Boolean);
+
+  const byTeacher = sections.find((s) => s.classTeacherId && staffIds.includes(s.classTeacherId));
+  if (byTeacher) return byTeacher.id;
+
+  const assignedIds = [
+    staff.customData?.assignments?.assignedClassId,
+    userProfile?.customData?.assignments?.assignedClassId,
+    userProfile?.assignments?.assignedClassId
+  ].filter(Boolean);
+  const byAssignment = sections.find((s) => assignedIds.includes(s.id));
+  if (byAssignment) return byAssignment.id;
+
+  const email = (staff.email || userProfile?.email || '').toLowerCase();
+  if (email) {
+    const byEmail = sections.find((s) => s.classTeacher?.email?.toLowerCase() === email);
+    if (byEmail) return byEmail.id;
+  }
+
+  return null;
+};
+
 export default function TransportDetails() {
   const { userProfile } = useAuth();
   const classId = userProfile?.assignedClassId || null;
 
   const [classDetails, setClassDetails] = useState(null);
+  const [sectionId, setSectionId] = useState(null);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,13 +58,14 @@ export default function TransportDetails() {
         listStudents({ classId, limit: 200 }).catch(() => ({ data: [] }))
       ]);
 
-      if (classRes?.data) {
-        setClassDetails(classRes.data);
-      } else if (classRes) {
-        setClassDetails(classRes);
-      }
+      const classObj = classRes?.data || classRes || null;
+      if (classObj) setClassDetails(classObj);
 
-      const rawStudents = Array.isArray(studentsRes?.data) ? studentsRes.data : [];
+      const headedSectionId = resolveHeadedSectionId(userProfile, classId, classObj?.sections || []);
+      setSectionId(headedSectionId);
+
+      const rawStudents = (Array.isArray(studentsRes?.data) ? studentsRes.data : [])
+        .filter((s) => !headedSectionId || s.sectionId === headedSectionId);
       const rawAssignments = Array.isArray(assignmentsRes?.data) ? assignmentsRes.data : [];
 
       const assignmentMap = new Map();
@@ -65,7 +93,7 @@ export default function TransportDetails() {
     } finally {
       setLoading(false);
     }
-  }, [classId]);
+  }, [classId, userProfile]);
 
   useEffect(() => {
     loadData();
@@ -99,7 +127,7 @@ export default function TransportDetails() {
           <LuBus size={32} className="text-slate-400 dark:text-slate-300" />
         </div>
         <p className="text-xl font-bold text-slate-900 dark:text-white mb-2">Not a Class Teacher</p>
-        <p className="text-slate-500 dark:text-slate-400">You must be assigned as a primary Class Teacher to view transport details.</p>
+        <p className="text-slate-500 dark:text-slate-400">You must be assigned as a Class Teacher to view transport details.</p>
       </div>
     );
   }
@@ -117,7 +145,10 @@ export default function TransportDetails() {
           <p className="text-slate-500 dark:text-slate-400 mt-2 flex items-center gap-2">
             {classDetails ? (
               <span className="font-bold text-slate-700 dark:text-slate-300">
-                {classDetails.name} {classDetails.section ? `- Section ${classDetails.section}` : ''}
+                {classDetails.name}
+                {sectionId && classDetails.sections?.find((s) => s.id === sectionId)
+                  ? ` - Section ${classDetails.sections.find((s) => s.id === sectionId).name}`
+                  : ''}
               </span>
             ) : 'Loading Class...'}
           </p>
