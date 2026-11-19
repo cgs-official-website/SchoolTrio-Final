@@ -39,7 +39,16 @@ export const allNavItems = [
   { name: 'Homework', path: '/admin/homework', icon: BookOpen, moduleKey: 'homework' },
   { name: 'Resource Sharing', path: '/admin/resources', icon: Files, moduleKey: 'resources' },
   { name: 'PTM Scheduler', path: '/admin/ptm', icon: Users, moduleKey: 'ptm' },
-  { name: 'Fees & Payments', path: '/admin/fees', icon: CreditCard, moduleKey: 'fees' },
+  {
+    name: 'Fees & Payments',
+    path: '/admin/fees',
+    icon: CreditCard,
+    moduleKey: 'fees',
+    subItems: [
+      { name: 'Fee Management', path: '/admin/fees', icon: CreditCard, moduleKey: 'fees' },
+      { name: 'Collection', path: '/admin/fees/collection', icon: Banknote, moduleKey: 'fees' }
+    ]
+  },
   { name: 'Transport', path: '/admin/transport', icon: Bus, moduleKey: 'transport' },
   { name: 'Library', path: '/admin/library', icon: Library, moduleKey: 'library' },
   { name: 'Inventory & Assets', path: '/admin/inventory', icon: PackageIcon, moduleKey: 'inventory' },
@@ -457,6 +466,7 @@ export default function AdminDashboard() {
                       <NavLink
                         key={sub.name}
                         to={sub.path}
+                        end
                         className={({ isActive }) =>
                           `flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors relative whitespace-nowrap ${isActive
                             ? 'text-primary-700 bg-primary-50/50 before:absolute before:-left-5 before:top-1/2 before:-translate-y-1/2 before:w-2 before:h-2 before:rounded-full before:bg-primary-500'
