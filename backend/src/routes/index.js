@@ -10,6 +10,9 @@ import parentRoutes from '../modules/parents/parent.routes.js';
 import staffRoutes from '../modules/staff/staff.routes.js';
 import attendanceRoutes from '../modules/attendance/attendance.routes.js';
 import { feeCollectionPeriodRoutes, feeStructureRoutes } from '../modules/fees/fee.routes.js';
+import feeCategoryRoutes from '../modules/fee-categories/fee-category.routes.js';
+import bankRoutes from '../modules/banks/bank.routes.js';
+import concessionCategoryRoutes from '../modules/concession-categories/concession-category.routes.js';
 import { invoiceRoutes, studentInvoiceRoutes } from '../modules/invoices/invoice.routes.js';
 import { leaveRoutes, studentLeaveRoutes, staffLeaveRoutes } from '../modules/leaves/leave.routes.js';
 import examRoutes from '../modules/exams/exam.routes.js';
@@ -133,6 +136,21 @@ router.use('/fee-collection-periods', feeCollectionPeriodRoutes);
  * Fee Structure Endpoints mounted under /api/v1/fee-structures
  */
 router.use('/fee-structures', feeStructureRoutes);
+
+/**
+ * Fee Master: Fee Category Endpoints mounted under /api/v1/fee-categories
+ */
+router.use('/fee-categories', feeCategoryRoutes);
+
+/**
+ * Fee Master: Bank Endpoints mounted under /api/v1/banks
+ */
+router.use('/banks', bankRoutes);
+
+/**
+ * Fee Master: Concession Category Endpoints mounted under /api/v1/concession-categories
+ */
+router.use('/concession-categories', concessionCategoryRoutes);
 
 /**
  * Invoice Endpoints mounted under /api/v1/invoices

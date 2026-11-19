@@ -49,6 +49,9 @@ model School {
   staffProfiles          StaffProfile[]
   examinations           Examination[]
   feeCollectionPeriods   FeeCollectionPeriod[]
+  feeCategories          FeeCategory[]
+  banks                  Bank[]
+  concessionCategories   ConcessionCategory[]
   libraryCategories      LibraryCategory[]
   libraryBooks           LibraryBook[]
   transportVehicles      TransportVehicle[]
@@ -953,6 +956,54 @@ model LibraryCategory {
   @@unique([schoolId, id])
   @@unique([schoolId, name])
   @@map("library_categories")
+}
+
+model FeeCategory {
+  id           String   @id @default(uuid()) @db.Uuid
+  schoolId     String   @map("school_id") @db.Uuid
+  name         String   @db.VarChar(150)
+  categoryType String   @default("Normal") @map("category_type") @db.VarChar(50) // Normal | Late | Bus | custom
+  paymentOrder Int      @default(0) @map("payment_order")
+  shortCode    String?  @map("short_code") @db.VarChar(30)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, id])
+  @@unique([schoolId, name])
+  @@index([schoolId, categoryType])
+  @@map("fee_categories")
+}
+
+model Bank {
+  id        String   @id @default(uuid()) @db.Uuid
+  schoolId  String   @map("school_id") @db.Uuid
+  name      String   @db.VarChar(150)
+  code      String?  @db.VarChar(50)
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, id])
+  @@unique([schoolId, name])
+  @@map("banks")
+}
+
+model ConcessionCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  schoolId  String   @map("school_id") @db.Uuid
+  name      String   @db.VarChar(150)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, id])
+  @@unique([schoolId, name])
+  @@map("concession_categories")
 }
 
 model LibraryBook {

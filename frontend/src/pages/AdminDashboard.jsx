@@ -37,6 +37,7 @@ export const allNavItems = [
   { name: 'Calendar', path: '/admin/calendar', icon: Calendar, moduleKey: 'calendar' },
   { name: 'Exams & Results', path: '/admin/exams', icon: FileText, moduleKey: 'exams' },
   { name: 'Homework', path: '/admin/homework', icon: BookOpen, moduleKey: 'homework' },
+  { name: 'Resource Sharing', path: '/admin/resources', icon: Files, moduleKey: 'resources' },
   { name: 'PTM Scheduler', path: '/admin/ptm', icon: Users, moduleKey: 'ptm' },
   { name: 'Fees & Payments', path: '/admin/fees', icon: CreditCard, moduleKey: 'fees' },
   { name: 'Transport', path: '/admin/transport', icon: Bus, moduleKey: 'transport' },
@@ -55,6 +56,7 @@ export const allNavItems = [
 
 const profileNavItem = { name: 'Profile', path: '/admin/profile', icon: UserIcon, alwaysShow: true };
 const mySalaryNavItem = { name: 'My Salary', path: '/admin/salary', icon: Banknote, alwaysShow: true };
+
 export default function AdminDashboard() {
   const { userProfile, logoutUser, updateProfileData } = useAuth();
   const {
