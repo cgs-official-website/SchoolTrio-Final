@@ -1,10 +1,8 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { LuLayers as Layers, LuReceipt as Receipt } from 'react-icons/lu';
-import FeeTransaction, { validateFeeDueDate } from './FeeManagement/FeeTransaction';
+import FeeTransactionTabs from './FeeManagement/FeeTransactionTabs';
 import FeeMaster from './FeeManagement/FeeMaster/FeeMaster';
-
-export { validateFeeDueDate };
 
 const TABS = [
   { key: 'master', label: 'Fee Master', icon: Layers },
@@ -47,7 +45,7 @@ export default function FeeManagement() {
           </button>
         ))}
       </div>
-        {activeTab === 'master' ? <FeeMaster /> : <FeeTransaction />}
+      {activeTab === 'master' ? <FeeMaster /> : <FeeTransactionTabs />}
     </div>
   );
 }

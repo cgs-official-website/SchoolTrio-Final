@@ -782,10 +782,8 @@ export async function enrollApplication(schoolId, id, enrollmentData, actor = nu
       }
     });
 
-    // Automatically generate invoices for any existing fee structures in this class
-    if (newStudent.classId) {
-      await syncStudentClassFeeInvoices(schoolId, newStudent.id, newStudent.classId, tx);
-    }
+    // Automatically generate invoices for every fee that applies to this student
+    await syncStudentClassFeeInvoices(schoolId, newStudent.id, newStudent.classId, tx);
 
     // 9. Mark AdmissionApplication as Approved
     const updatedApp = await tx.admissionApplication.update({

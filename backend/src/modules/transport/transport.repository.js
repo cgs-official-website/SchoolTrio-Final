@@ -282,9 +282,18 @@ export async function updateRoute(schoolId, id, data, tx = prisma) {
 }
 
 export async function deleteRoute(schoolId, id, tx = prisma) {
-  return tx.transportRoute.delete({
-    where: { schoolId_id: { schoolId, id } }
-  });
+  const run = async (client) => {
+    // Students keep their record; clear the v2 mapping details that belonged to this route
+    await client.student.updateMany({
+      where: { schoolId, transportRouteId: id },
+      data: { busStopId: null, travelMode: null, transportEffectFrom: null }
+    });
+    return client.transportRoute.delete({
+      where: { schoolId_id: { schoolId, id } }
+    });
+  };
+  if (tx === prisma) return prisma.$transaction((client) => run(client));
+  return run(tx);
 }
 
 // ============================================================
@@ -371,7 +380,10 @@ export async function unassignStudentFromRoute(schoolId, studentId, tx = prisma)
     where: { schoolId_id: { schoolId, id: studentId } },
     data: {
       transportRouteId: null,
-      pickupStopId: null
+      pickupStopId: null,
+      busStopId: null,
+      travelMode: null,
+      transportEffectFrom: null
     },
     include: {
       class: { select: { id: true, name: true } },
@@ -422,6 +434,13 @@ export async function findStudentAssignments(schoolId, filters = {}, tx = prisma
       },
       pickupStop: {
         select: { id: true, stopName: true, pickupTime: true, dropTime: true }
+      },
+      busStop: {
+        select: { id: true, stopName: true, slabName: true }
+      },
+      parents: {
+        take: 1,
+        select: { parent: { select: { name: true, phone: true } } }
       }
     },
     orderBy: [{ classId: 'asc' }, { firstName: 'asc' }]

@@ -10,10 +10,14 @@ import {
   updateRoute,
   deleteRoute,
   listTransportAssignments,
-  assignStudentToRoute,
   unassignStudentFromRoute
 } from '../../api/transport';
 import { listStudents } from '../../api/students';
+import BusStopTab from './transport/BusStopTab';
+import BusFeeTab from './transport/BusFeeTab';
+import StudentMappingTab from './transport/StudentMappingTab';
+import { ExportButtons } from './transport/ui';
+import { exportRowsToExcel, exportRowsToPdf, formatDisplayDate } from '../../utils/transportExport';
 import {
   LuBus as Bus,
   LuPlus as Plus,
@@ -26,7 +30,9 @@ import {
   LuCalendar as Calendar,
   LuSearch as Search,
   LuFilter as Filter,
-  LuShieldAlert as ShieldAlert
+  LuShieldAlert as ShieldAlert,
+  LuMapPin as MapPin,
+  LuIndianRupee as IndianRupee
 } from 'react-icons/lu';
 import { Edit, Trash2, Eye } from 'lucide-react';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -44,7 +50,9 @@ export default function TransportManagement() {
   const hasEditPermission = userProfile?.role?.toLowerCase() === 'admin' || userProfile?.role?.toLowerCase() === 'superadmin' || canEdit('transport');
   const hasDeletePermission = userProfile?.role?.toLowerCase() === 'admin' || userProfile?.role?.toLowerCase() === 'superadmin' || canDelete('transport');
 
-  const [activeTab, setActiveTab] = useState('routes'); // 'routes' | 'vehicles' | 'assignments'
+  const [activeTab, setActiveTab] = useState('routes'); // 'routes' | 'stops' | 'fees' | 'assignments' | 'vehicles'
+  const [mappingPreset, setMappingPreset] = useState(null);
+  const [assignmentRows, setAssignmentRows] = useState([]);
 
   const [routes, setRoutes] = useState([]);
   const [students, setStudents] = useState([]); // All students to populate assign list
@@ -59,9 +67,7 @@ export default function TransportManagement() {
 
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showAssignModal, setShowAssignModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
-  const [activeRouteId, setActiveRouteId] = useState(null); // For assignment
   const [selectedRouteToView, setSelectedRouteToView] = useState(null);
   const [confirmDeleteState, setConfirmDeleteState] = useState({ isOpen: false, id: null, name: '' });
 
@@ -82,8 +88,6 @@ export default function TransportManagement() {
     capacity: '',
     customData: {}
   });
-  const [selectedStudentId, setSelectedStudentId] = useState('');
-  const [assigning, setAssigning] = useState(false);
 
   // Vehicle Form State
   const [savingVehicle, setSavingVehicle] = useState(false);
@@ -103,13 +107,13 @@ export default function TransportManagement() {
   });
 
   // Student assignments tab search
-  const [assignmentSearchQuery, setAssignmentSearchQuery] = useState('');
 
   // Helpers to map REST payloads to component state
   const mapVehicleFromRest = useCallback((v) => ({
     id: v.id,
     vehicleName: v.customData?.vehicleName || v.model || v.registrationNumber,
     vehicleModel: v.model || v.customData?.vehicleModel || '',
+    vehicleCode: v.customData?.vehicleCode || '',
     registrationNumber: v.registrationNumber,
     seatingCapacity: v.capacity,
     fcExpiryDate: v.fitnessExpiry || v.customData?.fcExpiryDate || '',
@@ -129,7 +133,7 @@ export default function TransportManagement() {
     vehicleNumber: r.vehicle?.registrationNumber || r.routeNumber || 'N/A',
     vehicleId: r.vehicleId || null,
     driverName: r.driverName || '',
-    driverPhone: r.driverPhone || '',
+    driverPhone: String(r.driverPhone || '').replace(/\D/g, '').slice(-10),
     capacity: r.capacity || 30,
     assignedStudents: r.students ? r.students.map(s => s.id) : [],
     stops: r.stops || [],
@@ -186,6 +190,7 @@ export default function TransportManagement() {
       setVehicles(mappedVehicles);
       setRoutes(routesWithStudents);
       setStudents(enrichedStudents);
+      setAssignmentRows(rawAssignments);
     } catch (err) {
       console.error('Error loading transport data:', err);
       toast.error('Failed to load transport data.');
@@ -217,10 +222,10 @@ export default function TransportManagement() {
 
     let cleanPhone = null;
     if (newRoute.driverPhone) {
-      cleanPhone = newRoute.driverPhone.replace(/[\s()-]/g, '');
-      const phoneRegex = /^(?:\+?91|0)?[1-9]\d{9}$/;
+      cleanPhone = newRoute.driverPhone;
+      const phoneRegex = /^\d{10}$/;
       if (!phoneRegex.test(cleanPhone)) {
-        toast.error("Please enter a valid 10-digit driver phone number.");
+        toast.error("Driver phone must be exactly 10 digits (numbers only).");
         return;
       }
     }
@@ -275,39 +280,6 @@ export default function TransportManagement() {
     }
   };
 
-  const handleAssignStudent = async (e) => {
-    e.preventDefault();
-    if (!hasEditPermission) {
-      toast.error("You do not have permission to modify student assignments.");
-      return;
-    }
-    if (!activeRouteId || !selectedStudentId) return;
-
-    // Check client route capacity for immediate UX feedback
-    const route = routes.find(r => r.id === activeRouteId);
-    if (!route) return;
-
-    if (route.assignedStudents?.length >= route.capacity) {
-      toast.error("Cannot assign student. This bus has reached its maximum capacity!");
-      return;
-    }
-
-    setAssigning(true);
-    try {
-      await assignStudentToRoute(activeRouteId, { studentId: selectedStudentId });
-      notifyDataChanged('transport');
-      setShowAssignModal(false);
-      setSelectedStudentId('');
-      toast.success("Student assigned successfully!");
-      await loadAllTransportData();
-    } catch (error) {
-      console.error("Error assigning student:", error);
-      toast.error(error.message || "Failed to assign student.");
-    } finally {
-      setAssigning(false);
-    }
-  };
-
   const handleUnassignStudent = async (routeId, studentId) => {
     if (!hasEditPermission) {
       toast.error("You do not have permission to modify student assignments.");
@@ -332,18 +304,6 @@ export default function TransportManagement() {
       toast.error(error.message || "Failed to unassign student");
     }
   };
-
-  const openAssignModal = (routeId) => {
-    if (!hasEditPermission) {
-      toast.error("You do not have permission to modify student assignments.");
-      return;
-    }
-    setActiveRouteId(routeId);
-    setShowAssignModal(true);
-  };
-
-  // Helper to get unassigned students for dropdown
-  const unassignedStudents = students.filter(s => !s.transportRouteId);
 
   // Helper to format route display name
   const getRouteName = (routeId) => {
@@ -399,7 +359,8 @@ export default function TransportManagement() {
     const matchesSearch =
       (v.vehicleName || '').toLowerCase().includes(q) ||
       (v.vehicleModel || '').toLowerCase().includes(q) ||
-      (v.registrationNumber || '').toLowerCase().includes(q);
+      (v.registrationNumber || '').toLowerCase().includes(q) ||
+      (v.vehicleCode || '').toLowerCase().includes(q);
 
     const matchesStatus = vehicleStatusFilter === 'all' || v.status === vehicleStatusFilter;
 
@@ -465,6 +426,7 @@ export default function TransportManagement() {
           return {
             ...rest,
             vehicleName: newVehicle.vehicleName || null,
+            vehicleCode: (newVehicle.vehicleCode || '').trim() || null,
             permitExpiryDate: newVehicle.permitExpiryDate || null,
             roadTaxExpiryDate: newVehicle.roadTaxExpiryDate || null
           };
@@ -535,14 +497,30 @@ export default function TransportManagement() {
     }
   };
 
-  // Student list search
-  const filteredStudents = students.filter(s => {
-    const q = assignmentSearchQuery.trim().toLowerCase();
-    const name = `${s.firstName || ''} ${s.lastName || ''}`.toLowerCase();
-    const admNo = (s.admissionNumber || '').toLowerCase();
-    const route = getRouteName(s.transportRouteId).toLowerCase();
-    return name.includes(q) || admNo.includes(q) || route.includes(q);
-  });
+  // Student list export for one route (Excel / PDF)
+  const exportRouteStudents = (route, type) => {
+    const rows = assignmentRows
+      .filter(a => a.transportRouteId === route.id)
+      .map((a, i) => [
+        i + 1,
+        a.admissionNumber || '',
+        `${a.firstName || ''} ${a.lastName || ''}`.trim(),
+        a.parents?.[0]?.parent?.phone || '',
+        a.class?.name || '',
+        a.section?.name || '',
+        a.busStop?.stopName || a.pickupStop?.stopName || '',
+        a.travelMode || '',
+        formatDisplayDate(a.transportEffectFrom)
+      ]);
+    if (rows.length === 0) {
+      toast.error('No students are mapped to this route yet.');
+      return;
+    }
+    const headers = ['S.No', 'Admission No', 'Student Name', 'Mobile No', 'Class', 'Section', 'Stop Name', 'Travel Mode', 'Effect From'];
+    const base = `Route_${route.name}_Students`;
+    if (type === 'excel') exportRowsToExcel(base, headers, rows, route.name);
+    else exportRowsToPdf(base, `Student List - ${route.name}`, headers, rows);
+  };
 
   if (loading || loadingVehicles) {
     return (
@@ -557,7 +535,7 @@ export default function TransportManagement() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 w-full">
         <div className="min-w-0">
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white truncate">Transport Management</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">Manage bus routes, drivers, school vehicles, and student assignments.</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">Manage bus routes, stops, bus fees, student mapping, and school vehicles.</p>
         </div>
 
         {/* Actions based on active tab */}
@@ -580,6 +558,7 @@ export default function TransportManagement() {
                   setNewVehicle({
                     vehicleName: '',
                     vehicleModel: '',
+                    vehicleCode: '',
                     registrationNumber: '',
                     seatingCapacity: '',
                     assignedRouteIds: [],
@@ -595,7 +574,7 @@ export default function TransportManagement() {
                 }}
                 className="w-full sm:w-auto px-4 py-2.5 bg-primary-600 text-white rounded-xl font-semibold shadow-sm flex items-center justify-center gap-2 hover:bg-primary-700 transition-colors"
               >
-                <Plus size={18} /> Register Vehicle
+                <Plus size={18} /> Add Vehicle
               </button>
             )}
           </div>
@@ -607,35 +586,58 @@ export default function TransportManagement() {
         <button
           onClick={() => setActiveTab('routes')}
           className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${activeTab === 'routes'
-              ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
-              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+            ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
+            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
             }`}
         >
           <Navigation size={18} />
-          <span>Transport Routes</span>
+          <span>Bus Route</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('vehicles')}
-          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${activeTab === 'vehicles'
-              ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
-              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+          onClick={() => setActiveTab('stops')}
+          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${activeTab === 'stops'
+            ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
+            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
             }`}
         >
-          <Bus size={18} />
-          <span>Vehicle Management</span>
+          <MapPin size={18} />
+          <span>Bus Stop</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('fees')}
+          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${activeTab === 'fees'
+            ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
+            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+        >
+          <IndianRupee size={18} />
+          <span>Bus Fee Entry</span>
         </button>
 
         <button
           onClick={() => setActiveTab('assignments')}
           className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${activeTab === 'assignments'
-              ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
-              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+            ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
+            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
             }`}
         >
           <Users size={18} />
-          <span>Student Assignments</span>
+          <span>Manage Transport Students</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('vehicles')}
+          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${activeTab === 'vehicles'
+            ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
+            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+        >
+          <Bus size={18} />
+          <span>Vehicle</span>
+        </button>
+
       </div>
 
       {/* -------------------- TAB 1: ROUTES -------------------- */}
@@ -718,17 +720,22 @@ export default function TransportManagement() {
                     </div>
                   </div>
 
-                  {hasEditPermission && (
-                    <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 mt-auto">
+                  <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 mt-auto flex items-center gap-2">
+                    {hasCreatePermission && (
                       <button
-                        onClick={() => openAssignModal(route.id)}
+                        onClick={() => { setMappingPreset({ routeId: route.id }); setActiveTab('assignments'); }}
                         disabled={isFull}
-                        className="w-full py-2.5 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:text-primary-700 hover:bg-primary-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-primary-200 dark:hover:border-slate-700 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex-1 py-2.5 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:text-primary-700 hover:bg-primary-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-primary-200 dark:hover:border-slate-700 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isFull ? <><AlertTriangle size={16} /> Bus Full</> : <><Plus size={16} /> Assign Student</>}
                       </button>
-                    </div>
-                  )}
+                    )}
+                    <ExportButtons
+                      disabled={currentCount === 0}
+                      onExcel={() => exportRouteStudents(route, 'excel')}
+                      onPdf={() => exportRouteStudents(route, 'pdf')}
+                    />
+                  </div>
                 </div>
               );
             })
@@ -839,6 +846,9 @@ export default function TransportManagement() {
                             <div>
                               <p className="font-bold text-slate-900 dark:text-white">{vehicle.vehicleName}</p>
                               <p className="text-xs text-slate-400 dark:text-slate-300 mt-0.5">{vehicle.vehicleModel}</p>
+                              {vehicle.vehicleCode && (
+                                <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-0.5">Code: {vehicle.vehicleCode}</p>
+                              )}
                             </div>
                           </td>
                           <td className="py-4 px-6 font-mono font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
@@ -921,101 +931,37 @@ export default function TransportManagement() {
         </div>
       )}
 
-      {/* -------------------- TAB 3: STUDENT ASSIGNMENTS -------------------- */}
-      {activeTab === 'assignments' && (
-        <div className="space-y-6">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-            <div className="relative w-full md:max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-300" size={18} />
-              <input
-                type="text"
-                placeholder="Search by student name, admission no, or route..."
-                value={assignmentSearchQuery}
-                onChange={(e) => setAssignmentSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm transition-all"
-              />
-            </div>
-            <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-              Showing {filteredStudents.length} Students
-            </div>
-          </div>
+      {/* -------------------- TAB: BUS STOP -------------------- */}
+      {activeTab === 'stops' && (
+        <BusStopTab
+          routes={routes}
+          canCreate={hasCreatePermission}
+          canEdit={hasEditPermission}
+          canDelete={hasDeletePermission}
+          onChanged={loadAllTransportData}
+        />
+      )}
 
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto w-full min-w-0">
-              <table className="w-full text-left border-collapse min-w-max">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-300 text-xs font-semibold uppercase tracking-wider">
-                    <th className="py-4 px-6">Student</th>
-                    <th className="py-4 px-6">Admission No</th>
-                    <th className="py-4 px-6">Assigned Route</th>
-                    <th className="py-4 px-6 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-sm text-slate-600 dark:text-slate-300 font-medium">
-                  {filteredStudents.length === 0 ? (
-                    <tr>
-                      <td colSpan="4" className="py-12 text-center text-slate-400 dark:text-slate-300">
-                        <Users size={40} className="mx-auto mb-2 text-slate-300" />
-                        <p className="font-semibold text-slate-700 dark:text-slate-200">No students found matching your criteria</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredStudents.map(student => {
-                      const assignedRoute = routes.find(r => r.id === student.transportRouteId);
-                      return (
-                        <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="py-4 px-6 font-bold text-slate-900 dark:text-white">
-                            {student.firstName} {student.lastName}
-                          </td>
-                          <td className="py-4 px-6 font-mono text-xs text-slate-500 dark:text-slate-400">
-                            {student.admissionNumber || 'N/A'}
-                          </td>
-                          <td className="py-4 px-6">
-                            {assignedRoute ? (
-                              <div className="flex items-center gap-2">
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary-50 text-primary-700 rounded-lg font-bold text-xs border border-primary-200">
-                                  <Bus size={14} /> {assignedRoute.name}
-                                </span>
-                                <span className="font-mono text-xs text-slate-400 dark:text-slate-300">
-                                  ({assignedRoute.vehicleNumber})
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-slate-400 dark:text-slate-300 italic">Self Transport / Not Assigned</span>
-                            )}
-                          </td>
-                          <td className="py-4 px-6 text-right">
-                            {hasEditPermission && (
-                              assignedRoute ? (
-                                <button
-                                  onClick={() => handleUnassignStudent(assignedRoute.id, student.id)}
-                                  className="text-red-600 hover:text-red-700 font-bold text-xs bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors"
-                                >
-                                  Unassign
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => {
-                                    setSelectedStudentId(student.id);
-                                    if (routes.length > 0) setActiveRouteId(routes[0].id);
-                                    setShowAssignModal(true);
-                                  }}
-                                  className="text-primary-600 hover:text-primary-700 font-bold text-xs bg-primary-50 hover:bg-primary-100 px-3 py-1.5 rounded-lg transition-colors"
-                                >
-                                  Assign Route
-                                </button>
-                              )
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+      {/* -------------------- TAB: BUS FEE ENTRY -------------------- */}
+      {activeTab === 'fees' && (
+        <BusFeeTab
+          canCreate={hasCreatePermission}
+          canEdit={hasEditPermission}
+          canDelete={hasDeletePermission}
+        />
+      )}
+
+      {/* -------------------- TAB: MANAGE TRANSPORT STUDENTS -------------------- */}
+      {activeTab === 'assignments' && (
+        <StudentMappingTab
+          routes={routes}
+          canCreate={hasCreatePermission}
+          canEdit={hasEditPermission}
+          canDelete={hasDeletePermission}
+          preset={mappingPreset}
+          onPresetUsed={() => setMappingPreset(null)}
+          onChanged={loadAllTransportData}
+        />
       )}
 
       {/* -------------------- MODAL: CREATE / EDIT ROUTE -------------------- */}
@@ -1071,7 +1017,7 @@ export default function TransportManagement() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Route / Vehicle Number</label>
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Bus No</label>
                 <input
                   type="text"
                   placeholder="e.g. TN-38-AB-1234 or Route 04"
@@ -1096,9 +1042,12 @@ export default function TransportManagement() {
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Driver Phone</label>
                   <input
                     type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]{10}"
+                    maxLength={10}
                     placeholder="10-digit number"
                     value={newRoute.driverPhone}
-                    onChange={(e) => setNewRoute({ ...newRoute, driverPhone: e.target.value })}
+                    onChange={(e) => setNewRoute({ ...newRoute, driverPhone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
                   />
                 </div>
@@ -1140,74 +1089,6 @@ export default function TransportManagement() {
                   className="px-5 py-2.5 rounded-xl bg-primary-600 font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
                 >
                   {creating ? 'Saving...' : (newRoute.id ? 'Update Route' : 'Create Route')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* -------------------- MODAL: ASSIGN STUDENT -------------------- */}
-      {showAssignModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-100 dark:border-slate-800 animate-scale-up">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-slate-900 dark:text-white">Assign Student to Route</h3>
-              <button
-                onClick={() => setShowAssignModal(false)}
-                className="p-2 text-slate-400 dark:text-slate-300 hover:text-slate-600 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleAssignStudent} className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Selected Route</label>
-                <select
-                  value={activeRouteId || ''}
-                  onChange={(e) => setActiveRouteId(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-semibold focus:outline-none"
-                >
-                  {routes.map(r => (
-                    <option key={r.id} value={r.id} disabled={r.assignedStudents?.length >= r.capacity}>
-                      {r.name} ({r.assignedStudents?.length || 0}/{r.capacity}) {r.assignedStudents?.length >= r.capacity ? '- FULL' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Select Student *</label>
-                <select
-                  required
-                  value={selectedStudentId}
-                  onChange={(e) => setSelectedStudentId(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
-                >
-                  <option value="">-- Choose an unassigned student --</option>
-                  {unassignedStudents.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.firstName} {s.lastName} ({s.admissionNumber || 'No Adm No'})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="pt-4 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAssignModal(false)}
-                  className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={assigning || !selectedStudentId}
-                  className="px-5 py-2.5 rounded-xl bg-primary-600 font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
-                >
-                  {assigning ? 'Assigning...' : 'Confirm Assignment'}
                 </button>
               </div>
             </form>
@@ -1341,6 +1222,18 @@ export default function TransportManagement() {
                 </div>
 
                 <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Vehicle Code</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. VAN-01"
+                    maxLength={50}
+                    value={newVehicle.vehicleCode || ''}
+                    onChange={(e) => setNewVehicle({ ...newVehicle, vehicleCode: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Registration Number *</label>
                   <input
                     type="text" required
@@ -1352,8 +1245,8 @@ export default function TransportManagement() {
                       setVehicleErrors(prev => ({ ...prev, registrationNumber: null }));
                     }}
                     className={`w-full px-4 py-2.5 rounded-xl border font-mono uppercase ${vehicleErrors.registrationNumber
-                        ? 'border-red-500 focus:ring-red-500 bg-red-50/50 dark:bg-red-900/10'
-                        : 'border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900'
+                      ? 'border-red-500 focus:ring-red-500 bg-red-50/50 dark:bg-red-900/10'
+                      : 'border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900'
                       }`}
                   />
                   {vehicleErrors.registrationNumber && (

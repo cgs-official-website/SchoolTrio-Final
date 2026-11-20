@@ -56,6 +56,8 @@ model School {
   libraryBooks           LibraryBook[]
   transportVehicles      TransportVehicle[]
   transportRoutes        TransportRoute[]
+  busStops               BusStop[]
+  busFees                BusFee[]
   inventoryCategories    InventoryCategory[]
   inventoryItems         InventoryItem[]
   broadcastChannels      BroadcastChannel[]
@@ -531,6 +533,9 @@ model Student {
   sectionId         String?  @map("section_id") @db.Uuid
   transportRouteId  String?  @map("transport_route_id") @db.Uuid
   pickupStopId      String?  @map("pickup_stop_id") @db.Uuid
+  busStopId             String?  @map("bus_stop_id") @db.Uuid
+  travelMode            String?  @map("travel_mode") @db.VarChar(30)
+  transportEffectFrom   String?  @map("transport_effect_from") @db.VarChar(10)
   admissionNumber   String   @map("admission_number") @db.VarChar(100)
   rollNumber        String?  @map("roll_number") @db.VarChar(50)
   firstName         String   @map("first_name") @db.VarChar(100)
@@ -551,6 +556,7 @@ model Student {
   section        Section?            @relation(fields: [sectionId], references: [id], onDelete: SetNull)
   transportRoute TransportRoute?     @relation(fields: [transportRouteId], references: [id], onDelete: SetNull)
   pickupStop     RouteStop?          @relation(fields: [pickupStopId], references: [id], onDelete: SetNull)
+  busStop        BusStop?            @relation(fields: [busStopId], references: [id], onDelete: SetNull)
   parents        ParentStudentLink[]
 
   attendanceRecords   AttendanceRecord[]
@@ -898,20 +904,35 @@ model FeeCollectionPeriod {
 model FeeStructure {
   id                 String   @id @default(uuid()) @db.Uuid
   schoolId           String   @map("school_id") @db.Uuid
+  feeCategoryId      String?  @map("fee_category_id") @db.Uuid
   name               String   @db.VarChar(150)
   amount             Decimal  @db.Decimal(10, 2)
   dueDate            String   @map("due_date") @db.VarChar(10)
-  classId            String   @map("class_id") @db.Uuid
+<<<<<<< Updated upstream
+  targetType         String   @default("CLASS") @map("target_type") @db.VarChar(20)
+  targetIds          String[] @default([]) @map("target_ids") @db.Uuid
+  classId            String?  @map("class_id") @db.Uuid
+  gender             String?  @db.VarChar(20)
+=======
+  classId            String?  @map("class_id") @db.Uuid
+>>>>>>> Stashed changes
   collectionPeriodId String?  @map("collection_period_id") @db.Uuid
+  feeCategoryId      String?  @map("fee_category_id") @db.Uuid
+  targetType         String   @default("CLASS") @map("target_type") @db.VarChar(20) // ALL_STUDENT | CLASS | SECTION | STUDENT
+  targetIds          String[] @default([]) @map("target_ids") @db.Uuid
+  gender             String?  @db.VarChar(20)
   customData         Json?    @map("custom_data")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
-  class            Class                @relation(fields: [schoolId, classId], references: [schoolId, id], onDelete: Cascade)
+  class            Class?               @relation(fields: [schoolId, classId], references: [schoolId, id], onDelete: Cascade)
   collectionPeriod FeeCollectionPeriod? @relation(fields: [collectionPeriodId], references: [id], onDelete: SetNull)
+  feeCategory      FeeCategory?         @relation(fields: [schoolId, feeCategoryId], references: [schoolId, id], onDelete: Restrict)
   invoices         Invoice[]
 
   @@unique([schoolId, id])
+  @@index([schoolId, targetType])
+  @@index([schoolId, feeCategoryId])
   @@map("fee_structures")
 }
 
@@ -940,6 +961,7 @@ model Invoice {
   @@unique([schoolId, id])
   @@index([schoolId, studentId])
   @@index([schoolId, status, dueDate])
+  @@index([schoolId, feeStructureId, studentId])
   @@map("invoices")
 }
 
@@ -968,7 +990,8 @@ model FeeCategory {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school        School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  feeStructures FeeStructure[]
 
   @@unique([schoolId, id])
   @@unique([schoolId, name])
@@ -1088,6 +1111,7 @@ model TransportRoute {
   vehicle  TransportVehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   stops    RouteStop[]
   students Student[]
+  busStopLinks BusStopRoute[]
 
   @@unique([schoolId, id])
   @@map("transport_routes")
@@ -1110,6 +1134,62 @@ model RouteStop {
   @@unique([schoolId, id])
   @@index([schoolId, routeId])
   @@map("route_stops")
+}
+
+// Transport v2 (additive): school-level bus stops shared across routes, with fee entries
+model BusStop {
+  id        String   @id @default(uuid()) @db.Uuid
+  schoolId  String   @map("school_id") @db.Uuid
+  stopName  String   @map("stop_name") @db.VarChar(150)
+  slabName  String?  @map("slab_name") @db.VarChar(100)
+  geocode   String?  @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school   School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  routes   BusStopRoute[]
+  fees     BusFee[]
+  students Student[]
+
+  @@unique([schoolId, id])
+  @@unique([schoolId, stopName])
+  @@map("bus_stops")
+}
+
+model BusStopRoute {
+  id        String   @id @default(uuid()) @db.Uuid
+  schoolId  String   @map("school_id") @db.Uuid
+  busStopId String   @map("bus_stop_id") @db.Uuid
+  routeId   String   @map("route_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  busStop BusStop        @relation(fields: [busStopId], references: [id], onDelete: Cascade)
+  route   TransportRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@unique([busStopId, routeId])
+  @@index([schoolId, routeId])
+  @@map("bus_stop_routes")
+}
+
+model BusFee {
+  id           String   @id @default(uuid()) @db.Uuid
+  schoolId     String   @map("school_id") @db.Uuid
+  kind         String   @default("STOP") @db.VarChar(10)
+  busStopId    String?  @map("bus_stop_id") @db.Uuid
+  slabName     String?  @map("slab_name") @db.VarChar(100)
+  dueDate      String   @map("due_date") @db.VarChar(10)
+  oneWayAmount Decimal  @map("one_way_amount") @db.Decimal(12, 2)
+  twoWayAmount Decimal  @map("two_way_amount") @db.Decimal(12, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  school  School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  busStop BusStop? @relation(fields: [busStopId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, id])
+  @@index([schoolId, busStopId])
+  @@index([schoolId, slabName])
+  @@map("bus_fees")
 }
 
 model InventoryCategory {

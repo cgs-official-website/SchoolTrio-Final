@@ -154,7 +154,7 @@ export async function deleteFeeCategory(schoolId, id, actor) {
     const refs = await repo.countFeeCategoryReferences(schoolId, id, tx);
     if (refs.total > 0) {
       throw new RelationshipConflictError(
-        'Cannot delete fee category because it is in use',
+        'Cannot delete this fee category because fees have been assigned using it',
         refs
       );
     }

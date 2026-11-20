@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import * as transportController from './transport.controller.js';
 import * as transportSchemas from './transport.schemas.js';
+import * as v2Controller from './transport.v2.controller.js';
+import * as v2Schemas from './transport.v2.schemas.js';
 import { authenticate } from '../../middleware/auth.middleware.js';
 import { tenantContext } from '../../middleware/tenant.middleware.js';
 import { requirePermission } from '../../middleware/rbac.middleware.js';
@@ -188,6 +190,136 @@ router.post(
   requirePermission('transport', 'edit'),
   validate(transportSchemas.unassignStudentSchema),
   transportController.unassignStudentFromRoute
+);
+
+// ============================================================
+// TRANSPORT V2 (additive): BUS STOPS, BUS FEES, STUDENT MAPPINGS
+// ============================================================
+
+router.get(
+  '/bus-stops',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('transport', 'read'),
+  validate(v2Schemas.listBusStopsSchema),
+  v2Controller.listBusStops
+);
+
+router.get(
+  '/slabs',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('transport', 'read'),
+  validate(v2Schemas.listBusStopsSchema),
+  v2Controller.listSlabNames
+);
+
+router.get(
+  '/bus-stops/:id',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('transport', 'read'),
+  validate(v2Schemas.busStopIdParamSchema),
+  v2Controller.getBusStop
+);
+
+router.post(
+  '/bus-stops',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('transport', 'create'),
+  validate(v2Schemas.createBusStopSchema),
+  v2Controller.createBusStop
+);
+
+router.patch(
+  '/bus-stops/:id',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('transport', 'edit'),
+  validate(v2Schemas.updateBusStopSchema),
+  v2Controller.updateBusStop
+);
+
+router.delete(
+  '/bus-stops/:id',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('transport', 'delete'),
+  validate(v2Schemas.busStopIdParamSchema),
+  v2Controller.deleteBusStop
+);
+
+router.get(
+  '/fees',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('transport', 'read'),
+  validate(v2Schemas.listBusFeesSchema),
+  v2Controller.listBusFees
+);
+
+router.get(
+  '/fees/:id',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('transport', 'read'),
+  validate(v2Schemas.busFeeIdParamSchema),
+  v2Controller.getBusFee
+);
+
+router.post(
+  '/fees',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('transport', 'create'),
+  validate(v2Schemas.createBusFeeSchema),
+  v2Controller.createBusFee
+);
+
+router.patch(
+  '/fees/:id',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('transport', 'edit'),
+  validate(v2Schemas.updateBusFeeSchema),
+  v2Controller.updateBusFee
+);
+
+router.delete(
+  '/fees/:id',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('transport', 'delete'),
+  validate(v2Schemas.busFeeIdParamSchema),
+  v2Controller.deleteBusFee
+);
+
+router.post(
+  '/mappings',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('transport', 'create'),
+  validate(v2Schemas.createMappingSchema),
+  v2Controller.createMappings
+);
+
+router.patch(
+  '/mappings/:studentId',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('transport', 'edit'),
+  validate(v2Schemas.updateMappingSchema),
+  v2Controller.updateMapping
+);
+
+router.delete(
+  '/mappings/:studentId',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('transport', 'edit'),
+  validate(v2Schemas.mappingStudentParamSchema),
+  v2Controller.deleteMapping
 );
 
 export default router;

@@ -189,10 +189,8 @@ export async function createStudent(schoolId, data, actor = null) {
     }
   });
 
-  // Automatically generate invoices for active fee structures in this class
-  if (created.classId) {
-    syncStudentClassFeeInvoices(schoolId, created.id, created.classId).catch(() => { });
-  }
+  // Automatically generate invoices for every fee that applies to this student
+  syncStudentClassFeeInvoices(schoolId, created.id, created.classId).catch(() => { });
 
   return created;
 }
@@ -391,9 +389,13 @@ export async function updateStudent(schoolId, studentId, data, actor = null) {
     modifiedFields
   });
 
-  // If class was updated, sync fee structures for the new class
-  if (data.classId && data.classId !== existingStudent.classId) {
-    syncStudentClassFeeInvoices(schoolId, studentId, data.classId).catch(() => { });
+  // If class, section or gender changed, give the student any fees that now apply
+  const placementChanged =
+    (data.classId && data.classId !== existingStudent.classId) ||
+    (data.sectionId !== undefined && (data.sectionId || null) !== (existingStudent.sectionId || null)) ||
+    Boolean(modifiedFields.gender);
+  if (placementChanged) {
+    syncStudentClassFeeInvoices(schoolId, studentId, data.classId || existingStudent.classId).catch(() => { });
   }
 
   return updated;
