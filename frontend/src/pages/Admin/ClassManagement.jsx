@@ -545,9 +545,9 @@ export default function ClassManagement() {
       {showForm && (
         <div className="mb-8 p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm animate-fade-in-down">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">{editingItem ? 'Edit Class' : 'Add New Class'}</h3>
-          <form onSubmit={handleCreate} className="flex flex-col md:flex-row gap-4 items-end">
-            <div className="w-full md:w-64">
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Category (Optional)</label>
+          <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,1.2fr)_auto] gap-4 items-end">
+            <div className="min-w-0">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1 whitespace-nowrap">Category (Optional)</label>
               <select
                 value={formData.categoryId}
                 onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
@@ -559,30 +559,30 @@ export default function ClassManagement() {
                 ))}
               </select>
             </div>
-            <div className="flex-1">
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Class/Grade Name <span className="text-red-500">*</span></label>
+            <div className="min-w-0">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1 whitespace-nowrap">Class Name <span className="text-red-500">*</span></label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Grade 10, Freshman"
+                placeholder="e.g., LKG, Class 5, Class 10"
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
                 required
               />
             </div>
-            <div className="w-full md:w-48">
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Section/Group <span className="text-red-500">*</span></label>
+            <div className="min-w-0">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1 whitespace-nowrap">Section <span className="text-red-500">*</span></label>
               <input
                 type="text"
                 value={formData.section}
                 onChange={(e) => setFormData({ ...formData, section: e.target.value })}
-                placeholder="e.g., A, B, Science"
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:border-transparent uppercase transition-all"
+                placeholder="e.g., A, B, C"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 focus:border-transparent uppercase placeholder:normal-case transition-all"
                 required
               />
             </div>
-            <div className="w-full md:w-64">
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Class Teacher (Optional)</label>
+            <div className="min-w-0">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1 whitespace-nowrap">Class Teacher (Optional)</label>
               <select
                 value={formData.classTeacherId}
                 onChange={(e) => setFormData({ ...formData, classTeacherId: e.target.value })}
@@ -597,7 +597,7 @@ export default function ClassManagement() {
             <button
               type="submit"
               disabled={saving}
-              className="px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 transition-colors h-11 shrink-0"
+              className="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 transition-colors h-[46px] shrink-0 whitespace-nowrap md:col-span-2 2xl:col-span-1 w-full md:w-fit"
             >
               {saving ? 'Saving...' : (editingItem ? 'Update Class' : 'Save Class')}
             </button>

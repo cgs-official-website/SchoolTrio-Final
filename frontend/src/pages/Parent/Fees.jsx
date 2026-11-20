@@ -37,11 +37,24 @@ export default function ParentFees() {
       const rawInvoices = res?.data || [];
       const summary = res?.summary || {};
 
-      const totalInvoiced = summary.totalInvoiced !== undefined ? Number(summary.totalInvoiced) : 0;
-      const paid = summary.totalPaid !== undefined ? Number(summary.totalPaid) : 0;
-      const outstanding = summary.totalOutstanding !== undefined ? Number(summary.totalOutstanding) : 0;
-      const overdueCount = summary.overdueCount !== undefined ? Number(summary.overdueCount) : 0;
-      const overdueAmount = summary.totalOverdue !== undefined ? Number(summary.totalOverdue) : 0;
+      // Backend returns paidAmount / outstandingAmount / overdueAmount (older builds used totalPaid / totalOutstanding / totalOverdue).
+      // If neither is present, fall back to adding up the invoice list itself so the cards are never wrongly 0.
+      const pick = (...vals) => {
+        const v = vals.find((x) => x !== undefined && x !== null && x !== '');
+        return v === undefined ? undefined : Number(v);
+      };
+      const live = rawInvoices.filter((i) => String(i.status || '').toLowerCase() !== 'cancelled');
+      const today = new Date().toISOString().slice(0, 10);
+      const sumOf = (list) => list.reduce((t, i) => t + (Number(i.amount) || 0), 0);
+      const isPaid = (i) => String(i.status || '').toLowerCase() === 'paid';
+      const unpaid = live.filter((i) => !isPaid(i));
+      const overdue = unpaid.filter((i) => i.dueDate && String(i.dueDate).slice(0, 10) < today);
+
+      const totalInvoiced = pick(summary.totalInvoiced) ?? sumOf(live);
+      const paid = pick(summary.paidAmount, summary.totalPaid) ?? sumOf(live.filter(isPaid));
+      const outstanding = pick(summary.outstandingAmount, summary.totalOutstanding) ?? sumOf(unpaid);
+      const overdueCount = pick(summary.overdueCount) ?? overdue.length;
+      const overdueAmount = pick(summary.overdueAmount, summary.totalOverdue) ?? sumOf(overdue);
 
       // Sort invoices by due date desc if not already sorted
       rawInvoices.sort((a, b) => new Date(b.dueDate || 0) - new Date(a.dueDate || 0));
@@ -176,13 +189,11 @@ export default function ParentFees() {
         </div>
 
         {/* Outstanding */}
-        <div className={`bg-white dark:bg-slate-900 rounded-3xl p-6 border shadow-sm flex items-center gap-4 relative overflow-hidden ${
-          stats.overdueCount > 0 ? 'border-red-200' : 'border-slate-100 dark:border-slate-800'
-        }`}>
-          <div className={`absolute top-0 left-0 w-2 h-full ${stats.overdueCount > 0 ? 'bg-red-500' : 'bg-amber-500'}`}></div>
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
-            stats.overdueCount > 0 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
+        <div className={`bg-white dark:bg-slate-900 rounded-3xl p-6 border shadow-sm flex items-center gap-4 relative overflow-hidden ${stats.overdueCount > 0 ? 'border-red-200' : 'border-slate-100 dark:border-slate-800'
           }`}>
+          <div className={`absolute top-0 left-0 w-2 h-full ${stats.overdueCount > 0 ? 'bg-red-500' : 'bg-amber-500'}`}></div>
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${stats.overdueCount > 0 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
+            }`}>
             <AlertTriangle size={24} />
           </div>
           <div>
@@ -203,22 +214,19 @@ export default function ParentFees() {
 
       {/* Dues Alert Banner */}
       {stats.outstanding > 0 && (
-        <div className={`rounded-3xl p-5 border shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fade-in ${
-          stats.overdueCount > 0
+        <div className={`rounded-3xl p-5 border shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fade-in ${stats.overdueCount > 0
             ? 'bg-gradient-to-r from-red-50 to-orange-50 border-red-200 text-red-900'
             : 'bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200 text-amber-900'
-        }`}>
+          }`}>
           <div className="flex items-start gap-4 min-w-0 w-full">
-            <div className={`p-3 rounded-2xl shrink-0 mt-0.5 ${
-              stats.overdueCount > 0 ? 'bg-red-500 text-white shadow-md shadow-red-500/20 animate-pulse' : 'bg-amber-500 text-white shadow-md shadow-amber-500/20'
-            }`}>
+            <div className={`p-3 rounded-2xl shrink-0 mt-0.5 ${stats.overdueCount > 0 ? 'bg-red-500 text-white shadow-md shadow-red-500/20 animate-pulse' : 'bg-amber-500 text-white shadow-md shadow-amber-500/20'
+              }`}>
               <AlertTriangle size={24} />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className={`text-xs font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
-                  stats.overdueCount > 0 ? 'bg-red-200 text-red-950 font-black' : 'bg-amber-200 text-amber-950 font-bold'
-                }`}>
+                <span className={`text-xs font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${stats.overdueCount > 0 ? 'bg-red-200 text-red-950 font-black' : 'bg-amber-200 text-amber-950 font-bold'
+                  }`}>
                   {stats.overdueCount > 0 ? '⚠️ Immediate Action Required' : '💳 Pending Payment Alert'}
                 </span>
                 {stats.overdueCount > 0 && (
@@ -272,11 +280,10 @@ export default function ParentFees() {
                   const isOverdue = inv.isOverdue || (inv.dueDate && new Date(inv.dueDate + 'T23:59:59') < new Date() && inv.status === 'Pending');
                   const feeTitle = inv.feeName || inv.name || 'School Fee';
                   return (
-                    <tr 
-                      key={inv.id} 
-                      className={`transition-colors ${
-                        isOverdue ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50/50'
-                      }`}
+                    <tr
+                      key={inv.id}
+                      className={`transition-colors ${isOverdue ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50/50'
+                        }`}
                     >
                       <td className="py-4 px-6">
                         <p className="font-semibold text-slate-900 dark:text-white">{feeTitle}</p>
@@ -316,9 +323,8 @@ export default function ParentFees() {
                         {inv.status !== 'Paid' && inv.status !== 'Cancelled' ? (
                           <button
                             onClick={() => handleSimulatePayment(inv)}
-                            className={`px-4 py-2 text-white rounded-xl text-xs font-bold shadow-sm transition-all hover:scale-105 active:scale-95 ${
-                              isOverdue ? 'bg-red-600 hover:bg-red-700 shadow-red-600/30' : 'bg-primary-600 hover:bg-primary-700 shadow-primary-600/30'
-                            }`}
+                            className={`px-4 py-2 text-white rounded-xl text-xs font-bold shadow-sm transition-all hover:scale-105 active:scale-95 ${isOverdue ? 'bg-red-600 hover:bg-red-700 shadow-red-600/30' : 'bg-primary-600 hover:bg-primary-700 shadow-primary-600/30'
+                              }`}
                           >
                             {isOverdue ? 'Pay Immediately' : 'Pay Dues'}
                           </button>

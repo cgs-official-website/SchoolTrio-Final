@@ -533,7 +533,8 @@ export default function StudentManagement() {
     const bloodGroupError = validateBloodGroup(formData.bloodGroup, false);
     const aadhaarError = validateAadhaarNumber(formData.aadharNumber, false);
     const parentPhoneError = validatePhone(formData.parentPhone, true, 'Parent phone number');
-    const parentEmailError = validateEmail(formData.parentEmail, false);
+    const parentEmailError = validateEmail(formData.parentEmail, true, 'Parent email');
+    const parentNameError = (formData.parentName || formData.fatherName || '').trim() ? null : "Father's / Parent name is required";
 
     let admissionNumberError = null;
     if (!formData.admissionNumber?.trim()) {
@@ -559,8 +560,9 @@ export default function StudentManagement() {
       }
     }
 
-    if (firstNameError || lastNameError || dobError || bloodGroupError || aadhaarError || parentPhoneError || parentEmailError || admissionNumberError || rollNumberError) {
+    if (firstNameError || lastNameError || dobError || bloodGroupError || aadhaarError || parentNameError || parentPhoneError || parentEmailError || admissionNumberError || rollNumberError) {
       const errors = {};
+      if (parentNameError) errors.parentName = parentNameError;
       if (firstNameError) errors.firstName = firstNameError;
       if (lastNameError) errors.lastName = lastNameError;
       if (dobError) errors.dob = dobError;
@@ -571,7 +573,7 @@ export default function StudentManagement() {
       if (admissionNumberError) errors.admissionNumber = admissionNumberError;
       if (rollNumberError) errors.rollNumber = rollNumberError;
       setAddErrors(prev => ({ ...prev, ...errors }));
-      toast.error(firstNameError || lastNameError || dobError || bloodGroupError || aadhaarError || parentPhoneError || parentEmailError || admissionNumberError || rollNumberError);
+      toast.error(firstNameError || lastNameError || dobError || bloodGroupError || aadhaarError || parentNameError || parentPhoneError || parentEmailError || admissionNumberError || rollNumberError);
       return;
     }
 
@@ -2062,12 +2064,34 @@ export default function StudentManagement() {
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-3 mb-4">Contact & Family Information</h3>
               <div className="grid md:grid-cols-3 gap-6">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Father's / Parent Name</label>
-                  <input type="text" value={formData.parentName} onChange={(e) => setFormData({ ...formData, parentName: e.target.value, fatherName: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900" placeholder="Father or Primary Parent Name" />
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Father's / Parent Name *</label>
+                  <input
+                    type="text"
+                    id="add-student-parentName"
+                    required
+                    value={formData.parentName}
+                    onChange={(e) => {
+                      setFormData({ ...formData, parentName: e.target.value, fatherName: e.target.value });
+                      if (addErrors.parentName) {
+                        setAddErrors(prev => {
+                          const updated = { ...prev };
+                          delete updated.parentName;
+                          return updated;
+                        });
+                      }
+                    }}
+                    className={`w-full px-4 py-2.5 rounded-xl border bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 ${addErrors.parentName ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 dark:border-slate-700'}`}
+                    placeholder="Father or Primary Parent Name"
+                  />
+                  {addErrors.parentName && (
+                    <span className="text-xs text-red-500 font-semibold mt-1 block" data-testid="error-parentName">
+                      {addErrors.parentName}
+                    </span>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">
-                    Father's / Parent Phone <span className="text-red-500">*</span>
+                    Father's / Parent Phone *
                   </label>
                   <input
                     type="text"

@@ -1142,6 +1142,9 @@ export default function Attendance() {
         )}
       </div>
 
+      {/* Spacer so the floating save bar never covers the last student rows */}
+      {viewMode === 'daily' && <div aria-hidden="true" className="h-32 shrink-0" />}
+
       {/* Floating Save Footer for Daily Mode */}
       {viewMode === 'daily' && (
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-4 flex items-center gap-4 max-w-xl w-full">

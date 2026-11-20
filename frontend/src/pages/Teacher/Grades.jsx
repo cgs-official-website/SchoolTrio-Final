@@ -16,7 +16,7 @@ import { listSubjects } from '../../api/subjects';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
 import { notifyDataChanged } from '../../utils/liveData';
 import { sortClassesAscending } from '../../utils/classSorting';
-import { LuPlus as Plus, LuFileText as FileText, LuCircleCheck as CheckCircle2, LuSave as Save, LuX as X, LuBookOpen as BookOpen, LuGraduationCap as GraduationCap, LuPrinter as Printer, LuSend as Send, LuLock as Lock } from 'react-icons/lu';
+import { LuPlus as Plus, LuFileText as FileText, LuCircleCheck as CheckCircle2, LuSave as Save, LuX as X, LuBookOpen as BookOpen, LuGraduationCap as GraduationCap, LuPrinter as Printer, LuSend as Send, LuLock as Lock, LuPencil as Pencil } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -57,13 +57,13 @@ export default function Grades() {
   const [assessments, setAssessments] = useState([]);
   const [exams, setExams] = useState([]);
   const examsForSelectedClass = useMemo(
-  () => exams.filter((e) =>
-    (!e.classId || e.classId === classId) &&
-    (!e.sectionId || e.sectionId === sectionId) &&
-    e.status !== 'FINALIZED'
-  ),
-  [exams, classId, sectionId]
-);
+    () => exams.filter((e) =>
+      (!e.classId || e.classId === classId) &&
+      (!e.sectionId || e.sectionId === sectionId) &&
+      e.status !== 'FINALIZED'
+    ),
+    [exams, classId, sectionId]
+  );
   const [loading, setLoading] = useState(true);
 
   // Active Assessment State
@@ -75,6 +75,9 @@ export default function Grades() {
   const [initialGrades, setInitialGrades] = useState({}); // Baseline for clear-grade delta detection
   const [savingGrades, setSavingGrades] = useState(false);
   const [submittingMarks, setSubmittingMarks] = useState(false);
+  const [editingSubmitted, setEditingSubmitted] = useState(false); // teacher clicked "Enable Editing" on a submitted assessment
+  const activeAssessmentId = activeAssessment?.id;
+  useEffect(() => { setEditingSubmitted(false); }, [activeAssessmentId]);
   const [loadingGrades, setLoadingGrades] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const selectedAssessmentIdRef = useRef(null);
@@ -125,7 +128,7 @@ export default function Grades() {
 
   const fetchExams = useCallback(async () => {
     try {
-      const res = await listExams({limit: 100});
+      const res = await listExams({ limit: 100 });
       if (mountedRef.current) {
         setExams(res?.data || []);
       }
@@ -480,8 +483,23 @@ export default function Grades() {
     return 'E';
   };
 
+  // A student counts as "done" when marked absent / exempt, or a mark (or any component mark) is entered
+  const isStudentMarkEntered = (sId) => {
+    if (absentMap[sId] || exemptMap[sId]) return true;
+    const v = grades[sId];
+    if (v !== '' && v !== undefined && v !== null) return true;
+    const comp = componentGrades[sId];
+    return !!comp && Object.values(comp).some((x) => x !== '' && x !== undefined && x !== null);
+  };
+  const pendingMarksCount = students.filter((st) => !isStudentMarkEntered(st.id)).length;
+  const allMarksEntered = students.length > 0 && pendingMarksCount === 0;
+
   const handleSaveGrades = async (isDraft = true) => {
     if (!activeAssessment || savingGrades || submittingMarks) return;
+    if (!isDraft && pendingMarksCount > 0) {
+      toast.error(`Enter marks (or mark Absent / Exempt) for all students before submitting. ${pendingMarksCount} pending.`);
+      return;
+    }
     if (isDraft) {
       setSavingGrades(true);
     } else {
@@ -559,6 +577,7 @@ export default function Grades() {
 
       // Update active assessment status locally
       setActiveAssessment(prev => prev ? { ...prev, status: isDraft ? 'IN_PROGRESS' : 'SUBMITTED' } : null);
+      setEditingSubmitted(false);
     } catch (error) {
       console.error("Error saving grades:", error);
       const errMsg = error?.response?.data?.message || error?.message || "Failed to save grades.";
@@ -784,8 +803,8 @@ export default function Grades() {
                     key={assessment.id}
                     onClick={() => handleSelectAssessment(assessment)}
                     className={`w-full text-left p-4 rounded-2xl border transition-all ${isActive
-                        ? 'bg-white dark:bg-slate-900 border-primary-500 shadow-md ring-1 ring-primary-500'
-                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-slate-700 shadow-sm opacity-80 hover:opacity-100'
+                      ? 'bg-white dark:bg-slate-900 border-primary-500 shadow-md ring-1 ring-primary-500'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-slate-700 shadow-sm opacity-80 hover:opacity-100'
                       }`}
                   >
                     <div className="font-bold text-slate-900 dark:text-white truncate">{assessment.title}</div>
@@ -822,6 +841,8 @@ export default function Grades() {
                 const isLocked = activeAssessment.status === 'LOCKED' || linkedExam?.status === 'FINALIZED';
 
                 const canEditMarks = Boolean(activeAssessment.access?.canEdit);
+                const isSubmitted = activeAssessment.status === 'SUBMITTED';
+                const marksReadOnly = isLocked || !canEditMarks || (isSubmitted && !editingSubmitted);
                 const isViewOnlyClassTeacher = !canEditMarks && Boolean(activeAssessment.access?.isClassTeacher);
 
                 return (
@@ -848,10 +869,10 @@ export default function Grades() {
                             {activeAssessment.title}
                           </h2>
                           <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${isLocked
-                              ? 'bg-red-500/10 text-red-600 border border-red-500/20'
-                              : activeAssessment.status === 'SUBMITTED'
-                                ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20'
-                                : 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+                            ? 'bg-red-500/10 text-red-600 border border-red-500/20'
+                            : activeAssessment.status === 'SUBMITTED'
+                              ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20'
+                              : 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
                             }`}>
                             {isLocked ? 'Locked' : activeAssessment.status || 'Draft'}
                           </span>
@@ -865,7 +886,19 @@ export default function Grades() {
                         </p>
                       </div>
 
-                      {!isLocked && canEditMarks ? (
+                      {!isLocked && canEditMarks && isSubmitted && !editingSubmitted ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                            Marks submitted to Admin
+                          </span>
+                          <button
+                            onClick={() => setEditingSubmitted(true)}
+                            className="flex justify-center items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 shadow-sm transition-colors"
+                          >
+                            <Pencil size={16} /> Enable Editing
+                          </button>
+                        </div>
+                      ) : !isLocked && canEditMarks ? (
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => handleSaveGrades(true)}
@@ -875,14 +908,22 @@ export default function Grades() {
                             {savingGrades ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-transparent"></div> : <Save size={16} />}
                             {savingGrades ? 'Saving...' : 'Save Draft'}
                           </button>
-                          <button
-                            onClick={() => handleSaveGrades(false)}
-                            disabled={savingGrades || submittingMarks || loadingGrades || students.length === 0}
-                            className="flex justify-center items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 shadow-sm disabled:opacity-50 transition-colors"
-                          >
-                            {submittingMarks ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div> : <Send size={16} />}
-                            {submittingMarks ? 'Submitting...' : 'Submit to Admin'}
-                          </button>
+                          {allMarksEntered ? (
+                            <button
+                              onClick={() => handleSaveGrades(false)}
+                              disabled={savingGrades || submittingMarks || loadingGrades || students.length === 0}
+                              className="flex justify-center items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 shadow-sm disabled:opacity-50 transition-colors"
+                            >
+                              {submittingMarks ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div> : <Send size={16} />}
+                              {submittingMarks ? 'Submitting...' : 'Submit to Admin'}
+                            </button>
+                          ) : (
+                            !loadingGrades && students.length > 0 && (
+                              <span className="text-xs font-semibold px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                {pendingMarksCount} of {students.length} pending — enter all marks to submit
+                              </span>
+                            )
+                          )}
                         </div>
                       ) : !isLocked && isViewOnlyClassTeacher ? (
                         <div className="flex items-center gap-2">
@@ -964,7 +1005,7 @@ export default function Grades() {
                                     <td className="p-4 text-center">
                                       <input
                                         type="checkbox"
-                                        disabled={isLocked || !canEditMarks}
+                                        disabled={marksReadOnly}
                                         checked={isAbsent}
                                         onChange={(e) => {
                                           const checked = e.target.checked;
@@ -980,7 +1021,7 @@ export default function Grades() {
                                     <td className="p-4 text-center">
                                       <input
                                         type="checkbox"
-                                        disabled={isLocked || !canEditMarks}
+                                        disabled={marksReadOnly}
                                         checked={isExempt}
                                         onChange={(e) => {
                                           const checked = e.target.checked;
@@ -1011,13 +1052,13 @@ export default function Grades() {
                                                   type="number"
                                                   min="0"
                                                   max={comp.maxMarks}
-                                                  disabled={isLocked || !canEditMarks}
+                                                  disabled={marksReadOnly}
                                                   value={hasVal ? compVal : ''}
                                                   onChange={(e) => handleComponentGradeChange(student.id, comp.key, e.target.value, comp.maxMarks)}
                                                   placeholder="--"
                                                   className={`w-20 px-2 py-1.5 text-center rounded-lg border font-mono font-bold focus:ring-2 focus:ring-primary-500 transition-colors disabled:opacity-60 disabled:bg-slate-100 ${hasVal
-                                                      ? 'border-green-300 bg-green-50 text-green-900 dark:bg-green-950/30 dark:text-green-200'
-                                                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
+                                                    ? 'border-green-300 bg-green-50 text-green-900 dark:bg-green-950/30 dark:text-green-200'
+                                                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
                                                     }`}
                                                 />
                                               )}
@@ -1038,8 +1079,8 @@ export default function Grades() {
                                           ) : (
                                             <div className="flex items-center justify-center">
                                               <span className={`px-2.5 py-1 rounded-lg font-mono font-black text-sm ${val !== '' && val !== undefined
-                                                  ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300 border border-primary-200 dark:border-primary-800'
-                                                  : 'text-slate-400'
+                                                ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300 border border-primary-200 dark:border-primary-800'
+                                                : 'text-slate-400'
                                                 }`}>
                                                 {val !== '' && val !== undefined ? val : '--'}
                                               </span>
@@ -1052,10 +1093,10 @@ export default function Grades() {
                                           {!isAbsent && !isExempt && studentGrade ? (
                                             <>
                                               <span className={`text-xs font-black px-2 py-0.5 rounded ${['A1', 'A2', 'B1'].includes(studentGrade)
-                                                  ? 'bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300'
-                                                  : ['B2', 'C1', 'C2'].includes(studentGrade)
-                                                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300'
-                                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
+                                                ? 'bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300'
+                                                : ['B2', 'C1', 'C2'].includes(studentGrade)
+                                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300'
+                                                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
                                                 }`}>
                                                 {studentGrade} {percentage ? `(${percentage}%)` : ''}
                                               </span>
@@ -1093,14 +1134,14 @@ export default function Grades() {
                                                 <input
                                                   type="number"
                                                   min="0"
-                                                  disabled={isLocked || !canEditMarks}
+                                                  disabled={marksReadOnly}
                                                   max={activeAssessment.totalMarks}
                                                   value={grades[student.id] === undefined || grades[student.id] === '' ? '' : grades[student.id]}
                                                   onChange={(e) => handleGradeChange(student.id, e.target.value)}
                                                   placeholder="--"
                                                   className={`w-24 px-3 py-2 text-right rounded-lg border font-mono font-bold focus:ring-2 focus:ring-primary-500 transition-colors disabled:opacity-60 disabled:bg-slate-100 ${grades[student.id] !== '' && grades[student.id] !== undefined
-                                                      ? 'border-green-300 bg-green-50 text-green-900'
-                                                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
+                                                    ? 'border-green-300 bg-green-50 text-green-900'
+                                                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
                                                     }`}
                                                 />
                                               </div>

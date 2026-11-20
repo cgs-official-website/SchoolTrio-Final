@@ -181,12 +181,15 @@ export default function FeeCollection() {
     const selectedClass = useMemo(() => classes.find((c) => c.id === classId) || null, [classes, classId]);
     const sections = useMemo(() => sortSectionsAscending(selectedClass?.sections || []), [selectedClass]);
     const classHasSections = sections.length > 0;
-    const canSearchStudents = Boolean(classId) && (!classHasSections || Boolean(sectionId));
+    const classReady = Boolean(classId) && (!classHasSections || Boolean(sectionId));
+    // No class chosen -> search the whole school; class chosen -> search inside that class/section
+    const globalMode = !classId;
+    const canSearchStudents = globalMode || classReady;
 
     // ============================================================
     // Student roster: loaded once per class + section, searched locally while typing
     // ============================================================
-    const rosterKey = canSearchStudents ? `${classId}|${sectionId}` : '';
+    const rosterKey = classReady ? `${classId}|${sectionId}` : '';
 
     const fetchRoster = useCallback(async (key, silent = false) => {
         if (!key) return;
@@ -225,7 +228,44 @@ export default function FeeCollection() {
     }, [rosterKey, fetchRoster]);
     useLiveDataRefresh(() => { if (rosterKey) fetchRoster(rosterKey, true); }, [rosterKey, fetchRoster], ['students']);
 
+    // ----- school-wide search (used while no class is selected): debounced, server-side, small page -----
+    const [globalState, setGlobalState] = useState({ q: '', students: [], loading: false });
+    const globalReqRef = useRef(0);
+    const globalQuery = globalMode ? query.trim() : '';
+    useEffect(() => {
+        if (!globalMode) {
+            globalReqRef.current += 1;
+            setGlobalState({ q: '', students: [], loading: false });
+            return undefined;
+        }
+        const reqId = ++globalReqRef.current;
+        setGlobalState((g) => ({ ...g, loading: true }));
+        const t = setTimeout(async () => {
+            try {
+                const res = await listStudents({ search: globalQuery || undefined, status: 'Active', limit: 50, sort: 'firstName', order: 'asc' });
+                if (!mountedRef.current || reqId !== globalReqRef.current) return;
+                const list = Array.isArray(res?.data) ? res.data : [];
+                const ql = globalQuery.toLowerCase();
+                // names / admission numbers that START with the typed letters come first, then the rest
+                const rank = (st) => {
+                    if (!ql) return 0;
+                    const n = studentFullName(st).toLowerCase();
+                    const adm = String(st.admissionNumber || '').toLowerCase();
+                    if (n.startsWith(ql) || (st.firstName || '').toLowerCase().startsWith(ql) || adm.startsWith(ql)) return 0;
+                    return 1;
+                };
+                setGlobalState({ q: globalQuery, students: [...list].sort((a, b) => rank(a) - rank(b)), loading: false });
+            } catch (err) {
+                if (!mountedRef.current || reqId !== globalReqRef.current) return;
+                setGlobalState({ q: globalQuery, students: [], loading: false });
+                toast.error(err.message || 'Student search failed.');
+            }
+        }, 300);
+        return () => clearTimeout(t);
+    }, [globalMode, globalQuery]);
+
     const results = useMemo(() => {
+        if (globalMode) return globalState.q === globalQuery ? globalState.students : [];
         if (roster.key !== rosterKey) return [];
         const q = query.trim().toLowerCase();
         if (!q) return roster.students.slice(0, 50);
@@ -238,10 +278,10 @@ export default function FeeCollection() {
                 return hay.includes(q);
             })
             .slice(0, 50);
-    }, [roster, rosterKey, query]);
-    const resultsLoading = rosterLoading || roster.key !== rosterKey;
+    }, [globalMode, globalState, globalQuery, roster, rosterKey, query]);
+    const resultsLoading = globalMode ? globalState.loading : (rosterLoading || roster.key !== rosterKey);
 
-    useEffect(() => { setHighlight(0); }, [query, rosterKey]);
+    useEffect(() => { setHighlight(0); }, [query, rosterKey, globalMode]);
 
     // close the dropdown on outside click
     useEffect(() => {
@@ -679,7 +719,7 @@ export default function FeeCollection() {
                                 value={studentInputValue}
                                 readOnly={Boolean(student)}
                                 disabled={!canSearchStudents}
-                                placeholder={canSearchStudents ? 'Select student or type a name / admission no.' : classId ? 'Select a section first' : 'Select a class first'}
+                                placeholder={!canSearchStudents ? 'Select a section first' : globalMode ? 'Search any student by name / admission no.' : 'Select student or type a name / admission no.'}
                                 onFocus={() => { if (!student) setDropdownOpen(true); }}
                                 onChange={(e) => { setQuery(e.target.value); setDropdownOpen(true); }}
                                 onKeyDown={onComboKeyDown}
@@ -693,7 +733,7 @@ export default function FeeCollection() {
                                     <div className="flex items-center gap-2 p-4 text-sm text-slate-500"><Loader size={16} className="animate-spin" /> Loading students…</div>
                                 ) : results.length === 0 ? (
                                     <div className="p-4 text-sm text-slate-500 dark:text-slate-400">
-                                        {query.trim() ? 'No student matches that search in this class.' : 'No active students in this class and section.'}
+                                        {globalMode ? (query.trim() ? 'No active student matches that search.' : 'No active students found.') : query.trim() ? 'No student matches that search in this class.' : 'No active students in this class and section.'}
                                     </div>
                                 ) : (
                                     results.map((s, idx) => (
