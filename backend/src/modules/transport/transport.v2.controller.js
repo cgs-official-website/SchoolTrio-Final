@@ -28,7 +28,12 @@ export const createBusFee = handler(({ schoolId, actor, req }) => svc.createBusF
 export const updateBusFee = handler(({ schoolId, actor, req }) => svc.updateBusFee(schoolId, req.params.id, req.body, actor), { message: 'Fee entry updated successfully' });
 export const deleteBusFee = handler(({ schoolId, actor, req }) => svc.deleteBusFee(schoolId, req.params.id, actor), { message: 'Fee entry deleted successfully' });
 
+export const syncTransportInvoices = handler(({ schoolId, actor }) => svc.syncAllInvoices(schoolId, actor), { message: 'Transport fees synced to student invoices' });
+
 // Student mappings
 export const createMappings = handler(({ schoolId, actor, req }) => svc.createMappings(schoolId, req.body, actor), { status: 201, message: 'Students mapped successfully' });
 export const updateMapping = handler(({ schoolId, actor, req }) => svc.updateMapping(schoolId, req.params.studentId, req.body, actor), { message: 'Mapping updated successfully' });
 export const deleteMapping = handler(({ schoolId, actor, req }) => svc.deleteMapping(schoolId, req.params.studentId, actor), { message: 'Student unmapped successfully' });
+
+// Parent / student self-service
+export const getMyTransport = handler(({ schoolId, actor, req }) => svc.getMyTransport(schoolId, req.query, actor));

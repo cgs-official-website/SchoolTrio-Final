@@ -25,9 +25,16 @@ export const busStopIdParamSchema = z.object({
     params: z.object({ id: uuid('Bus stop ID') })
 });
 
+// Distance in km (replaces the old free-text "slab name"). Blank -> null.
+const distanceKm = z.preprocess(
+    (v) => (v === '' || v === undefined ? null : v),
+    z.coerce.number({ invalid_type_error: 'Distance must be a number' }).min(0, 'Distance cannot be negative').max(9999, 'Distance is too large').nullable().optional()
+);
+
 const busStopBody = {
     stopName: z.string().trim().min(1, 'Stop name is required').max(150, 'Stop name cannot exceed 150 characters'),
-    slabName: optionalText(100),
+    distanceKm,
+    slabName: optionalText(100), // legacy - still accepted
     geocode: optionalText(100),
     routeIds: z.array(uuid('routeId')).min(1, 'Select at least one route').max(200)
 };
@@ -51,21 +58,23 @@ export const busFeeIdParamSchema = z.object({
     params: z.object({ id: uuid('Fee ID') })
 });
 
+// One simple amount per entry. A fee is either for one bus stop (kind STOP)
+// or for a distance slab in km (kind SLAB) that covers every stop with that distance.
 const busFeeBody = z
     .object({
         kind: z.enum(['STOP', 'SLAB']),
         busStopId: uuid('busStopId').nullable().optional(),
-        slabName: optionalText(100),
+        distanceKm,
+        slabName: optionalText(100), // legacy - still accepted
         dueDate: dateStr('Due date'),
-        oneWayAmount: amount('One way fee'),
-        twoWayAmount: amount('Two way fee')
+        amount: amount('Fee amount')
     })
     .superRefine((d, ctx) => {
         if (d.kind === 'STOP' && !d.busStopId) {
             ctx.addIssue({ code: 'custom', path: ['busStopId'], message: 'Bus stop is required' });
         }
-        if (d.kind === 'SLAB' && !(d.slabName && d.slabName.trim())) {
-            ctx.addIssue({ code: 'custom', path: ['slabName'], message: 'Slab name is required' });
+        if (d.kind === 'SLAB' && (d.distanceKm === null || d.distanceKm === undefined) && !(d.slabName && d.slabName.trim())) {
+            ctx.addIssue({ code: 'custom', path: ['distanceKm'], message: 'Distance (KM) is required' });
         }
     });
 
@@ -98,4 +107,9 @@ export const updateMappingSchema = z.object({
 
 export const mappingStudentParamSchema = z.object({
     params: z.object({ studentId: uuid('studentId') })
+});
+
+// ---------------- PARENT / STUDENT SELF-SERVICE ----------------
+export const myTransportSchema = z.object({
+    query: z.object({ studentId: z.string().uuid().optional() })
 });

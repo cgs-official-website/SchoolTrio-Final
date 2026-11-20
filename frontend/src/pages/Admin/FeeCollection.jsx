@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { listClasses } from '../../api/classes';
 import { listStudents, getStudent, updateStudent } from '../../api/students';
 import { getStudentInvoices, payInvoice } from '../../api/invoices';
-import { getRoute } from '../../api/transport';
+import { getRoute, getBusStop } from '../../api/transport';
 import { getSchoolSettings } from '../../api/settings';
 import usePermissions from '../../hooks/usePermissions';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
@@ -322,15 +322,19 @@ export default function FeeCollection() {
 
     const fetchTransport = useCallback(async (target) => {
         setTransport(null);
-        if (!target?.transportRouteId) return;
+        if (!target?.transportRouteId && !target?.busStopId) return;
         try {
-            const res = await getRoute(target.transportRouteId);
-            const route = res?.data;
-            if (!mountedRef.current || !route) return;
-            const stop = (route.stops || []).find((s) => s.id === target.pickupStopId);
+            // New mappings store a bus stop (busStopId); old ones store a route stop (pickupStopId).
+            const [routeRes, stopRes] = await Promise.all([
+                target.transportRouteId ? getRoute(target.transportRouteId).catch(() => null) : null,
+                target.busStopId ? getBusStop(target.busStopId).catch(() => null) : null
+            ]);
+            if (!mountedRef.current) return;
+            const route = routeRes?.data;
+            const oldStop = (route?.stops || []).find((s) => s.id === target.pickupStopId);
             setTransport({
-                routeName: route.name || route.routeNumber || '',
-                stopName: stop?.stopName || ''
+                routeName: route?.name || route?.routeNumber || '',
+                stopName: stopRes?.data?.stopName || oldStop?.stopName || ''
             });
         } catch {
             // Roles without transport access simply do not see the bus box details.
@@ -812,7 +816,7 @@ export default function FeeCollection() {
                                 <div className="min-w-0 text-xs">
                                     <p className="font-bold uppercase tracking-wider text-slate-400">Bus stop</p>
                                     <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">
-                                        {!student.transportRouteId ? 'Not using transport' : transport?.stopName || transport?.routeName || 'Assigned'}
+                                        {!student.transportRouteId && !student.busStopId ? 'Not using transport' : transport?.stopName || transport?.routeName || 'Assigned'}
                                     </p>
                                     {transport?.routeName && transport?.stopName && <p className="text-slate-500 dark:text-slate-400 truncate">{transport.routeName}</p>}
                                 </div>
@@ -1075,10 +1079,10 @@ function LedgerCell({ inv, todayStr, selected, onToggle }) {
             aria-pressed={selected}
             title={overdue ? 'Overdue — click to select' : 'Click to select'}
             className={`px-2.5 py-1 rounded-lg text-sm font-bold tabular-nums border transition-colors ${selected
-                    ? 'bg-primary-600 border-primary-600 text-white'
-                    : overdue
-                        ? 'border-red-300 text-red-700 bg-red-50 hover:bg-red-100 dark:border-red-800 dark:text-red-300 dark:bg-red-900/20'
-                        : 'border-slate-300 text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800'
+                ? 'bg-primary-600 border-primary-600 text-white'
+                : overdue
+                    ? 'border-red-300 text-red-700 bg-red-50 hover:bg-red-100 dark:border-red-800 dark:text-red-300 dark:bg-red-900/20'
+                    : 'border-slate-300 text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800'
                 }`}
         >
             {amount}

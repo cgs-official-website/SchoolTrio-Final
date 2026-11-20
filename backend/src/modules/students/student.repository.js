@@ -27,6 +27,7 @@ const STUDENT_SELECT_CONFIG = {
   sectionId: true,
   transportRouteId: true,
   pickupStopId: true,
+  busStopId: true,
   createdAt: true,
   updatedAt: true,
   class: {
@@ -70,6 +71,7 @@ export const BULK_STUDENT_SELECT_CONFIG = {
   sectionId: true,
   transportRouteId: true,
   pickupStopId: true,
+  busStopId: true,
   createdAt: true,
   updatedAt: true,
   class: {
@@ -373,6 +375,7 @@ export const BULK_CREATE_SELECT_CONFIG = {
   sectionId: true,
   transportRouteId: true,
   pickupStopId: true,
+  busStopId: true,
   createdAt: true,
   updatedAt: true
 };

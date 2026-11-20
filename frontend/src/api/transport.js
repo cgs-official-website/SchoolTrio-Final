@@ -291,6 +291,14 @@ export async function listBusStops(params = {}) {
   return apiClient(withQuery('/api/v1/transport/bus-stops', params, ['search', 'routeId']), { method: 'GET' });
 }
 
+export async function getBusStop(id) {
+  return apiClient(`/api/v1/transport/bus-stops/${id}`, { method: 'GET' });
+}
+
+export async function syncTransportInvoices() {
+  return apiClient('/api/v1/transport/fees/sync-invoices', { method: 'POST' });
+}
+
 export async function listBusSlabs() {
   return apiClient('/api/v1/transport/slabs', { method: 'GET' });
 }
@@ -333,4 +341,17 @@ export async function updateStudentMapping(studentId, payload) {
 
 export async function deleteStudentMapping(studentId) {
   return apiClient(`/api/v1/transport/mappings/${encodeURIComponent(studentId)}`, { method: 'DELETE' });
+}
+
+// ============================================================
+// PARENT / STUDENT SELF-SERVICE
+// ============================================================
+
+/**
+ * Transport details (bus number, stop, distance, driver, fee schedule) of the
+ * logged-in parent's children, or of the logged-in student.
+ * Calls GET /api/v1/transport/my-transport[?studentId=].
+ */
+export async function getMyTransport(params = {}) {
+  return apiClient(withQuery('/api/v1/transport/my-transport', params, ['studentId']), { method: 'GET' });
 }

@@ -1,7 +1,9 @@
 import * as repo from './transport.v2.repository.js';
 import * as baseRepo from './transport.repository.js';
 import { createAuditLog } from '../audit/audit.repository.js';
-import { TenantAccessError, NotFoundError, ConflictError, ValidationError } from '../../utils/app-error.js';
+import { syncTransportInvoices, findMappedStudentIds, syncAllTransportInvoices } from './transport.billing.js';
+import { SYSTEM_ROLES } from '../../config/constants.js';
+import { TenantAccessError, NotFoundError, ConflictError, ValidationError, ForbiddenError } from '../../utils/app-error.js';
 
 const who = (actor) => ({
     userName: actor?.name || actor?.email || 'Administrator',
@@ -22,28 +24,60 @@ const needTenant = (schoolId, what) => {
     if (!schoolId) throw new TenantAccessError(`Tenant context required to ${what}`);
 };
 
-const shapeStop = (s) => ({
-    id: s.id,
-    stopName: s.stopName,
-    slabName: s.slabName,
-    geocode: s.geocode,
-    routes: (s.routes || []).map((r) => r.route).filter(Boolean),
-    studentCount: s._count?.students ?? 0,
-    feeCount: s._count?.fees ?? 0,
-    createdAt: s.createdAt
-});
+// ---- distance helpers: the old free-text "slab name" is now a distance in km ----
+const parseKm = (label) => {
+    const m = /(\d+(?:\.\d+)?)/.exec(String(label ?? ''));
+    return m ? Number(m[1]) : null;
+};
+const formatKm = (n) => `${Number(n)} KM`;
+const slabFromInput = (data) => {
+    if (data.distanceKm !== null && data.distanceKm !== undefined && data.distanceKm !== '') return formatKm(data.distanceKm);
+    return data.slabName ? String(data.slabName).trim() : null;
+};
+const sameDistance = (a, b) => {
+    const na = parseKm(a);
+    const nb = parseKm(b);
+    if (na !== null && nb !== null) return na === nb;
+    return String(a ?? '').toLowerCase().replace(/\s+/g, '') === String(b ?? '').toLowerCase().replace(/\s+/g, '');
+};
 
-const shapeFee = (f) => ({
-    id: f.id,
-    kind: f.kind,
-    busStopId: f.busStopId,
-    stopName: f.busStop?.stopName || null,
-    slabName: f.kind === 'STOP' ? f.busStop?.slabName || null : f.slabName,
-    dueDate: f.dueDate,
-    oneWayAmount: Number(f.oneWayAmount),
-    twoWayAmount: Number(f.twoWayAmount),
-    createdAt: f.createdAt
-});
+const shapeStop = (s) => {
+    const routes = (s.routes || []).map((r) => r.route).filter(Boolean);
+    return {
+        id: s.id,
+        stopName: s.stopName,
+        slabName: s.slabName,
+        distanceKm: parseKm(s.slabName),
+        distanceLabel: s.slabName ? (parseKm(s.slabName) !== null ? formatKm(parseKm(s.slabName)) : s.slabName) : null,
+        geocode: s.geocode,
+        routes,
+        // every bus (route + vehicle) that stops here
+        buses: routes.map((r) => ({
+            routeId: r.id,
+            routeName: r.name,
+            busNumber: r.vehicle?.registrationNumber || r.routeNumber || null
+        })),
+        studentCount: s._count?.students ?? 0,
+        feeCount: s._count?.fees ?? 0,
+        createdAt: s.createdAt
+    };
+};
+
+const shapeFee = (f) => {
+    const slab = f.kind === 'STOP' ? f.busStop?.slabName || null : f.slabName;
+    return {
+        id: f.id,
+        kind: f.kind,
+        busStopId: f.busStopId,
+        stopName: f.busStop?.stopName || null,
+        slabName: slab,
+        distanceKm: parseKm(slab),
+        dueDate: f.dueDate,
+        // single amount (the old one-way / two-way pair is kept in sync in the DB)
+        amount: Number(f.twoWayAmount),
+        createdAt: f.createdAt
+    };
+};
 
 // ---------------- BUS STOPS ----------------
 export async function listBusStops(schoolId, query = {}) {
@@ -75,7 +109,7 @@ export async function createBusStop(schoolId, data, actor = {}) {
     const routeIds = await assertRoutesExist(schoolId, data.routeIds);
     const dup = await repo.findBusStopByName(schoolId, data.stopName);
     if (dup) throw new ConflictError(`Bus stop '${data.stopName}' already exists`);
-    const stop = await repo.createBusStop(schoolId, { ...data, routeIds });
+    const stop = await repo.createBusStop(schoolId, { ...data, slabName: slabFromInput(data), routeIds });
     audit(schoolId, actor, 'BusStop', stop.id, 'CREATE_BUS_STOP', { stopName: stop.stopName, routeIds });
     return shapeStop(stop);
 }
@@ -98,7 +132,12 @@ export async function updateBusStop(schoolId, id, data, actor = {}) {
         }
     }
 
-    const stop = await baseRepo.runTransaction((tx) => repo.updateBusStop(schoolId, id, { ...data, routeIds }, tx));
+    const stop = await baseRepo.runTransaction(async (tx) => {
+        const updated = await repo.updateBusStop(schoolId, id, { ...data, slabName: slabFromInput(data), routeIds }, tx);
+        // distance may have changed -> a different slab fee can now apply to students on this stop
+        await syncTransportInvoices(schoolId, await findMappedStudentIds(schoolId, { busStopId: id }, tx), tx);
+        return updated;
+    }, { timeout: 60000 });
     audit(schoolId, actor, 'BusStop', id, 'UPDATE_BUS_STOP', { stopName: data.stopName, routeIds });
     return shapeStop(stop);
 }
@@ -117,18 +156,19 @@ export async function deleteBusStop(schoolId, id, actor = {}) {
 }
 
 // ---------------- BUS FEES ----------------
+const normalizeFee = (data) => ({
+    ...data,
+    busStopId: data.kind === 'STOP' ? data.busStopId : null,
+    slabName: data.kind === 'SLAB' ? slabFromInput(data) : null
+});
+
 async function validateFeeTarget(schoolId, data, excludeId = null) {
     if (data.kind === 'STOP') {
         const stop = await repo.findBusStopById(schoolId, data.busStopId);
         if (!stop) throw new NotFoundError('Bus stop not found in active school');
-    } else {
-        const slabs = await repo.findDistinctSlabNames(schoolId);
-        if (!slabs.some((s) => s.toLowerCase() === data.slabName.trim().toLowerCase())) {
-            throw new ValidationError(`Slab '${data.slabName}' is not assigned to any bus stop`);
-        }
     }
     const dup = await repo.findDuplicateFee(schoolId, data, excludeId);
-    if (dup) throw new ConflictError('A fee entry already exists for this stop/slab and due date');
+    if (dup) throw new ConflictError('A fee entry already exists for this stop/distance and due date');
 }
 
 export async function listBusFees(schoolId, query = {}) {
@@ -145,10 +185,15 @@ export async function getBusFee(schoolId, id) {
 
 export async function createBusFee(schoolId, data, actor = {}) {
     needTenant(schoolId, 'create bus fee');
-    await validateFeeTarget(schoolId, data);
-    const fee = await repo.createBusFee(schoolId, data);
+    const clean = normalizeFee(data);
+    await validateFeeTarget(schoolId, clean);
+    const fee = await baseRepo.runTransaction(async (tx) => {
+        const created = await repo.createBusFee(schoolId, clean, tx);
+        await syncTransportInvoices(schoolId, await findMappedStudentIds(schoolId, {}, tx), tx);
+        return created;
+    }, { timeout: 60000 });
     audit(schoolId, actor, 'BusFee', fee.id, 'CREATE_BUS_FEE', {
-        kind: data.kind, dueDate: data.dueDate, oneWayAmount: data.oneWayAmount, twoWayAmount: data.twoWayAmount
+        kind: clean.kind, dueDate: clean.dueDate, amount: clean.amount
     });
     return shapeFee(fee);
 }
@@ -157,9 +202,14 @@ export async function updateBusFee(schoolId, id, data, actor = {}) {
     needTenant(schoolId, 'update bus fee');
     const existing = await repo.findBusFeeById(schoolId, id);
     if (!existing) throw new NotFoundError('Fee entry not found in active school');
-    await validateFeeTarget(schoolId, data, id);
-    const fee = await repo.updateBusFee(schoolId, id, data);
-    audit(schoolId, actor, 'BusFee', id, 'UPDATE_BUS_FEE', data);
+    const clean = normalizeFee(data);
+    await validateFeeTarget(schoolId, clean, id);
+    const fee = await baseRepo.runTransaction(async (tx) => {
+        const updated = await repo.updateBusFee(schoolId, id, clean, tx);
+        await syncTransportInvoices(schoolId, await findMappedStudentIds(schoolId, {}, tx), tx);
+        return updated;
+    }, { timeout: 60000 });
+    audit(schoolId, actor, 'BusFee', id, 'UPDATE_BUS_FEE', { kind: clean.kind, dueDate: clean.dueDate, amount: clean.amount });
     return shapeFee(fee);
 }
 
@@ -167,7 +217,11 @@ export async function deleteBusFee(schoolId, id, actor = {}) {
     needTenant(schoolId, 'delete bus fee');
     const existing = await repo.findBusFeeById(schoolId, id);
     if (!existing) throw new NotFoundError('Fee entry not found in active school');
-    await repo.deleteBusFee(schoolId, id);
+    await baseRepo.runTransaction(async (tx) => {
+        await repo.deleteBusFee(schoolId, id, tx);
+        // unpaid invoices of the deleted fee are cancelled; paid ones stay as receipts
+        await syncTransportInvoices(schoolId, await findMappedStudentIds(schoolId, {}, tx), tx);
+    }, { timeout: 60000 });
     audit(schoolId, actor, 'BusFee', id, 'DELETE_BUS_FEE', { dueDate: existing.dueDate, kind: existing.kind });
     return { message: 'Fee entry deleted successfully', id };
 }
@@ -197,7 +251,10 @@ async function mapStudents(schoolId, studentIds, data, actor, action) {
         }
 
         await repo.applyMapping(schoolId, unique, data, tx);
-    });
+
+        // bill the bus fee(s) of this stop so they show up in Parent Fees and Admin Fee Collection
+        await syncTransportInvoices(schoolId, unique, tx);
+    }, { timeout: 60000 });
 
     audit(schoolId, actor, 'StudentTransportAssignment', unique[0], action, {
         studentIds: unique, routeId: data.routeId, busStopId: data.busStopId,
@@ -222,9 +279,102 @@ export async function deleteMapping(schoolId, studentId, actor = {}) {
     needTenant(schoolId, 'unmap student');
     const student = await baseRepo.findStudentInTenant(schoolId, studentId);
     if (!student) throw new NotFoundError('Student not found in active school');
-    await repo.clearMapping(schoolId, studentId);
+    await baseRepo.runTransaction(async (tx) => {
+        await repo.clearMapping(schoolId, studentId, tx);
+        // cancels the student's unpaid transport invoices (paid ones are kept)
+        await syncTransportInvoices(schoolId, [studentId], tx);
+    });
     audit(schoolId, actor, 'StudentTransportAssignment', studentId, 'UNMAP_STUDENT_BUS', {
         previousRouteId: student.transportRouteId
     });
     return { message: 'Student unmapped successfully', id: studentId };
+}
+
+// ---------------- PARENT / STUDENT SELF-SERVICE ----------------
+const roleOf = (actor) => String(actor?.systemRole || actor?.role || '').toUpperCase();
+
+// Fee schedule for one stop: stop-specific fee wins over a distance-slab fee for the same due date.
+async function resolveFeesForStop(schoolId, stop) {
+    if (!stop) return [];
+    const all = await repo.findFeesForStop(schoolId, stop.id);
+    const byDue = new Map();
+    all
+        .filter((f) => f.kind === 'SLAB' && stop.slabName && sameDistance(f.slabName, stop.slabName))
+        .forEach((f) => byDue.set(f.dueDate, { id: f.id, dueDate: f.dueDate, amount: Number(f.twoWayAmount), basis: 'SLAB' }));
+    all
+        .filter((f) => f.kind === 'STOP')
+        .forEach((f) => byDue.set(f.dueDate, { id: f.id, dueDate: f.dueDate, amount: Number(f.twoWayAmount), basis: 'STOP' }));
+    return [...byDue.values()].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+}
+
+/**
+ * Transport details of the logged-in parent's children (or of the logged-in student).
+ * GET /api/v1/transport/my-transport[?studentId=]
+ */
+export async function getMyTransport(schoolId, query = {}, actor = {}) {
+    needTenant(schoolId, 'view transport details');
+    const role = roleOf(actor);
+    const userId = actor.id || actor.userId;
+
+    let allowedIds = [];
+    if (role === SYSTEM_ROLES.PARENT || role === 'PARENT') {
+        allowedIds = await baseRepo.findAuthorizedStudentIdsForParent(schoolId, userId);
+    } else if (role === SYSTEM_ROLES.STUDENT || role === 'STUDENT') {
+        const me = await baseRepo.findStudentByUserId(schoolId, userId);
+        allowedIds = me ? [me.id] : [];
+    } else {
+        throw new ForbiddenError('Only parents and students can use this view');
+    }
+
+    let ids = allowedIds;
+    if (query.studentId) {
+        if (!allowedIds.includes(query.studentId)) {
+            throw new ForbiddenError('You can only view transport details of your own children');
+        }
+        ids = [query.studentId];
+    }
+    if (ids.length === 0) return [];
+
+    const students = await repo.findStudentsTransportDetail(schoolId, ids);
+    return Promise.all(
+        students.map(async (st) => {
+            const assigned = Boolean(st.transportRouteId);
+            const stop = st.busStop || null;
+            const fees = assigned ? await resolveFeesForStop(schoolId, stop) : [];
+            const slab = stop?.slabName || null;
+            return {
+                studentId: st.id,
+                studentName: `${st.firstName || ''} ${st.lastName || ''}`.trim(),
+                admissionNumber: st.admissionNumber || null,
+                className: st.class?.name || null,
+                sectionName: st.section?.name || null,
+                assigned,
+                routeName: st.transportRoute?.name || null,
+                busNumber: st.transportRoute?.vehicle?.registrationNumber || null,
+                busModel: st.transportRoute?.vehicle?.model || null,
+                driverName: st.transportRoute?.driverName || null,
+                driverPhone: st.transportRoute?.driverPhone || null,
+                stopName: stop?.stopName || st.pickupStop?.stopName || null,
+                distanceKm: parseKm(slab),
+                distanceLabel: slab ? (parseKm(slab) !== null ? formatKm(parseKm(slab)) : slab) : null,
+                travelMode: st.travelMode || null,
+                effectFrom: st.transportEffectFrom || null,
+                fees,
+                totalFee: fees.reduce((sum, f) => sum + f.amount, 0)
+            };
+        })
+    );
+}
+
+
+// ---------------- BACK-FILL ----------------
+/**
+ * Bills every student who is already mapped to a bus stop (for mappings made before
+ * transport invoices existed). POST /api/v1/transport/fees/sync-invoices
+ */
+export async function syncAllInvoices(schoolId, actor = {}) {
+    needTenant(schoolId, 'sync transport invoices');
+    const result = await baseRepo.runTransaction((tx) => syncAllTransportInvoices(schoolId, tx), { timeout: 120000 });
+    audit(schoolId, actor, 'BusFee', schoolId, 'SYNC_TRANSPORT_INVOICES', result);
+    return result;
 }

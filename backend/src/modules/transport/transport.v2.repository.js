@@ -1,7 +1,18 @@
 import { prisma } from '../../database/prisma.client.js';
 
 const stopInclude = {
-    routes: { select: { route: { select: { id: true, name: true, routeNumber: true } } } },
+    routes: {
+        select: {
+            route: {
+                select: {
+                    id: true,
+                    name: true,
+                    routeNumber: true,
+                    vehicle: { select: { id: true, registrationNumber: true } }
+                }
+            }
+        }
+    },
     _count: { select: { students: true, fees: true } }
 };
 
@@ -13,7 +24,9 @@ export async function findBusStops(schoolId, filters = {}, tx = prisma) {
         where.OR = [
             { stopName: { contains: q, mode: 'insensitive' } },
             { slabName: { contains: q, mode: 'insensitive' } },
-            { geocode: { contains: q, mode: 'insensitive' } }
+            { geocode: { contains: q, mode: 'insensitive' } },
+            { routes: { some: { route: { name: { contains: q, mode: 'insensitive' } } } } },
+            { routes: { some: { route: { vehicle: { registrationNumber: { contains: q, mode: 'insensitive' } } } } } }
         ];
     }
     if (filters.routeId) where.routes = { some: { routeId: filters.routeId } };
@@ -122,8 +135,8 @@ export async function createBusFee(schoolId, data, tx = prisma) {
             busStopId: data.kind === 'STOP' ? data.busStopId : null,
             slabName: data.kind === 'SLAB' ? data.slabName : null,
             dueDate: data.dueDate,
-            oneWayAmount: data.oneWayAmount,
-            twoWayAmount: data.twoWayAmount
+            oneWayAmount: data.amount,
+            twoWayAmount: data.amount
         },
         include: feeInclude
     });
@@ -137,8 +150,8 @@ export async function updateBusFee(schoolId, id, data, tx = prisma) {
             busStopId: data.kind === 'STOP' ? data.busStopId : null,
             slabName: data.kind === 'SLAB' ? data.slabName : null,
             dueDate: data.dueDate,
-            oneWayAmount: data.oneWayAmount,
-            twoWayAmount: data.twoWayAmount
+            oneWayAmount: data.amount,
+            twoWayAmount: data.amount
         },
         include: feeInclude
     });
@@ -190,5 +203,43 @@ export async function clearMapping(schoolId, studentId, tx = prisma) {
             travelMode: null,
             transportEffectFrom: null
         }
+    });
+}
+
+// ---------------- PARENT / STUDENT SELF-SERVICE ----------------
+export async function findStudentsTransportDetail(schoolId, studentIds, tx = prisma) {
+    return tx.student.findMany({
+        where: { schoolId, id: { in: studentIds } },
+        select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            admissionNumber: true,
+            travelMode: true,
+            transportEffectFrom: true,
+            transportRouteId: true,
+            busStopId: true,
+            class: { select: { id: true, name: true } },
+            section: { select: { id: true, name: true } },
+            transportRoute: {
+                select: {
+                    id: true,
+                    name: true,
+                    driverName: true,
+                    driverPhone: true,
+                    vehicle: { select: { id: true, registrationNumber: true, model: true } }
+                }
+            },
+            busStop: { select: { id: true, stopName: true, slabName: true } },
+            pickupStop: { select: { id: true, stopName: true } }
+        }
+    });
+}
+
+// Every stop-specific fee for this stop plus every slab fee (slab matched by distance in the service)
+export async function findFeesForStop(schoolId, busStopId, tx = prisma) {
+    return tx.busFee.findMany({
+        where: { schoolId, OR: [{ kind: 'STOP', busStopId }, { kind: 'SLAB' }] },
+        orderBy: [{ dueDate: 'asc' }]
     });
 }

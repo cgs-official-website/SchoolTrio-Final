@@ -33,6 +33,7 @@ import transportRoutes from '../modules/transport/transport.routes.js';
 import calendarRoutes from '../modules/calendar/calendar.routes.js';
 import lessonPlanRoutes from '../modules/lesson-plans/lesson-plan.routes.js';
 import academicResourceRoutes from '../modules/academic-resources/academic-resource.routes.js';
+import uploadRoutes from '../modules/uploads/upload.routes.js';
 import libraryRoutes from '../modules/library/library.routes.js';
 import inventoryRoutes from '../modules/inventory/inventory.routes.js';
 import hrPayrollRoutes from '../modules/hr-payroll/hr-payroll.routes.js';
@@ -252,6 +253,12 @@ router.use('/lesson-plans', lessonPlanRoutes);
  * Academic Resource Endpoints mounted under /api/v1/academic-resources
  */
 router.use('/academic-resources', academicResourceRoutes);
+
+/**
+ * Generic file upload endpoint mounted under /api/v1/uploads
+ * (used by notice attachments, HR signature, and other non-resource uploads)
+ */
+router.use('/uploads', uploadRoutes);
 
 /**
  * Library Management Endpoints mounted under /api/v1/library

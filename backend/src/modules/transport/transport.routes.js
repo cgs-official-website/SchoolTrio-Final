@@ -196,6 +196,16 @@ router.post(
 // TRANSPORT V2 (additive): BUS STOPS, BUS FEES, STUDENT MAPPINGS
 // ============================================================
 
+// Parent / student: transport details (bus, stop, distance, fee) of their own children
+router.get(
+  '/my-transport',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requireTransportReadOrCustody,
+  validate(v2Schemas.myTransportSchema),
+  v2Controller.getMyTransport
+);
+
 router.get(
   '/bus-stops',
   authenticate,
@@ -266,6 +276,14 @@ router.get(
   requirePermission('transport', 'read'),
   validate(v2Schemas.busFeeIdParamSchema),
   v2Controller.getBusFee
+);
+
+router.post(
+  '/fees/sync-invoices',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('transport', 'edit'),
+  v2Controller.syncTransportInvoices
 );
 
 router.post(
