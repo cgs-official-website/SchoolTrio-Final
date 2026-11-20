@@ -98,8 +98,11 @@ export async function deleteFeeCategory(schoolId, id, tx = prisma) {
 }
 
 
-export async function countFeeCategoryReferences(_schoolId, _id, _tx = prisma) {
-  return { total: 0 };
+export async function countFeeCategoryReferences(schoolId, id, tx = prisma) {
+  const feeStructuresCount = await tx.feeStructure.count({
+    where: { schoolId, feeCategoryId: id }
+  });
+  return { feeStructuresCount, total: feeStructuresCount };
 }
 
 export async function findDistinctCategoryTypes(schoolId, tx = prisma) {

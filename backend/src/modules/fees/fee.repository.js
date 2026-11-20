@@ -353,6 +353,8 @@ export async function createFeeStructure(schoolId, data, tx = prisma) {
       amount: data.amount,
       dueDate: data.dueDate,
       classId: data.classId,
+      targetType: 'CLASS',
+      targetIds: [data.classId],
       collectionPeriodId: data.collectionPeriodId || null,
       customData: data.customData ?? null
     },
@@ -394,7 +396,7 @@ export async function updateFeeStructure(schoolId, id, data, tx = prisma) {
       ...(data.name !== undefined && { name: data.name }),
       ...(data.amount !== undefined && { amount: data.amount }),
       ...(data.dueDate !== undefined && { dueDate: data.dueDate }),
-      ...(data.classId !== undefined && { classId: data.classId }),
+      ...(data.classId !== undefined && { classId: data.classId, targetType: 'CLASS', targetIds: [data.classId] }),
       ...(data.collectionPeriodId !== undefined && { collectionPeriodId: data.collectionPeriodId }),
       ...(data.customData !== undefined && { customData: data.customData })
     },

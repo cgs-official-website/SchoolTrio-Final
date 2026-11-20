@@ -93,12 +93,17 @@ export async function findInvoices(schoolId, options = {}, tx = prisma) {
     where.studentId = options.studentId;
   }
 
-  // Class filter (matches either student's class or feeStructure's class)
-  if (options.classId) {
-    where.feeStructure = {
-      classId: options.classId
-    };
-  }
+  // Class filter: the fee's own class when it has one (single-class fees),
+  // otherwise the student's current class (All Student / Section / multi-class fees).
+  // Applied after the search block so it never overwrites where.OR / where.AND.
+  const classFilter = options.classId
+    ? {
+        OR: [
+          { feeStructure: { classId: options.classId } },
+          { feeStructure: { classId: null }, student: { classId: options.classId } }
+        ]
+      }
+    : null;
 
   // Fee structure filter
   if (options.feeStructureId) {
@@ -152,6 +157,10 @@ export async function findInvoices(schoolId, options = {}, tx = prisma) {
     } else {
       where.OR = searchConditions;
     }
+  }
+
+  if (classFilter) {
+    where.AND = [...(where.AND || []), classFilter];
   }
 
   const sortOrder = options.order === 'asc' ? 'asc' : 'desc';
@@ -333,7 +342,13 @@ export async function aggregateInvoiceStats(schoolId, filters = {}, tx = prisma)
   }
 
   if (filters.classId) {
-    conditions.push(Prisma.sql`"fee_structure_id" IN (SELECT id FROM "fee_structures" WHERE "school_id" = ${schoolId}::uuid AND "class_id" = ${filters.classId}::uuid)`);
+    conditions.push(Prisma.sql`(
+      "fee_structure_id" IN (SELECT id FROM "fee_structures" WHERE "school_id" = ${schoolId}::uuid AND "class_id" = ${filters.classId}::uuid)
+      OR (
+        "fee_structure_id" IN (SELECT id FROM "fee_structures" WHERE "school_id" = ${schoolId}::uuid AND "class_id" IS NULL)
+        AND "student_id" IN (SELECT id FROM "students" WHERE "school_id" = ${schoolId}::uuid AND "class_id" = ${filters.classId}::uuid)
+      )
+    )`);
   }
 
   const whereClause = Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`;
@@ -403,7 +418,8 @@ export async function aggregateClassWiseReports(schoolId, filters = {}, tx = pri
       COUNT(CASE WHEN inv.status = 'Cancelled' THEN 1 END)::int AS "cancelledCount"
     FROM "invoices" inv
     LEFT JOIN "fee_structures" fs ON (inv.fee_structure_id = fs.id AND fs.school_id = ${schoolId}::uuid)
-    LEFT JOIN "classes" c ON (fs.class_id = c.id AND c.school_id = ${schoolId}::uuid)
+    LEFT JOIN "students" st ON (inv.student_id = st.id AND st.school_id = ${schoolId}::uuid)
+    LEFT JOIN "classes" c ON (COALESCE(fs.class_id, st.class_id) = c.id AND c.school_id = ${schoolId}::uuid)
     WHERE inv.school_id = ${schoolId}::uuid
       ${periodCondition}
     GROUP BY c.id, c.name

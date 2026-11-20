@@ -13,6 +13,7 @@ import { feeCollectionPeriodRoutes, feeStructureRoutes } from '../modules/fees/f
 import feeCategoryRoutes from '../modules/fee-categories/fee-category.routes.js';
 import bankRoutes from '../modules/banks/bank.routes.js';
 import concessionCategoryRoutes from '../modules/concession-categories/concession-category.routes.js';
+import feeEntryRoutes from '../modules/fee-entries/fee-entry.routes.js';
 import { invoiceRoutes, studentInvoiceRoutes } from '../modules/invoices/invoice.routes.js';
 import { leaveRoutes, studentLeaveRoutes, staffLeaveRoutes } from '../modules/leaves/leave.routes.js';
 import examRoutes from '../modules/exams/exam.routes.js';
@@ -151,6 +152,11 @@ router.use('/banks', bankRoutes);
  * Fee Master: Concession Category Endpoints mounted under /api/v1/concession-categories
  */
 router.use('/concession-categories', concessionCategoryRoutes);
+
+/**
+ * Fee Transaction: Fee Entry (Structure) Endpoints mounted under /api/v1/fee-entries
+ */
+router.use('/fee-entries', feeEntryRoutes);
 
 /**
  * Invoice Endpoints mounted under /api/v1/invoices

@@ -908,11 +908,19 @@ model FeeStructure {
   name               String   @db.VarChar(150)
   amount             Decimal  @db.Decimal(10, 2)
   dueDate            String   @map("due_date") @db.VarChar(10)
+<<<<<<< Updated upstream
   targetType         String   @default("CLASS") @map("target_type") @db.VarChar(20)
   targetIds          String[] @default([]) @map("target_ids") @db.Uuid
   classId            String?  @map("class_id") @db.Uuid
   gender             String?  @db.VarChar(20)
+=======
+  classId            String?  @map("class_id") @db.Uuid
+>>>>>>> Stashed changes
   collectionPeriodId String?  @map("collection_period_id") @db.Uuid
+  feeCategoryId      String?  @map("fee_category_id") @db.Uuid
+  targetType         String   @default("CLASS") @map("target_type") @db.VarChar(20) // ALL_STUDENT | CLASS | SECTION | STUDENT
+  targetIds          String[] @default([]) @map("target_ids") @db.Uuid
+  gender             String?  @db.VarChar(20)
   customData         Json?    @map("custom_data")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
