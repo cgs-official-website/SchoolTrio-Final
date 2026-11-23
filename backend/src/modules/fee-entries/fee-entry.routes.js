@@ -35,13 +35,4 @@ router.patch(
   controller.updateFeeEntry
 );
 
-router.delete(
-  '/:id',
-  authenticate,
-  tenantContext({ requireTenant: true }),
-  requirePermission('fees', 'delete'),
-  validate(schemas.feeEntryParamsSchema),
-  controller.deleteFeeEntry
-);
-
 export default router;

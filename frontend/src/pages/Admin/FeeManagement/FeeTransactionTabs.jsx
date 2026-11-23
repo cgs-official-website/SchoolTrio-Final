@@ -1,9 +1,15 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import FeeEntryTab from './FeeEntry/FeeEntryTab';
+import FeeConcessionTab from './FeeConcession/FeeConcessionTab';
+import FeeCancellationTab from './FeeCancellation/FeeCancellationTab';
+import FeeDeletionTab from './FeeDeletion/FeeDeletionTab';
 
 const SUB_TABS = [
-  { key: 'structure', label: 'Structure', Component: FeeEntryTab }
+  { key: 'structure', label: 'Structure', Component: FeeEntryTab },
+  { key: 'concession', label: 'Concession', Component: FeeConcessionTab },
+  { key: 'cancellation', label: 'Cancellation', Component: FeeCancellationTab },
+   { key: 'delete', label: 'Delete Student Fee', Component: FeeDeletionTab }
 ];
 
 export default function FeeTransactionTabs() {

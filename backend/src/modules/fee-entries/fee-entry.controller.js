@@ -30,13 +30,3 @@ export async function updateFeeEntry(req, res, next) {
     return next(error);
   }
 }
-
-export async function deleteFeeEntry(req, res, next) {
-  try {
-    const actor = req.user || req.auth;
-    const result = await service.deleteFeeEntry(req.tenant.schoolId, req.params.id, actor);
-    return ApiResponse.success(res, result, 'Fee entry deleted successfully');
-  } catch (error) {
-    return next(error);
-  }
-}

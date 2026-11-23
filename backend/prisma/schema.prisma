@@ -117,9 +117,9 @@ model User {
   updatedAt         DateTime @updatedAt @map("updated_at")
   legacyFirestoreId String?  @map("legacy_firestore_id") @db.VarChar(128)
 
-  school          School?              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  refreshSessions RefreshSession[]
-  passwordResetTokens PasswordResetToken[]
+  school                School?                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  refreshSessions       RefreshSession[]
+  passwordResetTokens   PasswordResetToken[]
   staffProfile          StaffProfile?
   parentProfile         ParentProfile?
   roleAssignments       UserRoleAssignment[]
@@ -165,7 +165,6 @@ model PasswordResetToken {
   @@index([tokenHash, usedAt, expiresAt])
   @@map("password_reset_tokens")
 }
-
 
 // ============================================================
 // 2. SYSTEM AUDIT MODELS (2 models)
@@ -356,11 +355,11 @@ model Section {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  class              Class               @relation(fields: [schoolId, classId], references: [schoolId, id], onDelete: Cascade)
-  classTeacher       StaffProfile?       @relation("SectionClassTeacherRelation", fields: [classTeacherId], references: [id], onDelete: SetNull)
-  students           Student[]
-  timetablePeriods   TimetablePeriod[]
-  attendanceSessions AttendanceSession[]
+  class               Class                @relation(fields: [schoolId, classId], references: [schoolId, id], onDelete: Cascade)
+  classTeacher        StaffProfile?        @relation("SectionClassTeacherRelation", fields: [classTeacherId], references: [id], onDelete: SetNull)
+  students            Student[]
+  timetablePeriods    TimetablePeriod[]
+  attendanceSessions  AttendanceSession[]
   homeworkAssignments HomeworkAssignment[]
   academicResources   AcademicResource[]
 
@@ -527,29 +526,29 @@ model AcademicResource {
 }
 
 model Student {
-  id                String   @id @default(uuid()) @db.Uuid
-  schoolId          String   @map("school_id") @db.Uuid
-  classId           String?  @map("class_id") @db.Uuid
-  sectionId         String?  @map("section_id") @db.Uuid
-  transportRouteId  String?  @map("transport_route_id") @db.Uuid
-  pickupStopId      String?  @map("pickup_stop_id") @db.Uuid
-  busStopId             String?  @map("bus_stop_id") @db.Uuid
-  travelMode            String?  @map("travel_mode") @db.VarChar(30)
-  transportEffectFrom   String?  @map("transport_effect_from") @db.VarChar(10)
-  admissionNumber   String   @map("admission_number") @db.VarChar(100)
-  rollNumber        String?  @map("roll_number") @db.VarChar(50)
-  firstName         String   @map("first_name") @db.VarChar(100)
-  lastName          String?  @map("last_name") @db.VarChar(100)
-  dob               String?  @db.VarChar(10)
-  gender            String?  @db.VarChar(20)
-  bloodGroup        String?  @map("blood_group") @db.VarChar(10)
-  aadhaarNumber     String?  @map("aadhaar_number") @db.VarChar(12)
-  photoUrl          String?  @map("photo_url") @db.Text
-  status            String   @default("Active") @db.VarChar(30)
-  customData        Json?    @map("custom_data")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-  legacyFirestoreId String?  @map("legacy_firestore_id") @db.VarChar(128)
+  id                  String   @id @default(uuid()) @db.Uuid
+  schoolId            String   @map("school_id") @db.Uuid
+  classId             String?  @map("class_id") @db.Uuid
+  sectionId           String?  @map("section_id") @db.Uuid
+  transportRouteId    String?  @map("transport_route_id") @db.Uuid
+  pickupStopId        String?  @map("pickup_stop_id") @db.Uuid
+  busStopId           String?  @map("bus_stop_id") @db.Uuid
+  travelMode          String?  @map("travel_mode") @db.VarChar(30)
+  transportEffectFrom String?  @map("transport_effect_from") @db.VarChar(10)
+  admissionNumber     String   @map("admission_number") @db.VarChar(100)
+  rollNumber          String?  @map("roll_number") @db.VarChar(50)
+  firstName           String   @map("first_name") @db.VarChar(100)
+  lastName            String?  @map("last_name") @db.VarChar(100)
+  dob                 String?  @db.VarChar(10)
+  gender              String?  @db.VarChar(20)
+  bloodGroup          String?  @map("blood_group") @db.VarChar(10)
+  aadhaarNumber       String?  @map("aadhaar_number") @db.VarChar(12)
+  photoUrl            String?  @map("photo_url") @db.Text
+  status              String   @default("Active") @db.VarChar(30)
+  customData          Json?    @map("custom_data")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  legacyFirestoreId   String?  @map("legacy_firestore_id") @db.VarChar(128)
 
   school         School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   class          Class?              @relation(fields: [classId], references: [id], onDelete: SetNull)
@@ -570,7 +569,9 @@ model Student {
   chatRooms           ChatRoom[]
   ptmAppointments     PtmAppointment[]
   canteenRequests     CanteenRequest[]
-
+  feeConcessions      FeeConcession[]
+  feeCancellations    FeeCancellation[]
+  feeDeletions        FeeDeletion[]
   @@unique([schoolId, id])
   @@unique([schoolId, admissionNumber])
   @@index([schoolId, classId])
@@ -615,16 +616,16 @@ model StaffProfile {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  school        School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  assignedClass Class?            @relation("AssignedClassRelation", fields: [assignedClassId], references: [id], onDelete: SetNull)
-  headedClasses Class[]           @relation("ClassTeacherRelation")
-  headedSections Section[]        @relation("SectionClassTeacherRelation")
-  payroll       HRPayrollRecord[]
-  lessonPlans   LessonPlan[]
-  timetables    TimetablePeriod[]
-  chatRooms     ChatRoom[]
-  ptms          PtmAppointment[]
+  school         School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedClass  Class?            @relation("AssignedClassRelation", fields: [assignedClassId], references: [id], onDelete: SetNull)
+  headedClasses  Class[]           @relation("ClassTeacherRelation")
+  headedSections Section[]         @relation("SectionClassTeacherRelation")
+  payroll        HRPayrollRecord[]
+  lessonPlans    LessonPlan[]
+  timetables     TimetablePeriod[]
+  chatRooms      ChatRoom[]
+  ptms           PtmAppointment[]
 
   @@unique([schoolId, id])
   @@unique([schoolId, employeeId])
@@ -951,6 +952,9 @@ model Invoice {
   student          Student?             @relation(fields: [schoolId, studentId], references: [schoolId, id], onDelete: SetNull)
   feeStructure     FeeStructure         @relation(fields: [schoolId, feeStructureId], references: [schoolId, id], onDelete: Restrict)
   collectionPeriod FeeCollectionPeriod? @relation(fields: [collectionPeriodId], references: [id], onDelete: SetNull)
+  concessions      FeeConcession[]
+  feeCancellations FeeCancellation[]
+  feeDeletions FeeDeletion[]
 
   @@unique([schoolId, id])
   @@index([schoolId, studentId])
@@ -1017,7 +1021,8 @@ model ConcessionCategory {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-
+  feeConcessions FeeConcession[]
+  
   @@unique([schoolId, id])
   @@unique([schoolId, name])
   @@map("concession_categories")
@@ -1101,10 +1106,10 @@ model TransportRoute {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  school   School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  vehicle  TransportVehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
-  stops    RouteStop[]
-  students Student[]
+  school       School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  vehicle      TransportVehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  stops        RouteStop[]
+  students     Student[]
   busStopLinks BusStopRoute[]
 
   @@unique([schoolId, id])
@@ -1610,7 +1615,7 @@ model SupportTicketMessage {
   createdAt      DateTime @default(now()) @map("created_at")
 
   ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  sender User?          @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  sender User?         @relation(fields: [senderId], references: [id], onDelete: SetNull)
 
   @@index([ticketId, createdAt])
   @@map("support_ticket_messages")
@@ -1621,23 +1626,23 @@ model SupportTicketMessage {
 // ============================================================
 
 model ContactMessage {
-  id                  String                @id @default(uuid()) @db.Uuid
-  name                String                @db.VarChar(150)
-  email               String                @db.VarChar(255)
-  subject             String?               @db.VarChar(255)
-  message             String                @db.Text
-  status              String                @default("new") @db.VarChar(30)
-  ipAddress           String?               @map("ip_address") @db.VarChar(45)
-  userAgent           String?               @map("user_agent") @db.VarChar(255)
-  reply               String?               @db.Text
-  repliedAt           DateTime?             @map("replied_at")
-  repliedBy           String?               @map("replied_by") @db.VarChar(200)
-  emailDeliveryStatus String?               @map("email_delivery_status") @db.VarChar(50)
-  emailDeliveryError  String?               @map("email_delivery_error") @db.Text
-  createdAt           DateTime              @default(now()) @map("created_at")
-  updatedAt           DateTime              @updatedAt @map("updated_at")
+  id                  String    @id @default(uuid()) @db.Uuid
+  name                String    @db.VarChar(150)
+  email               String    @db.VarChar(255)
+  subject             String?   @db.VarChar(255)
+  message             String    @db.Text
+  status              String    @default("new") @db.VarChar(30)
+  ipAddress           String?   @map("ip_address") @db.VarChar(45)
+  userAgent           String?   @map("user_agent") @db.VarChar(255)
+  reply               String?   @db.Text
+  repliedAt           DateTime? @map("replied_at")
+  repliedBy           String?   @map("replied_by") @db.VarChar(200)
+  emailDeliveryStatus String?   @map("email_delivery_status") @db.VarChar(50)
+  emailDeliveryError  String?   @map("email_delivery_error") @db.Text
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  replies             ContactMessageReply[]
+  replies ContactMessageReply[]
 
   @@index([status])
   @@index([createdAt])
@@ -1646,19 +1651,90 @@ model ContactMessage {
 }
 
 model ContactMessageReply {
-  id                  String         @id @default(uuid()) @db.Uuid
-  messageId           String         @map("message_id") @db.Uuid
-  adminId             String?        @map("admin_id") @db.Uuid
-  adminName           String         @map("admin_name") @db.VarChar(200)
-  replyText           String         @map("reply_text") @db.Text
-  emailDeliveryStatus String         @default("pending") @map("email_delivery_status") @db.VarChar(50)
-  emailDeliveryError  String?        @map("email_delivery_error") @db.Text
-  createdAt           DateTime       @default(now()) @map("created_at")
+  id                  String   @id @default(uuid()) @db.Uuid
+  messageId           String   @map("message_id") @db.Uuid
+  adminId             String?  @map("admin_id") @db.Uuid
+  adminName           String   @map("admin_name") @db.VarChar(200)
+  replyText           String   @map("reply_text") @db.Text
+  emailDeliveryStatus String   @default("pending") @map("email_delivery_status") @db.VarChar(50)
+  emailDeliveryError  String?  @map("email_delivery_error") @db.Text
+  createdAt           DateTime @default(now()) @map("created_at")
 
-  message             ContactMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  admin               User?          @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  message ContactMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  admin   User?          @relation(fields: [adminId], references: [id], onDelete: SetNull)
 
   @@index([messageId, createdAt])
   @@map("contact_message_replies")
 }
 
+model FeeConcession {
+  id                   String   @id @default(uuid()) @db.Uuid
+  schoolId             String   @map("school_id") @db.Uuid
+  invoiceId            String   @map("invoice_id") @db.Uuid
+  studentId            String   @map("student_id") @db.Uuid
+  concessionCategoryId String   @map("concession_category_id") @db.Uuid
+  concessionType       String   @default("Normal") @map("concession_type") @db.VarChar(30)
+  valueType            String   @map("value_type") @db.VarChar(20) 
+  value                Decimal  @db.Decimal(10, 2)  
+  amount               Decimal  @db.Decimal(10, 2) 
+  description          String?  @db.Text
+  status               String   @default("Active") @db.VarChar(20) // Active | Cancelled
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  invoice            Invoice            @relation(fields: [schoolId, invoiceId], references: [schoolId, id], onDelete: Restrict)
+  student            Student            @relation(fields: [schoolId, studentId], references: [schoolId, id], onDelete: Restrict)
+  concessionCategory ConcessionCategory @relation(fields: [schoolId, concessionCategoryId], references: [schoolId, id], onDelete: Restrict)
+
+  @@unique([schoolId, id])
+  @@index([schoolId, invoiceId])
+  @@index([schoolId, studentId])
+  @@index([schoolId, status])
+  @@map("fee_concessions")
+}
+
+model FeeCancellation {
+  id                   String    @id @default(uuid()) @db.Uuid
+  schoolId             String    @map("school_id") @db.Uuid
+  invoiceId            String    @map("invoice_id") @db.Uuid
+  studentId            String    @map("student_id") @db.Uuid
+  feeName              String    @map("fee_name") @db.VarChar(150)
+  amount               Decimal   @db.Decimal(10, 2)
+  receiptNumber        String?   @map("receipt_number") @db.VarChar(100)
+  paymentMode          String?   @map("payment_mode") @db.VarChar(50)
+  transactionReference String?   @map("transaction_reference") @db.VarChar(100)
+  paidAt               DateTime? @map("paid_at")
+  description          String    @db.Text
+  cancelledByName      String    @map("cancelled_by_name") @db.VarChar(200)
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  invoice Invoice @relation(fields: [schoolId, invoiceId], references: [schoolId, id], onDelete: Restrict)
+  student Student @relation(fields: [schoolId, studentId], references: [schoolId, id], onDelete: Restrict)
+
+  @@unique([schoolId, id])
+  @@index([schoolId, studentId])
+  @@index([schoolId, createdAt])
+  @@map("fee_cancellations")
+}
+
+model FeeDeletion {
+  id               String   @id @default(uuid()) @db.Uuid
+  schoolId         String   @map("school_id") @db.Uuid
+  invoiceId        String   @map("invoice_id") @db.Uuid
+  studentId        String   @map("student_id") @db.Uuid
+  feeName          String   @map("fee_name") @db.VarChar(150)
+  amount           Decimal  @db.Decimal(10, 2)
+  concessionAmount Decimal  @default(0) @map("concession_amount") @db.Decimal(10, 2)
+  dueDate          String   @map("due_date") @db.VarChar(10)
+  reason           String   @db.Text
+  deletedByName    String   @map("deleted_by_name") @db.VarChar(200)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  invoice Invoice @relation(fields: [schoolId, invoiceId], references: [schoolId, id], onDelete: Restrict)
+  student Student @relation(fields: [schoolId, studentId], references: [schoolId, id], onDelete: Restrict)
+
+  @@unique([schoolId, id])
+  @@index([schoolId, studentId])
+  @@index([schoolId, createdAt])
+  @@map("fee_deletions")
+}

@@ -48,6 +48,10 @@ function assertModifiable(invoice, action) {
  */
 export function formatFeeEntry(inv) {
   const student = inv.student;
+  const concessionPaise = (inv.concessions || []).reduce(
+    (sum, c) => sum + Math.round(Number(c.amount) * 100),
+    0
+  );
   return {
     id: inv.id,
     studentId: inv.studentId,
@@ -59,6 +63,7 @@ export function formatFeeEntry(inv) {
     sectionName: student?.section?.name ?? null,
     gender: student?.gender ?? null,
     amount: Number(inv.amount),
+    concessionAmount: concessionPaise / 100,
     dueDate: inv.dueDate,
     status: inv.status,
     feeCategory: inv.feeStructure?.feeCategory?.name ?? inv.feeName,
@@ -172,7 +177,19 @@ export async function updateFeeEntry(schoolId, id, data, actor) {
     const diff = {};
     if (data.amount !== undefined && Number(data.amount) !== Number(existing.amount)) {
       diff.amount = { old: Number(existing.amount), new: Number(data.amount) };
+
+      const given = await tx.feeConcession.aggregate({
+        where: { schoolId, invoiceId: id, status: 'Active' },
+        _sum: { amount: true }
+      });
+      const givenTotal = Number(given._sum.amount ?? 0);
+      if (Number(data.amount) < givenTotal) {
+        throw new ConflictError(
+          `Amount cannot be less than the concession already given (₹${givenTotal.toLocaleString('en-IN')})`
+        );
+      }
     }
+    
     if (data.dueDate !== undefined && data.dueDate !== existing.dueDate) {
       assertNotPast(data.dueDate, timeZone);
       diff.dueDate = { old: existing.dueDate, new: data.dueDate };
@@ -200,39 +217,4 @@ export async function updateFeeEntry(schoolId, id, data, actor) {
   const row = await repo.findFeeEntryById(schoolId, id);
   if (!row) throw new NotFoundError('Fee entry');
   return formatFeeEntry(row);
-}
-
-/**
- * Deletes one student's pending fee. The invoice is marked Cancelled, not removed, so there is
- * an audit trail and Sync / re-enrolment never bring the fee back.
- */
-export async function deleteFeeEntry(schoolId, id, actor) {
-  let snapshot = null;
-
-  await prisma.$transaction(async (tx) => {
-    const existing = await repo.findInvoiceForUpdate(schoolId, id, tx);
-    if (!existing) throw new NotFoundError('Fee entry');
-    assertModifiable(existing, 'delete');
-
-    snapshot = existing;
-    await repo.cancelInvoice(schoolId, id, tx);
-  });
-
-  await createAuditLog({
-    schoolId,
-    entityType: 'Invoice',
-    entityId: id,
-    actionPerformed: 'DELETE_FEE_ENTRY',
-    userName: actorName(actor),
-    userRole: actorRole(actor),
-    modifiedFields: {
-      status: { old: 'Pending', new: 'Cancelled' },
-      studentId: snapshot.studentId,
-      feeName: snapshot.feeName,
-      amount: Number(snapshot.amount),
-      dueDate: snapshot.dueDate
-    }
-  });
-
-  return { id, deleted: true };
 }

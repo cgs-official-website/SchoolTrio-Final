@@ -61,18 +61,10 @@ export async function updateFeeEntry(id, payload = {}) {
   });
 }
 
-/**
- * DELETE /api/v1/fee-entries/:id  (marks the Pending invoice Cancelled)
- */
-export async function deleteFeeEntry(id) {
-  return apiClient(`/api/v1/fee-entries/${encodeURIComponent(id)}`, { method: 'DELETE' });
-}
-
 export const feeEntriesApi = {
   listFeeEntries,
   createFeeEntry,
   updateFeeEntry,
-  deleteFeeEntry
 };
 
 export default feeEntriesApi;

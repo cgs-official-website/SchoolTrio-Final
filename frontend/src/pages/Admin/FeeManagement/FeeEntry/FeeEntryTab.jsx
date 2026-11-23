@@ -3,7 +3,6 @@ import toast from 'react-hot-toast';
 import {
   LuFilter as Filter,
   LuPencil as Pencil,
-  LuTrash2 as Trash2,
   LuX as X
 } from 'react-icons/lu';
 import { classesApi } from '../../../../api/classes';
@@ -25,7 +24,6 @@ import {
   FormField,
   inputClass,
   MasterTable,
-  ConfirmDelete,
   useMasterList,
   useDebouncedValue
 } from '../FeeMaster/components';
@@ -175,10 +173,9 @@ function StudentFilterSelect({ value, onChange }) {
 }
 
 export default function FeeEntryTab() {
-  const { canCreate, canEdit, canDelete } = usePermissions();
+  const { canCreate, canEdit } = usePermissions();
   const allowCreate = canCreate('fees');
   const allowEdit = canEdit('fees');
-  const allowDelete = canDelete('fees');
 
   // ---------- filters ----------
   const [showFilters, setShowFilters] = useState(false);
@@ -306,10 +303,6 @@ export default function FeeEntryTab() {
   // ---------- edit form ----------
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState({ amount: '', dueDate: '' });
-
-  // ---------- delete ----------
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleting, setDeleting] = useState(false);
 
   const afterChange = async () => {
     notifyDataChanged('fees');
@@ -493,29 +486,6 @@ export default function FeeEntryTab() {
     }
   };
 
-  const openDelete = (row) => {
-    if (isPaidRow(row)) {
-      toast.error('This fee is already paid and cannot be deleted.');
-      return;
-    }
-    setDeleteTarget(row);
-  };
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      await feeEntriesApi.deleteFeeEntry(deleteTarget.id);
-      toast.success('Fee entry deleted.');
-      setDeleteTarget(null);
-      await afterChange();
-    } catch (error) {
-      toast.error(error.message || 'Failed to delete fee entry.');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   // ---------- table ----------
   const columns = [
     { key: 'className', label: 'Class', sortable: true },
@@ -539,6 +509,16 @@ export default function FeeEntryTab() {
       label: 'Amount',
       sortable: true,
       render: (row) => <span className="font-mono font-bold whitespace-nowrap">{formatMoney(row.amount)}</span>
+    },
+    {
+      key: 'concessionAmount',
+      label: 'Concession',
+      sortable: false,
+      render: (row) => (
+        <span className="font-mono whitespace-nowrap">
+          {row.concessionAmount > 0 ? formatMoney(row.concessionAmount) : '-'}
+        </span>
+      )
     },
     { key: 'feeCategory', label: 'Fee Category', sortable: true, className: 'font-semibold' },
     {
@@ -567,32 +547,17 @@ export default function FeeEntryTab() {
             </span>
           );
         }
-        if (!allowEdit && !allowDelete) return null;
+        if (!allowEdit) return null;
         return (
-          <div className="flex items-center gap-2">
-            {allowEdit && (
-              <button
-                type="button"
-                onClick={() => openEdit(row)}
-                title="Edit"
-                aria-label="Edit fee entry"
-                className="p-2 rounded-lg text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
-              >
-                <Pencil size={16} />
-              </button>
-            )}
-            {allowDelete && (
-              <button
-                type="button"
-                onClick={() => openDelete(row)}
-                title="Delete"
-                aria-label="Delete fee entry"
-                className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
-              >
-                <Trash2 size={16} />
-              </button>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => openEdit(row)}
+            title="Edit"
+            aria-label="Edit fee entry"
+            className="p-2 rounded-lg text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+          >
+            <Pencil size={16} />
+          </button>
         );
       }
     }
@@ -891,19 +856,6 @@ export default function FeeEntryTab() {
             ? 'Try a different search or clear the filters.'
             : 'Click "Add Fee Entry" to assign the first fee.'
         }
-      />
-
-      <ConfirmDelete
-        open={Boolean(deleteTarget)}
-        title="Delete fee entry?"
-        message={
-          deleteTarget
-            ? `${deleteTarget.feeCategory} (${formatMoney(deleteTarget.amount)}) for ${deleteTarget.studentName} will be removed. Only pending fees can be deleted.`
-            : ''
-        }
-        deleting={deleting}
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteTarget(null)}
       />
     </div>
   );

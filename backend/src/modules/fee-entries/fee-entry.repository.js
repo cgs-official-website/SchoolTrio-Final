@@ -32,6 +32,14 @@ const ENTRY_SELECT = {
       feeCategoryId: true,
       feeCategory: { select: { id: true, name: true } }
     }
+  },
+  concessions: {
+    where: { 
+      status: 'Active' 
+    },
+    select: { 
+      amount: true 
+    } 
   }
 };
 
