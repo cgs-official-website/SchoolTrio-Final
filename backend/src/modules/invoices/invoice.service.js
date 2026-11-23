@@ -56,32 +56,32 @@ export function formatInvoice(inv, todayStr = new Date().toISOString().slice(0, 
     updatedAt: inv.updatedAt,
     student: inv.student
       ? {
-          id: inv.student.id,
-          admissionNumber: inv.student.admissionNumber,
-          firstName: inv.student.firstName,
-          lastName: inv.student.lastName,
-          status: inv.student.status,
-          class: inv.student.class ? { id: inv.student.class.id, name: inv.student.class.name } : null,
-          section: inv.student.section ? { id: inv.student.section.id, name: inv.student.section.name } : null
-        }
+        id: inv.student.id,
+        admissionNumber: inv.student.admissionNumber,
+        firstName: inv.student.firstName,
+        lastName: inv.student.lastName,
+        status: inv.student.status,
+        class: inv.student.class ? { id: inv.student.class.id, name: inv.student.class.name } : null,
+        section: inv.student.section ? { id: inv.student.section.id, name: inv.student.section.name } : null
+      }
       : null,
     feeStructure: inv.feeStructure
       ? {
-          id: inv.feeStructure.id,
-          name: inv.feeStructure.name,
-          amount: inv.feeStructure.amount !== null && inv.feeStructure.amount !== undefined ? Number(inv.feeStructure.amount) : 0,
-          dueDate: inv.feeStructure.dueDate,
-          classId: inv.feeStructure.classId,
-          collectionPeriodId: inv.feeStructure.collectionPeriodId || null
-        }
+        id: inv.feeStructure.id,
+        name: inv.feeStructure.name,
+        amount: inv.feeStructure.amount !== null && inv.feeStructure.amount !== undefined ? Number(inv.feeStructure.amount) : 0,
+        dueDate: inv.feeStructure.dueDate,
+        classId: inv.feeStructure.classId,
+        collectionPeriodId: inv.feeStructure.collectionPeriodId || null
+      }
       : null,
     collectionPeriod: inv.collectionPeriod
       ? {
-          id: inv.collectionPeriod.id,
-          name: inv.collectionPeriod.name,
-          dueDate: inv.collectionPeriod.dueDate,
-          displayOrder: inv.collectionPeriod.displayOrder
-        }
+        id: inv.collectionPeriod.id,
+        name: inv.collectionPeriod.name,
+        dueDate: inv.collectionPeriod.dueDate,
+        displayOrder: inv.collectionPeriod.displayOrder
+      }
       : null
   };
 }
@@ -591,6 +591,9 @@ export async function payInvoice(schoolId, id, data = {}, actor = null) {
       ? data.transactionReference.trim()
       : null;
 
+    // 7b. Optional late fee (penalty) - only staff can add it, never parents
+    const lateFee = !isParent && data.lateFee ? Math.round(Number(data.lateFee) * 100) / 100 : 0;
+
     // 8. Settle invoice payment atomically
     settledInvoice = await invoiceRepository.settleInvoicePayment(
       schoolId,
@@ -599,13 +602,16 @@ export async function payInvoice(schoolId, id, data = {}, actor = null) {
         paidAt,
         paymentMode,
         transactionReference,
-        receiptNumber
+        receiptNumber,
+        lateFee,
+        existingCustomData: existing.customData
       },
       tx
     );
 
     auditMetadata = {
       amount: Number(existing.amount),
+      lateFee,
       paidAt,
       paymentMode,
       transactionReference,
@@ -629,6 +635,7 @@ export async function payInvoice(schoolId, id, data = {}, actor = null) {
             new: 'Paid'
           },
           amount: auditMetadata.amount,
+          lateFee: auditMetadata.lateFee,
           paidAt: auditMetadata.paidAt,
           paymentMode: auditMetadata.paymentMode,
           transactionReference: auditMetadata.transactionReference,

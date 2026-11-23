@@ -150,9 +150,17 @@ export default function ClassManagement() {
     return [...new Set(flattenedClasses.map(c => c.name))].sort();
   }, [flattenedClasses]);
 
+  // Sections offered in the filter depend on the selected category / class,
+  // so picking a class only lists the sections that class really has.
   const uniqueSections = useMemo(() => {
-    return [...new Set(flattenedClasses.map(c => c.section).filter(Boolean))].sort();
-  }, [flattenedClasses]);
+    return [...new Set(
+      flattenedClasses
+        .filter(c => filters.categoryId === 'All' || c.categoryId === filters.categoryId)
+        .filter(c => filters.className === 'All' || c.name === filters.className)
+        .map(c => c.section)
+        .filter(Boolean)
+    )].sort();
+  }, [flattenedClasses, filters.categoryId, filters.className]);
 
   const filteredClasses = useMemo(() => {
     return flattenedClasses.filter(c => {
@@ -613,7 +621,7 @@ export default function ClassManagement() {
           </div>
           <select
             value={filters.categoryId}
-            onChange={(e) => setFilters({ ...filters, categoryId: e.target.value })}
+            onChange={(e) => setFilters({ ...filters, categoryId: e.target.value, section: 'All' })}
             className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
           >
             <option value="All">All Categories</option>
@@ -624,7 +632,7 @@ export default function ClassManagement() {
 
           <select
             value={filters.className}
-            onChange={(e) => setFilters({ ...filters, className: e.target.value })}
+            onChange={(e) => setFilters({ ...filters, className: e.target.value, section: 'All' })}
             className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
           >
             <option value="All">All Classes</option>

@@ -27,7 +27,7 @@ import toast from 'react-hot-toast';
  * Payment modes accepted by POST /api/v1/invoices/:id/pay (see invoice.schemas.js).
  * Keep in sync with that enum. "Cash" needs no reference number; every other mode may carry one.
  */
-const PAYMENT_MODES = ['Cash', 'Cheque', 'UPI', 'Card', 'Bank Transfer', 'Online'];
+const PAYMENT_MODES = ['Cash', 'Cheque', 'UPI', 'Card', 'Bank Transfer'];
 
 /** Student categories offered in the dropdown. The chosen value is saved on the student (customData.studentCategory). */
 const STUDENT_CATEGORIES = ['Regular', 'Existing Student', 'New Student', 'Old Student'];
@@ -74,8 +74,19 @@ const classSectionLabel = (s) => [s?.class?.name, s?.section?.name].filter(Boole
 const escapeHtml = (v) =>
     String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+const invoiceLateFee = (inv) => {
+    const cd = inv?.customData && typeof inv.customData === 'object' ? inv.customData : {};
+    const v = Number(cd.lateFee);
+    return Number.isFinite(v) && v > 0 ? v : 0;
+};
+
 function buildReceiptHtml({ schoolName, student, receiptNumber, paidAt, mode, reference, items }) {
-    const total = items.reduce((sum, i) => sum + Number(i.amount || 0), 0);
+    const feesTotal = items.reduce((sum, i) => sum + Number(i.amount || 0), 0);
+    const lateFeeTotal = items.reduce((sum, i) => sum + invoiceLateFee(i), 0);
+    const total = feesTotal + lateFeeTotal;
+    const lateRow = lateFeeTotal > 0
+        ? `<tr><td colspan="2">Late fee (penalty)</td><td class="r">${escapeHtml(formatMoney(lateFeeTotal))}</td></tr>`
+        : '';
     const rows = items
         .map((i) => `<tr><td>${escapeHtml(i.feeName)}</td><td>${escapeHtml(formatDate(i.dueDate))}</td><td class="r">${escapeHtml(formatMoney(i.amount))}</td></tr>`)
         .join('');
@@ -97,7 +108,7 @@ th,td{border:1px solid #bbb;padding:8px;text-align:left}th{background:#f2f2f2}
 <div><b>Receipt No:</b> ${escapeHtml(receiptNumber || '—')}<br><b>Date:</b> ${escapeHtml(formatDate(paidAt))}<br><b>Mode:</b> ${escapeHtml(mode || '—')}<br><b>Reference:</b> ${escapeHtml(reference || '—')}</div>
 </div>
 <table><thead><tr><th>Fee</th><th>Due date</th><th class="r">Amount</th></tr></thead><tbody>${rows}
-<tr class="total"><td colspan="2">Total paid</td><td class="r">${escapeHtml(formatMoney(total))}</td></tr></tbody></table>
+${lateRow}<tr class="total"><td colspan="2">Total paid</td><td class="r">${escapeHtml(formatMoney(total))}</td></tr></tbody></table>
 <div class="foot"><span>Received by: ____________</span><span>Authorised signature</span></div>
 <script>window.onload=function(){window.focus();window.print();}</script>
 </body></html>`;
@@ -133,6 +144,7 @@ export default function FeeCollection() {
     const [payDate, setPayDate] = useState(todayString());
     const [mode, setMode] = useState('Cash');
     const [reference, setReference] = useState('');
+    const [lateFeeText, setLateFeeText] = useState('');
     const [paying, setPaying] = useState(false);
     // null = amount follows the fees ticked in the ledger; a string = the clerk typed an amount
     const [amountText, setAmountText] = useState(null);
@@ -382,11 +394,16 @@ export default function FeeCollection() {
             cells.get(key).push(i);
         });
 
+        // Unpaid balance of earlier months carries forward into the next month's balance.
+        let carried = 0;
         const perMonth = monthKeys.map((mk) => {
             const inMonth = active.filter((i) => String(i.dueDate).slice(0, 7) === mk);
             const total = inMonth.reduce((s, i) => s + Number(i.amount), 0);
             const paid = inMonth.filter((i) => i.status === 'Paid').reduce((s, i) => s + Number(i.amount), 0);
-            return { key: mk, total, paid, balance: total - paid, pending: inMonth.filter((i) => i.status === 'Pending') };
+            const previousDue = carried;
+            const balance = previousDue + total - paid;
+            carried = balance;
+            return { key: mk, total, paid, previousDue, balance, pending: inMonth.filter((i) => i.status === 'Pending') };
         });
 
         const pending = active.filter((i) => i.status === 'Pending');
@@ -404,6 +421,13 @@ export default function FeeCollection() {
     );
     const selectedTotal = selectedInvoices.reduce((s, i) => s + Number(i.amount), 0);
 
+    // Late fee (penalty): optional, only offered when a selected fee is past its due date.
+    const hasOverdueSelected = selectedInvoices.some((i) => String(i.dueDate).slice(0, 10) < payDate);
+    const lateFeeParsed = parseAmount(lateFeeText);
+    const lateFeeValue = hasOverdueSelected && Number.isFinite(lateFeeParsed) && lateFeeParsed > 0 ? lateFeeParsed : 0;
+    const lateFeeInvalid = lateFeeText.trim() !== '' && (!Number.isFinite(lateFeeParsed) || lateFeeParsed < 0);
+    const payableTotal = selectedTotal + lateFeeValue;
+
     // Pending fees in the order they should be cleared: oldest due date first.
     const payableOrder = useMemo(
         () => [...ledger.pending].sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)) || String(a.feeName).localeCompare(String(b.feeName))),
@@ -413,8 +437,9 @@ export default function FeeCollection() {
     // What the typed amount means in terms of whole fees (the server settles one whole fee at a time).
     const amountCheck = useMemo(() => {
         if (amountText === null) return { ok: selectedInvoices.length > 0, message: '' };
-        const value = parseAmount(amountText);
-        if (!Number.isFinite(value) || value <= 0) return { ok: false, message: 'Enter a valid amount.' };
+        const typed = parseAmount(amountText);
+        if (!Number.isFinite(typed) || typed <= 0) return { ok: false, message: 'Enter a valid amount.' };
+        const value = typed - lateFeeValue; // the late fee is on top of the fees themselves
         if (value === selectedTotal && selectedInvoices.length > 0) return { ok: true, message: '' };
         const smallest = payableOrder[0];
         if (!smallest) return { ok: false, message: 'There are no pending fees to collect.' };
@@ -424,7 +449,7 @@ export default function FeeCollection() {
         const nextInv = payableOrder[selectedInvoices.length];
         const upper = nextInv ? ` or ${formatMoney(selectedTotal + Number(nextInv.amount))} (${selectedInvoices.length + 1} fees)` : '';
         return { ok: false, message: `${formatMoney(value)} does not match whole fees. Collect ${formatMoney(selectedTotal)} (${selectedInvoices.length} fee${selectedInvoices.length === 1 ? '' : 's'})${upper}.` };
-    }, [amountText, selectedInvoices, selectedTotal, payableOrder]);
+    }, [amountText, selectedInvoices, selectedTotal, payableOrder, lateFeeValue]);
 
     const history = useMemo(() => {
         const paid = invoices
@@ -482,7 +507,7 @@ export default function FeeCollection() {
             return;
         }
         setAmountText(cleaned);
-        const value = parseAmount(cleaned);
+        const value = parseAmount(cleaned) - lateFeeValue;
         const ids = new Set();
         if (Number.isFinite(value)) {
             let running = 0;
@@ -565,6 +590,10 @@ export default function FeeCollection() {
             toast.error('Payment date cannot be in the future.');
             return;
         }
+        if (lateFeeInvalid) {
+            toast.error('Enter a valid late fee amount.');
+            return;
+        }
 
         setPaying(true);
         const toPay = [...selectedInvoices];
@@ -579,7 +608,9 @@ export default function FeeCollection() {
                     paymentMode: mode,
                     transactionReference: reference.trim() || undefined,
                     receiptNumber: receiptNumber || undefined,
-                    paidAt: paidAtIso
+                    paidAt: paidAtIso,
+                    // the penalty is recorded once per receipt, on the first fee settled
+                    ...(settled.length === 0 && lateFeeValue > 0 ? { lateFee: lateFeeValue } : {})
                 });
                 if (!receiptNumber) receiptNumber = res?.data?.receiptNumber || '';
                 settled.push(inv);
@@ -593,13 +624,14 @@ export default function FeeCollection() {
         setPaying(false);
 
         if (settled.length > 0) {
-            const total = settled.reduce((s, i) => s + Number(i.amount), 0);
+            const total = settled.reduce((s, i) => s + Number(i.amount), 0) + lateFeeValue;
             toast.success(`${formatMoney(total)} collected${receiptNumber ? ` · Receipt ${receiptNumber}` : ''}`);
             notifyDataChanged('fees');
             notifyDataChanged('invoices');
             setSelectedIds(new Set());
             setAmountText(null);
             setReference('');
+            setLateFeeText('');
             await fetchInvoices(student, true);
         }
 
@@ -901,6 +933,9 @@ export default function FeeCollection() {
                                                     ))}
                                                     <SummaryRow label="Total" values={ledger.perMonth.map((m) => m.total)} className="bg-teal-100 dark:bg-teal-900/40 text-teal-900 dark:text-teal-100" />
                                                     <SummaryRow label="Paid" values={ledger.perMonth.map((m) => m.paid)} className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-200" />
+                                                    {ledger.perMonth.some((m) => m.previousDue > 0) && (
+                                                        <SummaryRow label="Previous Due (B/F)" values={ledger.perMonth.map((m) => m.previousDue)} className="bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200" hideZero />
+                                                    )}
                                                     <SummaryRow label="Balance" values={ledger.perMonth.map((m) => m.balance)} className="bg-rose-100 dark:bg-rose-900/30 text-rose-800 dark:text-rose-200" hideZero />
                                                 </tbody>
                                             </table>
@@ -920,7 +955,7 @@ export default function FeeCollection() {
                                                 id="fc-amount"
                                                 inputMode="decimal"
                                                 autoComplete="off"
-                                                value={amountText !== null ? amountText : selectedInvoices.length ? selectedTotal.toLocaleString('en-IN') : ''}
+                                                value={amountText !== null ? amountText : selectedInvoices.length ? payableTotal.toLocaleString('en-IN') : ''}
                                                 onChange={(e) => handleAmountChange(e.target.value)}
                                                 disabled={!hasEditPermission || ledger.pending.length === 0}
                                                 aria-invalid={amountText !== null && !amountCheck.ok}
@@ -930,7 +965,7 @@ export default function FeeCollection() {
                                         </div>
                                         <p className={`text-[11px] mt-1 ${amountText !== null && !amountCheck.ok ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-slate-400'}`}>
                                             {amountText !== null && !amountCheck.ok ? amountCheck.message : null}
-                                            {!(amountText !== null && !amountCheck.ok) && <>{selectedInvoices.length} fee{selectedInvoices.length === 1 ? '' : 's'} selected</>}
+                                            {!(amountText !== null && !amountCheck.ok) && <>{selectedInvoices.length} fee{selectedInvoices.length === 1 ? '' : 's'} selected{lateFeeValue > 0 ? ` · incl. late fee ${formatMoney(lateFeeValue)}` : ''}</>}
                                         </p>
                                     </div>
                                     <div>
@@ -939,7 +974,24 @@ export default function FeeCollection() {
                                     </div>
                                     <div>
                                         <label htmlFor="fc-late" className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Late fee</label>
-                                        <input id="fc-late" disabled placeholder="Not available yet" className={selectClass} />
+                                        <div className="relative">
+                                            <Rupee size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                            <input
+                                                id="fc-late"
+                                                inputMode="decimal"
+                                                autoComplete="off"
+                                                value={hasOverdueSelected ? lateFeeText : ''}
+                                                onChange={(e) => {
+                                                    setLateFeeText(e.target.value.replace(/[^0-9.]/g, ''));
+                                                    setAmountText(null);
+                                                }}
+                                                disabled={!hasEditPermission || !hasOverdueSelected}
+                                                aria-invalid={lateFeeInvalid}
+                                                placeholder={hasOverdueSelected ? 'Optional penalty' : 'No overdue fee selected'}
+                                                className={`${selectClass} pl-8`}
+                                            />
+                                        </div>
+                                        {hasOverdueSelected && <p className="text-[11px] mt-1 text-slate-400">Optional · added to the total</p>}
                                     </div>
                                     <div>
                                         <label htmlFor="fc-remarks" className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Remarks</label>
@@ -1003,7 +1055,7 @@ export default function FeeCollection() {
                                         </thead>
                                         <tbody>
                                             {history.map((g) => {
-                                                const amount = g.items.reduce((s, i) => s + Number(i.amount), 0);
+                                                const amount = g.items.reduce((s, i) => s + Number(i.amount) + invoiceLateFee(i), 0);
                                                 return (
                                                     <tr key={g.key} className="border-t border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-200">
                                                         <td className="px-4 py-3 font-semibold">{g.receiptNumber || '—'}</td>

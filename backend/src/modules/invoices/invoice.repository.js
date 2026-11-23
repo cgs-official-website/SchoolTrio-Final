@@ -98,11 +98,11 @@ export async function findInvoices(schoolId, options = {}, tx = prisma) {
   // Applied after the search block so it never overwrites where.OR / where.AND.
   const classFilter = options.classId
     ? {
-        OR: [
-          { feeStructure: { classId: options.classId } },
-          { feeStructure: { classId: null }, student: { classId: options.classId } }
-        ]
-      }
+      OR: [
+        { feeStructure: { classId: options.classId } },
+        { feeStructure: { classId: null }, student: { classId: options.classId } }
+      ]
+    }
     : null;
 
   // Fee structure filter
@@ -257,6 +257,13 @@ export async function cancelInvoice(schoolId, id, tx = prisma) {
  * @returns {Promise<Object>}
  */
 export async function settleInvoicePayment(schoolId, id, paymentData, tx = prisma) {
+  // Late fee (penalty) is kept in customData so no schema change is needed.
+  const baseCustom =
+    paymentData.existingCustomData && typeof paymentData.existingCustomData === 'object' && !Array.isArray(paymentData.existingCustomData)
+      ? paymentData.existingCustomData
+      : {};
+  const customData = paymentData.lateFee > 0 ? { ...baseCustom, lateFee: paymentData.lateFee } : undefined;
+
   return tx.invoice.update({
     where: {
       schoolId_id: {
@@ -269,7 +276,8 @@ export async function settleInvoicePayment(schoolId, id, paymentData, tx = prism
       paidAt: paymentData.paidAt,
       paymentMode: paymentData.paymentMode,
       transactionReference: paymentData.transactionReference || null,
-      receiptNumber: paymentData.receiptNumber || null
+      receiptNumber: paymentData.receiptNumber || null,
+      ...(customData ? { customData } : {})
     },
     select: INVOICE_SELECT_CONFIG
   });

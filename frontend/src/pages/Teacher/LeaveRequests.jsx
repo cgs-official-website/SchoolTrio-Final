@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { LuPlus, LuCalendar, LuClock, LuCircleCheck, LuCircleX, LuFolderDown, LuX, LuDownload } from 'react-icons/lu';
+import { LuPlus, LuCalendar, LuClock, LuCircleCheck, LuCircleX, LuFolderDown, LuX, LuDownload, LuUser, LuUsers } from 'react-icons/lu';
 import { useAuth } from '../../context/AuthContext';
 import { leavesApi } from '../../api/leaves';
 import { uploadFileToCloudinaryOrFirebase } from '../../utils/cloudinary';
@@ -16,6 +16,7 @@ export default function LeaveRequests() {
   const [classInfo, setClassInfo] = useState([]);
   const [reviewingId, setReviewingId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('my');
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -195,92 +196,99 @@ export default function LeaveRequests() {
         </button>
       </div>
 
-      {/* Main Request History Box */}
+      {/* Unified Leave Requests Card with Tabs */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col flex-1 min-h-[320px] overflow-hidden">
-        <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between shrink-0">
-          <h3 className="font-bold text-slate-900 dark:text-white text-lg">Leave History</h3>
-          <span className="text-xs text-slate-400 dark:text-slate-300 font-semibold">{leaves.length} Applications</span>
+        <div className="flex items-end justify-between border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 px-6 pt-4 shrink-0 overflow-x-auto">
+          <div className="flex">
+            <button
+              type="button"
+              onClick={() => setActiveTab('my')}
+              className={`px-6 py-3 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'my' ? 'border-primary-600 text-primary-700 bg-white dark:bg-slate-900' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100/50'}`}
+            >
+              <LuUser size={18} /> My Leave Request
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('class')}
+              className={`px-6 py-3 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'class' ? 'border-primary-600 text-primary-700 bg-white dark:bg-slate-900' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100/50'}`}
+            >
+              <LuUsers size={18} /> My Class Student Leave Requests
+            </button>
+          </div>
+          <span className="hidden sm:block pb-3 text-xs text-slate-400 dark:text-slate-300 font-semibold whitespace-nowrap">
+            {activeTab === 'my' ? leaves.length : classLeaves.length} Applications
+          </span>
         </div>
 
         <div className="flex-1 overflow-auto p-6">
-          {loading ? (
-            <div className="flex justify-center items-center py-12">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent"></div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {leaves.map(leave => (
-                <div key={leave.id} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary-350 hover:shadow-md transition-all flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-start mb-4 gap-2">
-                      <span className="px-3 py-1 bg-primary-50 text-primary-700 rounded-lg text-xs font-extrabold uppercase tracking-wide">
-                        {leave.leaveType}
-                      </span>
-                      {getStatusBadge(leave.status)}
-                    </div>
-
-                    <div className="space-y-2 mb-4">
-                      <p className="text-xs font-bold text-slate-400 dark:text-slate-300 flex items-center gap-2">
-                        <LuCalendar size={14} className="text-slate-400 dark:text-slate-300" />
-                        {new Date(leave.startDate).toLocaleDateString('en-GB')} — {new Date(leave.endDate).toLocaleDateString('en-GB')}
-                      </p>
-                      <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-relaxed line-clamp-3">
-                        "{leave.reason}"
-                      </h4>
-                    </div>
-                  </div>
-
-                  {leave.supportingDoc && (
-                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400">
-                      <div className="flex items-center gap-1 overflow-hidden mr-2">
-                        <span className="truncate max-w-[120px]">{leave.supportingDoc.name}</span>
-                        <span className="text-slate-400 dark:text-slate-300 shrink-0">({leave.supportingDoc.size})</span>
-                      </div>
-                      <a
-                        href={leave.supportingDoc.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => {
-                          if (!leave.supportingDoc.url || leave.supportingDoc.url === '#') {
-                            e.preventDefault();
-                            toast.error("Document URL is invalid or not available.");
-                          }
-                        }}
-                        className="text-primary-600 hover:text-primary-800 font-bold hover:underline flex items-center gap-0.5 shrink-0"
-                      >
-                        <LuDownload size={12} />
-                        Download
-                      </a>
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {leaves.length === 0 && (
-                <div className="col-span-full text-center py-12 text-slate-500 dark:text-slate-400">
-                  <LuCalendar size={48} className="mx-auto mb-4 text-slate-300" />
-                  <p className="text-lg font-medium text-slate-700 dark:text-slate-200">No leave requests submitted yet.</p>
-                </div>
-              )}
-            </div>
+          {activeTab === 'class' && classInfo.length > 0 && (
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-4">
+              Students of {classInfo.map(c => c.name).join(', ')}
+            </p>
           )}
-        </div>
-      </div>
+          {activeTab === 'my' ? (
+            loading ? (
+              <div className="flex justify-center items-center py-12">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent"></div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {leaves.map(leave => (
+                  <div key={leave.id} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary-350 hover:shadow-md transition-all flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-start mb-4 gap-2">
+                        <span className="px-3 py-1 bg-primary-50 text-primary-700 rounded-lg text-xs font-extrabold uppercase tracking-wide">
+                          {leave.leaveType}
+                        </span>
+                        {getStatusBadge(leave.status)}
+                      </div>
 
-      {/* Student Leave Requests of the class teacher's own class (read-only) */}
-      {classInfo.length > 0 && (
-        <div className="mt-8 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden shrink-0">
-          <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
-            <div>
-              <h3 className="font-bold text-slate-900 dark:text-white text-lg">Student Leave Requests</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Students of {classInfo.map(c => c.name).join(', ')}
-              </p>
-            </div>
-            <span className="text-xs text-slate-400 dark:text-slate-300 font-semibold">{classLeaves.length} Applications</span>
-          </div>
+                      <div className="space-y-2 mb-4">
+                        <p className="text-xs font-bold text-slate-400 dark:text-slate-300 flex items-center gap-2">
+                          <LuCalendar size={14} className="text-slate-400 dark:text-slate-300" />
+                          {new Date(leave.startDate).toLocaleDateString('en-GB')} — {new Date(leave.endDate).toLocaleDateString('en-GB')}
+                        </p>
+                        <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-relaxed line-clamp-3">
+                          "{leave.reason}"
+                        </h4>
+                      </div>
+                    </div>
 
-          <div className="p-6">
+                    {leave.supportingDoc && (
+                      <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        <div className="flex items-center gap-1 overflow-hidden mr-2">
+                          <span className="truncate max-w-[120px]">{leave.supportingDoc.name}</span>
+                          <span className="text-slate-400 dark:text-slate-300 shrink-0">({leave.supportingDoc.size})</span>
+                        </div>
+                        <a
+                          href={leave.supportingDoc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => {
+                            if (!leave.supportingDoc.url || leave.supportingDoc.url === '#') {
+                              e.preventDefault();
+                              toast.error("Document URL is invalid or not available.");
+                            }
+                          }}
+                          className="text-primary-600 hover:text-primary-800 font-bold hover:underline flex items-center gap-0.5 shrink-0"
+                        >
+                          <LuDownload size={12} />
+                          Download
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {leaves.length === 0 && (
+                  <div className="col-span-full text-center py-12 text-slate-500 dark:text-slate-400">
+                    <LuCalendar size={48} className="mx-auto mb-4 text-slate-300" />
+                    <p className="text-lg font-medium text-slate-700 dark:text-slate-200">No leave requests submitted yet.</p>
+                  </div>
+                )}
+              </div>
+            )
+          ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {classLeaves.map(leave => (
                 <div key={leave.id} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary-350 hover:shadow-md transition-all flex flex-col justify-between">
@@ -348,15 +356,19 @@ export default function LeaveRequests() {
                 </div>
               ))}
 
+
               {classLeaves.length === 0 && (
-                <div className="col-span-full text-center py-8 text-slate-500 dark:text-slate-400">
-                  <p className="text-sm font-medium">No student leave requests for your class yet.</p>
+                <div className="col-span-full text-center py-12 text-slate-500 dark:text-slate-400">
+                  <LuUsers size={48} className="mx-auto mb-4 text-slate-300" />
+                  <p className="text-lg font-medium text-slate-700 dark:text-slate-200">
+                    {classInfo.length === 0 ? 'You are not assigned as a class teacher.' : 'No student leave requests for your class yet.'}
+                  </p>
                 </div>
               )}
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Request Leave Modal */}
       {showModal && (
