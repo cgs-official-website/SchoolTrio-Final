@@ -15,7 +15,7 @@ import {
 const EMPTY = { id: null, stopName: '', routeIds: [], distanceKm: '', geocode: '' };
 
 // "TN-33-BU-8569 - thindal"
-const busLabel = (r) => `${r.vehicleNumber && r.vehicleNumber !== 'N/A' ? r.vehicleNumber : 'No bus assigned'} - ${r.name}`;
+const busLabel = (r) => `${r.vehicleName ? `${r.vehicleName} · ` : ''}${r.vehicleNumber && r.vehicleNumber !== 'N/A' ? r.vehicleNumber : 'No bus assigned'} - ${r.name}`;
 
 export default function BusStopTab({ routes, canCreate, canEdit, canDelete, onChanged }) {
     const [stops, setStops] = useState([]);
@@ -40,20 +40,20 @@ export default function BusStopTab({ routes, canCreate, canEdit, canDelete, onCh
     useEffect(() => { load(); }, [load]);
     useLiveDataRefresh(load, [load], 'transport');
 
-    const busNumbersOf = (s) => [...new Set((s.buses || []).map((b) => b.busNumber).filter(Boolean))];
+    const vehicleNamesOf = (s) => [...new Set((s.buses || []).map((b) => b.vehicleName || b.busNumber).filter(Boolean))];
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
         if (!q) return stops;
         return stops.filter((s) =>
-            [s.stopName, s.distanceLabel, s.geocode, ...(s.buses || []).flatMap((b) => [b.busNumber, b.routeName])]
+            [s.stopName, s.distanceLabel, s.geocode, ...(s.buses || []).flatMap((b) => [b.vehicleName, b.busNumber, b.routeName])]
                 .some((v) => (v || '').toLowerCase().includes(q))
         );
     }, [stops, search]);
 
-    const headers = ['S.No', 'Bus Stop Name', 'Bus Number', 'Distance (KM)', 'Geocode', 'Students'];
+    const headers = ['S.No', 'Bus Stop Name', 'Vehicle Name', 'Distance (KM)', 'Geocode', 'Students'];
     const rowsForExport = () =>
-        filtered.map((s, i) => [i + 1, s.stopName, busNumbersOf(s).join(', '), s.distanceKm ?? '', s.geocode || '', s.studentCount]);
+        filtered.map((s, i) => [i + 1, s.stopName, vehicleNamesOf(s).join(', '), s.distanceKm ?? '', s.geocode || '', s.studentCount]);
 
     const toggleRoute = (id) =>
         setForm((f) => ({
@@ -79,8 +79,8 @@ export default function BusStopTab({ routes, canCreate, canEdit, canDelete, onCh
         const stopName = form.stopName.trim();
         if (!stopName) return toast.error('Bus stop name is required.');
         if (form.routeIds.length === 0) return toast.error('Select at least one bus that stops here.');
-        if (form.distanceKm !== '' && (!Number.isFinite(Number(form.distanceKm)) || Number(form.distanceKm) < 0)) {
-            return toast.error('Enter a valid distance in KM.');
+        if (form.distanceKm === '' || form.distanceKm === null || !Number.isFinite(Number(form.distanceKm)) || Number(form.distanceKm) < 0) {
+            return toast.error('Distance (KM) is required and must be a valid number. It is used for slab fees.');
         }
 
         setSaving(true);
@@ -88,7 +88,7 @@ export default function BusStopTab({ routes, canCreate, canEdit, canDelete, onCh
             const payload = {
                 stopName,
                 routeIds: form.routeIds,
-                distanceKm: form.distanceKm === '' ? null : Number(form.distanceKm),
+                distanceKm: Number(form.distanceKm),
                 geocode: form.geocode.trim() || null
             };
             if (form.id) await updateBusStop(form.id, payload);
@@ -164,7 +164,7 @@ export default function BusStopTab({ routes, canCreate, canEdit, canDelete, onCh
                             <tr className={theadRowCls}>
                                 <th className={thCls}>S.No</th>
                                 <th className={thCls}>Bus Stop Name</th>
-                                <th className={thCls}>Bus Number</th>
+                                <th className={thCls}>Vehicle Name</th>
                                 <th className={thCls}>Distance (KM)</th>
                                 <th className={thCls}>Geocode</th>
                                 <th className={thCls}>Students</th>
@@ -195,10 +195,10 @@ export default function BusStopTab({ routes, canCreate, canEdit, canDelete, onCh
                                                     s.buses.map((b) => (
                                                         <span
                                                             key={b.routeId}
-                                                            title={`Route: ${b.routeName}`}
-                                                            className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-md text-xs font-mono font-bold"
+                                                            title={`${b.busNumber || 'No bus'} · Route: ${b.routeName}`}
+                                                            className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-md text-xs font-bold"
                                                         >
-                                                            {b.busNumber || 'No bus'}
+                                                            {b.vehicleName || b.busNumber || 'No bus'}
                                                         </span>
                                                     ))
                                                 )}
@@ -235,7 +235,7 @@ export default function BusStopTab({ routes, canCreate, canEdit, canDelete, onCh
             {form && (
                 <Modal title={form.id ? 'Edit Bus Stop' : 'Add Bus Stop'} onClose={() => setForm(null)}>
                     <form onSubmit={handleSave} className="space-y-4">
-                        <Field label="Bus Stop Name (destination)" required>
+                        <Field label="Bus Stop Name" required>
                             <input
                                 type="text"
                                 value={form.stopName}
@@ -268,9 +268,10 @@ export default function BusStopTab({ routes, canCreate, canEdit, canDelete, onCh
                         </Field>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <Field label="Distance (KM)">
+                            <Field label="Distance (KM)" required>
                                 <input
                                     type="number"
+                                    required
                                     min="0"
                                     step="0.1"
                                     value={form.distanceKm}

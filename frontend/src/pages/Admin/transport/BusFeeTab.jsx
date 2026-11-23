@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { LuPlus as Plus, LuSearch as Search, LuIndianRupee as Rupee } from 'react-icons/lu';
+import { LuPlus as Plus, LuSearch as Search, LuIndianRupee as Rupee, LuTriangleAlert as Warn } from 'react-icons/lu';
 import { Edit, Trash2 } from 'lucide-react';
 import ConfirmModal from '../../../components/ConfirmModal';
 import { listBusFees, listBusStops, createBusFee, updateBusFee, deleteBusFee } from '../../../api/transport';
@@ -12,10 +12,26 @@ import {
     Field, Modal, ExportButtons, EmptyState
 } from './ui';
 
-const emptyStopForm = { id: null, kind: 'STOP', busStopId: '', distanceKm: '', dueDate: '', amount: '' };
+const emptyStopForm = { id: null, kind: 'STOP', busStopId: '', distanceFromKm: '', distanceToKm: '', dueDate: '', amount: '' };
 const emptySlabForm = { ...emptyStopForm, kind: 'SLAB' };
 
 const kmText = (n) => (n === null || n === undefined || n === '' ? '-' : `${n} KM`);
+
+// "11 - 15 KM" for a range, "15 KM" when from === to
+const rangeText = (f) => {
+    const a = f.distanceFromKm;
+    const b = f.distanceToKm;
+    if (a === null || a === undefined || b === null || b === undefined) return kmText(f.distanceKm ?? f.slabName);
+    return Number(a) === Number(b) ? `${a} KM` : `${a} - ${b} KM`;
+};
+
+// does a slab fee (from/to km) cover this distance?
+const slabCovers = (slabFee, km) => {
+    if (km === null || km === undefined || km === '') return false;
+    const from = Number(slabFee.distanceFromKm ?? slabFee.distanceKm);
+    const to = Number(slabFee.distanceToKm ?? slabFee.distanceKm);
+    return Number(km) >= from && Number(km) <= to;
+};
 
 export default function BusFeeTab({ canCreate, canEdit, canDelete }) {
     const [fees, setFees] = useState([]);
@@ -52,8 +68,21 @@ export default function BusFeeTab({ canCreate, canEdit, canDelete }) {
         [stops]
     );
 
-    const appliesTo = (f) => (f.kind === 'STOP' ? f.stopName || '-' : `Distance: ${kmText(f.distanceKm ?? f.slabName)}`);
-    const typeLabel = (f) => (f.kind === 'STOP' ? 'Bus Stop' : 'Distance Slab');
+    // stops that have their OWN fee: for these stops the slab fee is NOT charged (stop fee replaces it)
+    const stopsWithOwnFee = useMemo(() => new Set(fees.filter((f) => f.kind === 'STOP').map((f) => f.busStopId)), [fees]);
+
+    // slab fees that a stop fee will replace for this stop (shown while adding / and in the table)
+    const slabsReplacedFor = useCallback(
+        (stopId) => {
+            const stop = stops.find((s) => s.id === stopId);
+            if (!stop) return [];
+            return fees.filter((f) => f.kind === 'SLAB' && slabCovers(f, stop.distanceKm));
+        },
+        [fees, stops]
+    );
+
+    const appliesTo = (f) => (f.kind === 'STOP' ? f.stopName || '-' : `Distance: ${rangeText(f)}`);
+    const typeLabel = (f) => (f.kind === 'STOP' ? 'Stop Fee' : 'Distance Slab');
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -73,7 +102,8 @@ export default function BusFeeTab({ canCreate, canEdit, canDelete }) {
             id: f.id,
             kind: f.kind,
             busStopId: f.busStopId || '',
-            distanceKm: f.kind === 'SLAB' ? (f.distanceKm ?? '') : '',
+            distanceFromKm: f.kind === 'SLAB' ? (f.distanceFromKm ?? f.distanceKm ?? '') : '',
+            distanceToKm: f.kind === 'SLAB' ? (f.distanceToKm ?? f.distanceKm ?? '') : '',
             dueDate: f.dueDate,
             amount: String(f.amount)
         });
@@ -82,8 +112,13 @@ export default function BusFeeTab({ canCreate, canEdit, canDelete }) {
         e.preventDefault();
         if (form.id ? !canEdit : !canCreate) return toast.error('You do not have permission for this action.');
         if (form.kind === 'STOP' && !form.busStopId) return toast.error('Please select a bus stop.');
-        if (form.kind === 'SLAB' && (form.distanceKm === '' || !Number.isFinite(Number(form.distanceKm)) || Number(form.distanceKm) < 0)) {
-            return toast.error('Enter the distance in KM for this slab.');
+        if (form.kind === 'SLAB') {
+            const from = Number(form.distanceFromKm);
+            const to = Number(form.distanceToKm);
+            if (form.distanceFromKm === '' || form.distanceToKm === '' || !Number.isFinite(from) || !Number.isFinite(to) || from < 0 || to < 0) {
+                return toast.error('Enter both From KM and To KM for this slab.');
+            }
+            if (from > to) return toast.error('To KM must be greater than or equal to From KM.');
         }
         if (!form.dueDate) return toast.error('Please select a due date.');
         const amount = Number(form.amount);
@@ -94,7 +129,8 @@ export default function BusFeeTab({ canCreate, canEdit, canDelete }) {
             const payload = {
                 kind: form.kind,
                 busStopId: form.kind === 'STOP' ? form.busStopId : null,
-                distanceKm: form.kind === 'SLAB' ? Number(form.distanceKm) : null,
+                distanceFromKm: form.kind === 'SLAB' ? Number(form.distanceFromKm) : null,
+                distanceToKm: form.kind === 'SLAB' ? Number(form.distanceToKm) : null,
                 dueDate: form.dueDate,
                 amount
             };
@@ -112,10 +148,17 @@ export default function BusFeeTab({ canCreate, canEdit, canDelete }) {
         }
     };
 
+    const deletingRef = useRef(false);
+
     const handleDelete = async () => {
+        if (deletingRef.current) return; // ignore repeated clicks while a delete is running
         if (!canDelete) return toast.error('You do not have permission to delete fee entries.');
+        const id = confirmDelete.id;
+        if (!id) return;
+        deletingRef.current = true;
+        setConfirmDelete({ isOpen: false, id: null, name: '' }); // close the dialog straight away
         try {
-            await deleteBusFee(confirmDelete.id);
+            await deleteBusFee(id);
             toast.success('Fee entry deleted successfully');
             notifyDataChanged('transport');
             await load();
@@ -123,7 +166,7 @@ export default function BusFeeTab({ canCreate, canEdit, canDelete }) {
             console.error(err);
             toast.error(err.message || 'Failed to delete fee entry.');
         } finally {
-            setConfirmDelete({ isOpen: false, id: null, name: '' });
+            deletingRef.current = false;
         }
     };
 
@@ -156,7 +199,7 @@ export default function BusFeeTab({ canCreate, canEdit, canDelete }) {
                         title="Filter"
                     >
                         <option value="ALL">All Fee Entries</option>
-                        <option value="STOP">Bus Stop Fees</option>
+                        <option value="STOP">Stop Fees</option>
                         <option value="SLAB">Distance Slab Fees</option>
                     </select>
                 </div>
@@ -169,7 +212,7 @@ export default function BusFeeTab({ canCreate, canEdit, canDelete }) {
                     {canCreate && (
                         <>
                             <button type="button" className={`${primaryBtn} whitespace-nowrap`} onClick={() => setForm({ ...emptyStopForm })}>
-                                <Plus size={18} /> Add Bus Fee
+                                <Plus size={18} /> Add Stop Fee
                             </button>
                             <button type="button" className={`${primaryBtn} whitespace-nowrap`} onClick={() => setForm({ ...emptySlabForm })}>
                                 <Plus size={18} /> Add Slab Fee
@@ -177,11 +220,6 @@ export default function BusFeeTab({ canCreate, canEdit, canDelete }) {
                         </>
                     )}
                 </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-4 py-3 text-xs text-slate-600 dark:text-slate-300 space-y-1">
-                <p><span className="font-bold">Bus Fee</span> - a fee for one specific bus stop.</p>
-                <p><span className="font-bold">Slab Fee</span> - one fee for every bus stop at the same distance (KM). If a stop has its own Bus Fee for the same due date, that fee is used instead.</p>
             </div>
 
             <div className={`${cardCls} overflow-hidden`}>
@@ -204,7 +242,7 @@ export default function BusFeeTab({ canCreate, canEdit, canDelete }) {
                                         <EmptyState
                                             icon={Rupee}
                                             title="No Fee Entries Found"
-                                            text={fees.length === 0 ? 'Use "Add Bus Fee" or "Add Slab Fee" to set transport fees.' : 'No fee entry matches your search.'}
+                                            text={fees.length === 0 ? 'Use "Add Slab Fee" for distance-based fees, or "Add Stop Fee" for a special stop.' : 'No fee entry matches your search.'}
                                         />
                                     </td>
                                 </tr>
@@ -246,7 +284,7 @@ export default function BusFeeTab({ canCreate, canEdit, canDelete }) {
             </div>
 
             {form && (
-                <Modal title={`${form.id ? 'Edit' : 'Add'} ${form.kind === 'STOP' ? 'Bus Fee' : 'Slab Fee'}`} onClose={() => setForm(null)}>
+                <Modal title={`${form.id ? 'Edit' : 'Add'} ${form.kind === 'STOP' ? 'Stop Fee' : 'Slab Fee'}`} onClose={() => setForm(null)}>
                     <form onSubmit={handleSave} className="space-y-4">
                         {form.kind === 'STOP' ? (
                             <Field label="Bus Stop" required>
@@ -261,27 +299,82 @@ export default function BusFeeTab({ canCreate, canEdit, canDelete }) {
                                 {stops.length === 0 && (
                                     <p className="text-xs text-amber-600 mt-1">No bus stops yet. Add one in the Bus Stop tab first.</p>
                                 )}
+                                {form.busStopId && slabsReplacedFor(form.busStopId).length > 0 && (
+                                    <div className="mt-2 flex gap-2 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+                                        <Warn size={16} className="mt-0.5 shrink-0" />
+                                        <p>
+                                            <span className="font-bold">This will override the slab fee.</span>{' '}
+                                            This stop is inside the slab fee(s): {[...new Set(slabsReplacedFor(form.busStopId).map((f) => `${rangeText(f)} (₹${formatAmount(f.amount)}, due ${formatDisplayDate(f.dueDate)})`))].join(', ')}.
+                                            Once a stop fee exists, students at this stop pay ONLY the stop fee (every due date) and the slab fee is not charged. Add one stop fee per payment phase.
+                                        </p>
+                                    </div>
+                                )}
                             </Field>
                         ) : (
-                            <Field label="Distance (KM)" required>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step="0.1"
-                                    list="bus-fee-distances"
-                                    value={form.distanceKm}
-                                    onChange={(e) => setForm({ ...form, distanceKm: e.target.value })}
-                                    placeholder="e.g. 25"
-                                    className={inputCls}
-                                    required
-                                />
-                                <datalist id="bus-fee-distances">
-                                    {knownDistances.map((d) => <option key={d} value={d} />)}
-                                </datalist>
+                            <div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <Field label="From (KM)" required>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.1"
+                                            value={form.distanceFromKm}
+                                            onChange={(e) => setForm({ ...form, distanceFromKm: e.target.value })}
+                                            placeholder="e.g. 11"
+                                            className={inputCls}
+                                            required
+                                        />
+                                    </Field>
+                                    <Field label="To (KM)" required>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.1"
+                                            value={form.distanceToKm}
+                                            onChange={(e) => setForm({ ...form, distanceToKm: e.target.value })}
+                                            placeholder="e.g. 15"
+                                            className={inputCls}
+                                            required
+                                        />
+                                    </Field>
+                                </div>
+                                {(() => {
+                                    const a = Number(form.distanceFromKm);
+                                    const b = Number(form.distanceToKm);
+                                    if (form.distanceFromKm === '' || form.distanceToKm === '' || !(a <= b)) return null;
+                                    const special = stops.filter((s) => stopsWithOwnFee.has(s.id) && s.distanceKm !== null && s.distanceKm >= a && s.distanceKm <= b);
+                                    if (special.length === 0) return null;
+                                    return (
+                                        <div className="mt-2 flex gap-2 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+                                            <Warn size={16} className="mt-0.5 shrink-0" />
+                                            <p>
+                                                <span className="font-bold">Not charged at {special.map((s) => s.stopName).join(', ')}.</span>{' '}
+                                                These stops have their own stop fee, which replaces this slab fee.
+                                            </p>
+                                        </div>
+                                    );
+                                })()}
+                                {(() => {
+                                    const a = Number(form.distanceFromKm);
+                                    const b = Number(form.distanceToKm);
+                                    if (form.distanceFromKm === '' || form.distanceToKm === '' || !(a <= b)) return null;
+                                    const existing = fees.filter((f) => f.kind === 'SLAB' && f.id !== form.id && Number(f.distanceFromKm ?? f.distanceKm) <= b && Number(f.distanceToKm ?? f.distanceKm) >= a);
+                                    if (existing.length === 0) return null;
+                                    return (
+                                        <div className="mt-2 flex gap-2 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+                                            <Warn size={16} className="mt-0.5 shrink-0" />
+                                            <p>
+                                                <span className="font-bold">A slab already exists for this distance:</span>{' '}
+                                                {existing.map((f) => `${rangeText(f)} - ₹${formatAmount(f.amount)}, due ${formatDisplayDate(f.dueDate)}`).join(' | ')}.{' '}
+                                                A distance can be in only one slab, so use the Edit button on that row instead. Add a second entry only for Phase 2 of the same range, with a different due date.
+                                            </p>
+                                        </div>
+                                    );
+                                })()}
                                 <p className="text-xs text-slate-400 mt-1">
-                                    Applies to every bus stop with this distance{knownDistances.length ? ` (used by your stops: ${knownDistances.join(', ')} KM)` : ''}.
+                                    Applies to every bus stop whose distance is from {form.distanceFromKm || 'From'} to {form.distanceToKm || 'To'} KM (both included){knownDistances.length ? `. Your stops are at: ${knownDistances.join(', ')} KM` : ''}.
                                 </p>
-                            </Field>
+                            </div>
                         )}
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -303,7 +396,7 @@ export default function BusFeeTab({ canCreate, canEdit, canDelete }) {
                         </div>
 
                         <div className="pt-4 flex justify-end gap-3">
-                            <button type="submit" disabled={saving} className={primaryBtn}>{saving ? 'Saving...' : 'Save'}</button>
+                            <button type="submit" disabled={saving} className={primaryBtn}>{saving ? 'Saving...' : (form.kind === 'STOP' && form.busStopId && slabsReplacedFor(form.busStopId).length > 0 && !stopsWithOwnFee.has(form.busStopId) ? 'Save & Override Slab Fee' : 'Save')}</button>
                             <button type="button" onClick={() => setForm(null)} className={ghostBtn}>Close</button>
                         </div>
                     </form>

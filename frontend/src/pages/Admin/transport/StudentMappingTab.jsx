@@ -19,8 +19,12 @@ import {
 
 const TRAVEL_MODES = ['Pickup & Drop', 'Pickup', 'Drop'];
 const studentName = (s) => `${s.firstName || ''} ${s.lastName || ''}`.trim();
-const busNo = (r) => (r?.vehicleNumber && r.vehicleNumber !== 'N/A' ? r.vehicleNumber : 'No bus');
-const routeLabel = (r) => `${r.name} - ${busNo(r)}`;
+// Dropdown shows the vehicle NAME (falls back to the vehicle number only if the vehicle has no name)
+const busName = (r) => {
+    if (r?.vehicleName) return r.vehicleName;
+    return r?.vehicleNumber && r.vehicleNumber !== 'N/A' ? r.vehicleNumber : 'No bus';
+};
+const routeLabel = (r) => `${r.name} - ${busName(r)}`;
 const kmOf = (label) => {
     const m = /(\d+(?:\.\d+)?)/.exec(String(label ?? ''));
     return m ? `${Number(m[1])} KM` : label || '';
@@ -103,9 +107,11 @@ export default function StudentMappingTab({ routes, canCreate, canEdit, canDelet
         () => candidates.filter((s) => !mappedIds.has(s.id) && !s.transportRouteId),
         [candidates, mappedIds]
     );
-    const alreadyMappedCount = candidates.length - unmappedCandidates.length;
+    const assignmentById = useMemo(() => new Map(assignments.map((a) => [a.id, a])), [assignments]);
+    const isAlreadyMapped = (st) => mappedIds.has(st.id) || Boolean(st.transportRouteId);
 
     const vehicleNo = (a) => a.transportRoute?.vehicle?.registrationNumber || a.transportRoute?.routeNumber || '-';
+    const vehicleNameOf = (a) => a.transportRoute?.vehicle?.customData?.vehicleName || a.transportRoute?.vehicle?.model || '-';
     const stopOf = (a) => a.busStop?.stopName || a.pickupStop?.stopName || '-';
     const distanceOf = (a) => kmOf(a.busStop?.slabName) || '-';
 
@@ -134,16 +140,16 @@ export default function StudentMappingTab({ routes, canCreate, canEdit, canDelet
             if (classFilter !== 'ALL' && classKey(a) !== classFilter) return false;
             if (sectionFilter !== 'ALL' && (a.section?.name || '').toLowerCase() !== sectionFilter.toLowerCase()) return false;
             if (!q) return true;
-            return [studentName(a), a.admissionNumber, a.transportRoute?.name, vehicleNo(a), stopOf(a), a.parents?.[0]?.parent?.phone]
+            return [studentName(a), a.admissionNumber, a.transportRoute?.name, vehicleNameOf(a), vehicleNo(a), stopOf(a), a.parents?.[0]?.parent?.phone]
                 .some((v) => (v || '').toLowerCase().includes(q));
         });
     }, [assignments, search, routeFilter, classFilter, sectionFilter]);
 
-    const headers = ['S.No', 'Admission No', 'Student Name', 'Mobile No', 'Class', 'Section', 'Bus Number', 'Route Name', 'Stop Name', 'Distance (KM)', 'Travel Mode', 'Effect From'];
+    const headers = ['S.No', 'Admission No', 'Student Name', 'Mobile No', 'Class', 'Section', 'Vehicle Name', 'Bus Number', 'Route Name', 'Stop Name', 'Distance (KM)', 'Travel Mode', 'Effect From'];
     const rowsForExport = () =>
         filtered.map((a, i) => [
             i + 1, a.admissionNumber || '', studentName(a), a.parents?.[0]?.parent?.phone || '',
-            a.class?.name || '', a.section?.name || '', vehicleNo(a), a.transportRoute?.name || '',
+            a.class?.name || '', a.section?.name || '', vehicleNameOf(a) === '-' ? '' : vehicleNameOf(a), vehicleNo(a), a.transportRoute?.name || '',
             stopOf(a), distanceOf(a) === '-' ? '' : distanceOf(a), a.travelMode || '', formatDisplayDate(a.transportEffectFrom)
         ]);
 
@@ -172,6 +178,15 @@ export default function StudentMappingTab({ routes, canCreate, canEdit, canDelet
             ? unmappedCandidates.filter((s) => studentName(s).toLowerCase().includes(q) || (s.admissionNumber || '').toLowerCase().includes(q))
             : unmappedCandidates;
     }, [unmappedCandidates, studentQuery]);
+
+    // every student of the chosen class/section: free ones first, students already on a bus are shown greyed out
+    const listedCandidates = useMemo(() => {
+        const q = studentQuery.trim().toLowerCase();
+        const base = q
+            ? candidates.filter((st) => studentName(st).toLowerCase().includes(q) || (st.admissionNumber || '').toLowerCase().includes(q))
+            : candidates;
+        return [...base.filter((st) => !isAlreadyMapped(st)), ...base.filter((st) => isAlreadyMapped(st))];
+    }, [candidates, studentQuery, mappedIds]);
 
     const allVisibleSelected = visibleCandidates.length > 0 && visibleCandidates.every((s) => form?.studentIds.includes(s.id));
     const toggleAllVisible = () =>
@@ -247,7 +262,7 @@ export default function StudentMappingTab({ routes, canCreate, canEdit, canDelet
     return (
         <div className="space-y-6">
             <div className={`${cardCls} flex flex-col lg:flex-row justify-between items-center gap-4 p-4`}>
-                <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full lg:max-w-4xl">
+                <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full lg:flex-1 min-w-0">
                     <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                         <input
@@ -276,15 +291,15 @@ export default function StudentMappingTab({ routes, canCreate, canEdit, canDelet
                         {sectionOptions.map((n) => <option key={n} value={n}>{n}</option>)}
                     </select>
                 </div>
-                <div className="flex items-center gap-3 justify-end">
+                <div className="flex items-center gap-3 justify-end shrink-0">
                     <ExportButtons
                         disabled={filtered.length === 0}
                         onExcel={() => exportRowsToExcel('Transport_Students', headers, rowsForExport(), 'Transport Students')}
                         onPdf={() => exportRowsToPdf('Transport_Students', 'Transport Student List', headers, rowsForExport())}
                     />
                     {canCreate && (
-                        <button type="button" onClick={openAdd} className={primaryBtn}>
-                            <Plus size={18} /> Student Add
+                        <button type="button" onClick={openAdd} className={`${primaryBtn} whitespace-nowrap !px-4 !py-2 text-sm`}>
+                            <Plus size={16} /> Student Add
                         </button>
                     )}
                 </div>
@@ -301,6 +316,7 @@ export default function StudentMappingTab({ routes, canCreate, canEdit, canDelet
                                 <th className={thCls}>Mobile No</th>
                                 <th className={thCls}>Class</th>
                                 <th className={thCls}>Section</th>
+                                <th className={thCls}>Vehicle Name</th>
                                 <th className={thCls}>Bus Number</th>
                                 <th className={thCls}>Route Name</th>
                                 <th className={thCls}>Stop Name</th>
@@ -313,7 +329,7 @@ export default function StudentMappingTab({ routes, canCreate, canEdit, canDelet
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm text-slate-600 dark:text-slate-300 font-medium">
                             {filtered.length === 0 ? (
                                 <tr>
-                                    <td colSpan="13">
+                                    <td colSpan="14">
                                         <EmptyState icon={Users} title="No Transport Students Found"
                                             text={assignments.length === 0 ? 'Use "Student Add" to map students to a bus and stop.' : 'No student matches your search/filter.'} />
                                     </td>
@@ -327,6 +343,7 @@ export default function StudentMappingTab({ routes, canCreate, canEdit, canDelet
                                         <td className={tdCls}>{a.parents?.[0]?.parent?.phone || '-'}</td>
                                         <td className={tdCls}>{a.class?.name || '-'}</td>
                                         <td className={tdCls}>{a.section?.name || '-'}</td>
+                                        <td className={`${tdCls} font-semibold text-slate-800 dark:text-slate-100`}>{vehicleNameOf(a)}</td>
                                         <td className={`${tdCls} font-mono text-xs`}>{vehicleNo(a)}</td>
                                         <td className={tdCls}>{a.transportRoute?.name || '-'}</td>
                                         <td className={tdCls}>{stopOf(a)}</td>
@@ -442,16 +459,39 @@ export default function StudentMappingTab({ routes, canCreate, canEdit, canDelet
                                             <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
                                                 {loadingCandidates ? (
                                                     <p className="p-3 text-sm text-slate-400">Loading students...</p>
-                                                ) : visibleCandidates.length === 0 ? (
-                                                    <p className="p-3 text-sm text-slate-400">No unmapped students found.</p>
+                                                ) : listedCandidates.length === 0 ? (
+                                                    <p className="p-3 text-sm text-slate-400">No students found.</p>
                                                 ) : (
-                                                    visibleCandidates.map((s) => (
-                                                        <label key={s.id} className="flex items-center gap-3 px-4 py-2 text-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
-                                                            <input type="checkbox" checked={form.studentIds.includes(s.id)} onChange={() => toggleStudent(s.id)} />
-                                                            <span className="font-medium text-slate-700 dark:text-slate-200">{studentName(s)}</span>
-                                                            <span className="text-xs text-slate-400 font-mono ml-auto">{s.admissionNumber || 'No Adm No'}</span>
-                                                        </label>
-                                                    ))
+                                                    listedCandidates.map((st) => {
+                                                        const taken = isAlreadyMapped(st);
+                                                        const routeName = assignmentById.get(st.id)?.transportRoute?.name;
+                                                        return (
+                                                            <label
+                                                                key={st.id}
+                                                                className={`flex items-center gap-3 px-4 py-2 text-sm ${taken
+                                                                    ? 'bg-slate-50 dark:bg-slate-800/60 cursor-not-allowed'
+                                                                    : 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    disabled={taken}
+                                                                    checked={!taken && form.studentIds.includes(st.id)}
+                                                                    onChange={() => toggleStudent(st.id)}
+                                                                />
+                                                                <span className={`font-medium ${taken ? 'text-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-200'}`}>
+                                                                    {studentName(st)}
+                                                                </span>
+                                                                {taken && (
+                                                                    <span className="text-[11px] text-slate-400 dark:text-slate-500 italic">
+                                                                        already on a bus{routeName ? ` · ${routeName}` : ''}
+                                                                    </span>
+                                                                )}
+                                                                <span className={`text-xs font-mono ml-auto ${taken ? 'text-slate-300 dark:text-slate-600' : 'text-slate-400'}`}>
+                                                                    {st.admissionNumber || 'No Adm No'}
+                                                                </span>
+                                                            </label>
+                                                        );
+                                                    })
                                                 )}
                                             </div>
                                             <div className="flex items-center gap-3 mt-1 text-xs">
@@ -459,9 +499,6 @@ export default function StudentMappingTab({ routes, canCreate, canEdit, canDelet
                                                     {allVisibleSelected ? 'Unselect all' : 'Select all'}
                                                 </button>
                                                 <span className="text-slate-400">{form.studentIds.length} selected</span>
-                                                {alreadyMappedCount > 0 && (
-                                                    <span className="text-slate-400 ml-auto">{alreadyMappedCount} already on a bus (hidden)</span>
-                                                )}
                                             </div>
                                         </>
                                     )}

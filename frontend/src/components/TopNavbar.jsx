@@ -62,10 +62,10 @@ export function resolveTopNavbarIdentity({ userProfile, activeChild = null, acti
   };
 }
 
-export default function TopNavbar({ 
-  schoolName, 
-  schoolLogo, 
-  toggleSidebar, 
+export default function TopNavbar({
+  schoolName,
+  schoolLogo,
+  toggleSidebar,
   navItems = [],
   activeChild = null,
   activeChildLoading = false
@@ -138,10 +138,10 @@ export default function TopNavbar({
     clearBadge('notifications');
     clearBadge('noticeboard');
     const unreadNotices = notices.filter(n => !n.viewedBy?.some(v => v && (v.uid === currentUserId || v.userId === currentUserId || v.parentUserId === currentUserId)));
-    
+
     // Mark unread notices on server
     unreadNotices.forEach(n => {
-      if (n.id) noticesApi.markNoticeViewed(n.id).catch(() => {});
+      if (n.id) noticesApi.markNoticeViewed(n.id).catch(() => { });
     });
 
     // Mark all personal & system notifications as read on server
@@ -181,7 +181,7 @@ export default function TopNavbar({
       setNotifications([]);
       return;
     }
-    
+
     let isMounted = true;
 
     // Fetch authorized notices from REST API
@@ -233,7 +233,7 @@ export default function TopNavbar({
         const raw = Array.isArray(alertRes.value?.data) ? alertRes.value.data : (Array.isArray(alertRes.value) ? alertRes.value : []);
         setNotifications(raw);
       }
-    } catch {}
+    } catch { }
   }, [userProfile?.schoolId]);
 
   useLiveDataRefresh(refreshNoticesAndAlerts, [refreshNoticesAndAlerts], ['notices', 'notifications', 'all']);
@@ -255,7 +255,8 @@ export default function TopNavbar({
     ...notifications.map(n => ({
       ...n,
       type: 'personal',
-      title: n.title || (n.type === 'attendance_pending' ? 'Attendance Alert' : (n.type ? n.type.replace(/_/g, ' ').toUpperCase() : 'Notification')),
+      sourceType: n.type,
+      title: n.title || (n.type === 'transport' ? 'Transport Fee' : n.type === 'attendance_pending' ? 'Attendance Alert' : (n.type ? n.type.replace(/_/g, ' ').toUpperCase() : 'Notification')),
       description: n.description || n.message,
       priority: n.priority || (n.type === 'attendance_pending' ? 'high' : 'normal'),
       createdAt: n.createdAt || new Date().toISOString()
@@ -285,9 +286,9 @@ export default function TopNavbar({
     return true; // chats are unread by definition if they exist here
   }).length;
 
-  const hasUnread = unreadCount > 0 || 
-    (unreadCounts?.notifications || 0) > 0 || 
-    (unreadCounts?.noticeboard || 0) > 0 || 
+  const hasUnread = unreadCount > 0 ||
+    (unreadCounts?.notifications || 0) > 0 ||
+    (unreadCounts?.noticeboard || 0) > 0 ||
     (unreadCounts?.chats || 0) > 0;
 
   const handleRefresh = () => {
@@ -308,7 +309,7 @@ export default function TopNavbar({
     }
   };
 
-  const filteredNavItems = navItems.filter(item => 
+  const filteredNavItems = navItems.filter(item =>
     item.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -326,7 +327,7 @@ export default function TopNavbar({
       <div className="flex items-center flex-1 min-w-0 gap-2 lg:gap-4">
         {/* Left section: Mobile menu & Logo (if needed) */}
         <div className={`flex items-center gap-2 sm:gap-4 shrink-0 ${isMobileSearchOpen ? 'hidden md:flex' : 'flex'}`}>
-          <button 
+          <button
             onClick={() => navigate(-1)}
             className="p-2 -ml-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-1 transition-colors"
             title="Go Back"
@@ -335,7 +336,7 @@ export default function TopNavbar({
           </button>
 
           {toggleSidebar && (
-            <button 
+            <button
               onClick={toggleSidebar}
               className="lg:hidden p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
             >
@@ -343,91 +344,91 @@ export default function TopNavbar({
             </button>
           )}
         </div>
-        
+
         {/* Search Bar Wrapper */}
-      <div className={`absolute inset-0 px-4 flex items-center z-40 bg-white dark:bg-slate-900 md:relative md:inset-auto md:px-0 md:bg-transparent md:flex md:w-64 lg:w-80 md:ml-2 lg:ml-4 h-10 md:z-20 ${isMobileSearchOpen ? 'flex' : 'hidden md:flex'}`}>
-        <form onSubmit={handleSearch} className="relative w-full h-10 transition-all duration-300 ease-out" ref={dropdownRef}>
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
-            <Search size={18} className="text-slate-400 dark:text-slate-300" />
-          </div>
-          <input
-            type="text"
-            className="block w-full h-full pl-10 pr-10 border border-slate-200 dark:border-slate-700 md:border-transparent rounded-2xl text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white focus:border-primary-200 focus:shadow-md transition-all duration-300 ease-out"
-            placeholder="Search modules..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setShowDropdown(true);
-            }}
-            onFocus={() => setShowDropdown(true)}
-            autoFocus={isMobileSearchOpen}
-          />
-          {/* Close Search Mobile / Clear Search Desktop */}
-          {(searchQuery.length > 0 || isMobileSearchOpen) && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchQuery('');
-                setShowDropdown(false);
-                if (isMobileSearchOpen) setIsMobileSearchOpen(false);
-              }}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-            >
-              <X size={16} />
-            </button>
-          )}
-          
-          {/* Search Dropdown */}
-          {showDropdown && searchQuery && (
-            <div className="absolute top-full left-0 mt-2 w-full min-w-[300px] bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden z-50 max-h-64 overflow-y-auto custom-scrollbar animate-fade-in-up">
-              {filteredNavItems.length > 0 ? (
-                <ul className="py-2">
-                  {filteredNavItems.map((item, idx) => (
-                    <li key={idx}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigate(item.path);
-                          setShowDropdown(false);
-                          setSearchQuery('');
-                          setIsMobileSearchOpen(false);
-                        }}
-                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 text-left transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="text-slate-400 dark:text-slate-300">
-                            <item.icon size={18} />
-                          </div>
-                          <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{item.name}</span>
-                        </div>
-                        <ChevronRight size={16} className="text-slate-300" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="px-4 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
-                  No modules found matching "{searchQuery}"
-                </div>
-              )}
+        <div className={`absolute inset-0 px-4 flex items-center z-40 bg-white dark:bg-slate-900 md:relative md:inset-auto md:px-0 md:bg-transparent md:flex md:w-64 lg:w-80 md:ml-2 lg:ml-4 h-10 md:z-20 ${isMobileSearchOpen ? 'flex' : 'hidden md:flex'}`}>
+          <form onSubmit={handleSearch} className="relative w-full h-10 transition-all duration-300 ease-out" ref={dropdownRef}>
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
+              <Search size={18} className="text-slate-400 dark:text-slate-300" />
             </div>
-          )}
-        </form>
-      </div>
+            <input
+              type="text"
+              className="block w-full h-full pl-10 pr-10 border border-slate-200 dark:border-slate-700 md:border-transparent rounded-2xl text-sm bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white focus:border-primary-200 focus:shadow-md transition-all duration-300 ease-out"
+              placeholder="Search modules..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowDropdown(true);
+              }}
+              onFocus={() => setShowDropdown(true)}
+              autoFocus={isMobileSearchOpen}
+            />
+            {/* Close Search Mobile / Clear Search Desktop */}
+            {(searchQuery.length > 0 || isMobileSearchOpen) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setShowDropdown(false);
+                  if (isMobileSearchOpen) setIsMobileSearchOpen(false);
+                }}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            )}
+
+            {/* Search Dropdown */}
+            {showDropdown && searchQuery && (
+              <div className="absolute top-full left-0 mt-2 w-full min-w-[300px] bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden z-50 max-h-64 overflow-y-auto custom-scrollbar animate-fade-in-up">
+                {filteredNavItems.length > 0 ? (
+                  <ul className="py-2">
+                    {filteredNavItems.map((item, idx) => (
+                      <li key={idx}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigate(item.path);
+                            setShowDropdown(false);
+                            setSearchQuery('');
+                            setIsMobileSearchOpen(false);
+                          }}
+                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 text-left transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="text-slate-400 dark:text-slate-300">
+                              <item.icon size={18} />
+                            </div>
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{item.name}</span>
+                          </div>
+                          <ChevronRight size={16} className="text-slate-300" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="px-4 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
+                    No modules found matching "{searchQuery}"
+                  </div>
+                )}
+              </div>
+            )}
+          </form>
+        </div>
       </div>
 
       {/* Right section: Icons & Profile */}
       <div className={`flex items-center gap-2 sm:gap-4 shrink-0 min-w-0 ${isMobileSearchOpen ? 'hidden md:flex' : 'flex'}`}>
-        
+
         {/* Mobile Search Icon (Instead of full bar) */}
-        <button 
+        <button
           onClick={() => setIsMobileSearchOpen(true)}
           className="md:hidden p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors shrink-0"
         >
           <Search size={20} />
         </button>
 
-        <button 
+        <button
           onClick={handleRefresh}
           className={`p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-all shrink-0 ${isRefreshing ? 'animate-spin text-primary-500' : ''}`}
           title="Refresh"
@@ -435,18 +436,18 @@ export default function TopNavbar({
           <RefreshCw size={20} />
         </button>
 
-        <button 
+        <button
           onClick={() => setIsDarkMode(!isDarkMode)}
           className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors shrink-0"
           title="Toggle Theme"
         >
           {isDarkMode ? <FiSun size={20} /> : <FiMoon size={20} />}
         </button>
-        
+
         <div className="relative shrink-0" ref={notifRef}>
-          <button 
+          <button
             onClick={() => setShowNotifications(!showNotifications)}
-            className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors relative" 
+            className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors relative"
             title="Notifications"
           >
             <Bell size={20} />
@@ -465,24 +466,24 @@ export default function TopNavbar({
               >
                 <LifeBuoy size={20} />
               </button>
-              
-              <RaiseTicketModal 
-                isOpen={showTicketModal} 
-                onClose={() => setShowTicketModal(false)} 
+
+              <RaiseTicketModal
+                isOpen={showTicketModal}
+                onClose={() => setShowTicketModal(false)}
                 schoolName={schoolName || userProfile?.name || 'School Admin'}
                 schoolEmail={userProfile?.email || ''}
               />
             </>
           )}
-          
+
           {showNotifications && (
             <div className="absolute top-full right-0 sm:right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden z-50 flex flex-col animate-fade-in-up">
               <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
                 <h3 className="font-semibold text-slate-900 dark:text-white">Notifications</h3>
                 <div className="flex items-center gap-3">
                   {hasUnread && (
-                    <button 
-                      onClick={handleMarkAllAsRead} 
+                    <button
+                      onClick={handleMarkAllAsRead}
                       className="text-xs font-bold text-primary-600 hover:text-primary-700 transition-colors"
                     >
                       Mark all read
@@ -502,21 +503,25 @@ export default function TopNavbar({
                 ) : (
                   <div className="divide-y divide-slate-100">
                     {allNotifications.map((notice) => {
-                      const isUnread = notice.type === 'notice' 
+                      const isUnread = notice.type === 'notice'
                         ? !notice.viewedBy?.some(v => v && (v.uid === currentUserId || v.userId === currentUserId || v.parentUserId === currentUserId || v.id === currentUserId))
                         : notice.type === 'personal'
                           ? (!notice.read && !notice.isRead)
                           : true;
 
                       return (
-                        <div 
-                          key={notice.id} 
+                        <div
+                          key={notice.id}
                           onClick={() => {
                             if (notice.type === 'notice') {
                               handleMarkNoticeAsRead(notice.id);
                             }
                             if (notice.type === 'personal') {
                               handleMarkPersonalNotificationAsRead(notice.id);
+                              if (notice.sourceType === 'transport') {
+                                setShowNotifications(false);
+                                navigate('/parent/transport');
+                              }
                             }
                             if (notice.type === 'chat') {
                               setShowNotifications(false);
@@ -537,7 +542,7 @@ export default function TopNavbar({
                               </p>
                             </div>
                             {isUnread && (notice.type === 'notice' || notice.type === 'personal') && (
-                              <button 
+                              <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if (notice.type === 'notice') {
@@ -558,13 +563,13 @@ export default function TopNavbar({
                 )}
               </div>
               <div className="p-3 border-t border-slate-100 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/50">
-                <button 
+                <button
                   onClick={() => {
                     setShowNotifications(false);
                     const baseRoute = userProfile?.role?.toLowerCase() || 'admin';
                     // The superadmin module might use a different noticeboard path, or none at all, but we map to /notices safely
                     navigate(`/${baseRoute}/notices`);
-                  }} 
+                  }}
                   className="text-xs font-semibold text-primary-600 hover:text-primary-700 transition-colors"
                 >
                   View All Notices
@@ -580,32 +585,32 @@ export default function TopNavbar({
         <div className="flex items-center gap-3 pl-1 min-w-0 shrink-0">
           {userProfile?.role === 'parent' ? (
             activeChildLoading ? (
-              <div 
+              <div
                 data-testid="topnavbar-loading-child"
                 className="hidden md:flex flex-col text-right min-w-0"
               >
                 <p className="text-xs text-slate-400 dark:text-slate-500 animate-pulse font-medium">Loading child...</p>
               </div>
             ) : activeChild ? (
-              <div 
+              <div
                 data-testid="topnavbar-active-child-container"
                 className="hidden md:flex flex-col text-right min-w-0 max-w-xs lg:max-w-sm overflow-hidden group"
               >
                 <div className="flex items-center justify-end gap-1.5">
-                  <span 
+                  <span
                     data-testid="topnavbar-active-child-label"
                     className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 shrink-0"
                   >
                     Active Child
                   </span>
-                  <p 
+                  <p
                     data-testid="topnavbar-active-child-name"
                     className="text-sm font-bold text-slate-900 dark:text-white truncate"
                   >
                     {activeChild.name || `${activeChild.firstName || ''} ${activeChild.lastName || ''}`.trim() || 'Student'}
                   </p>
                 </div>
-                <p 
+                <p
                   data-testid="topnavbar-parent-identity"
                   className="text-[11px] text-slate-400 dark:text-slate-500 font-medium truncate"
                   title={`Parent Account: ${userProfile?.name || userProfile?.email || 'Parent'}`}
@@ -614,7 +619,7 @@ export default function TopNavbar({
                 </p>
               </div>
             ) : (
-              <div 
+              <div
                 data-testid="topnavbar-parent-fallback-container"
                 className="hidden md:flex flex-col text-right min-w-0 max-w-xs lg:max-w-sm overflow-hidden group"
               >
@@ -638,7 +643,7 @@ export default function TopNavbar({
               </div>
             </div>
           )}
-          <div 
+          <div
             data-testid="topnavbar-avatar"
             className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0 shadow-sm relative z-10 overflow-hidden ${schoolLogo ? 'bg-white dark:bg-slate-900' : (userProfile?.role === 'parent' && activeChild ? 'bg-primary-600 text-white' : 'bg-emerald-500 text-white')}`}
           >

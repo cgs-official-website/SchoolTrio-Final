@@ -1,4 +1,5 @@
 import { prisma } from '../../database/prisma.client.js';
+import { stopInSlab } from './transport.slab.js';
 
 /**
  * Transport fee -> Fee ledger bridge.
@@ -11,8 +12,10 @@ import { prisma } from '../../database/prisma.client.js';
  *   - one shared FeeStructure per bus fee (customData.source = 'TRANSPORT', customData.busFeeId)
  *     with targetType 'STUDENT' and the mapped students in targetIds
  *   - one Invoice per (student, bus fee) under the "Transport Fee" fee category (type 'Bus')
- *   - stop-specific fee wins over a distance-slab fee for the same due date
- *     (same rule the Transport page already shows to parents)
+ *   - a bus stop that has its OWN fee (Stop Fee) is billed ONLY with its stop fees; the distance-slab
+ *     fee is skipped for that stop completely, whatever the due dates are (no "stop + slab" double billing)
+ *   - every invoice carries its academic year and phase ("Transport Fee - Phase 1", "Phase 2" ...);
+ *     the phase is the position of its due date inside the student's academic year
  *   - everything is idempotent: call it as often as you like
  *   - PAID invoices are never touched. Only unpaid (Pending) ones are updated / cancelled.
  */
@@ -21,16 +24,6 @@ export const TRANSPORT_SOURCE = 'TRANSPORT';
 export const TRANSPORT_CATEGORY_NAME = 'Transport Fee';
 const ID_CHUNK = 200;
 
-const parseKm = (label) => {
-    const m = /(\d+(?:\.\d+)?)/.exec(String(label ?? ''));
-    return m ? Number(m[1]) : null;
-};
-const sameDistance = (a, b) => {
-    const na = parseKm(a);
-    const nb = parseKm(b);
-    if (na !== null && nb !== null) return na === nb;
-    return String(a ?? '').toLowerCase().replace(/\s+/g, '') === String(b ?? '').toLowerCase().replace(/\s+/g, '');
-};
 const chunk = (items, size) => {
     const out = [];
     for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
@@ -52,18 +45,60 @@ async function ensureTransportCategory(schoolId, tx) {
     });
 }
 
-/** Stop fee > slab fee for the same due date. Returns [{ busFeeId, dueDate, amount }] */
-function resolveFees(allFees, stop) {
-    if (!stop) return [];
-    const byDue = new Map();
-    allFees
-        .filter((f) => f.kind === 'SLAB' && stop.slabName && sameDistance(f.slabName, stop.slabName))
-        .forEach((f) => byDue.set(f.dueDate, { busFeeId: f.id, dueDate: f.dueDate, amount: Number(f.twoWayAmount) }));
-    allFees
-        .filter((f) => f.kind === 'STOP' && f.busStopId === stop.id)
-        .forEach((f) => byDue.set(f.dueDate, { busFeeId: f.id, dueDate: f.dueDate, amount: Number(f.twoWayAmount) }));
-    return [...byDue.values()];
+/**
+ * Academic year of a due date (April - March): 2026-11-23 -> "2026-2027", 2027-02-10 -> "2026-2027".
+ * Same format as the school's academicConfig.currentYear.
+ */
+export function academicYearOf(dueDate) {
+    const d = new Date(`${String(dueDate).slice(0, 10)}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return null;
+    const start = d.getUTCMonth() < 3 ? d.getUTCFullYear() - 1 : d.getUTCFullYear();
+    return `${start}-${start + 1}`;
 }
+
+/**
+ * Which bus fees does this stop pay?
+ *   1. the stop has its own fee(s)  -> ONLY those (the slab fee is overridden, even on other due dates)
+ *   2. otherwise                    -> the distance-slab fee(s) that cover the stop's distance
+ * Returns [{ busFeeId, dueDate, amount, basis }] sorted by due date.
+ */
+export function resolveFees(allFees, stop) {
+    if (!stop) return [];
+    const stopFees = allFees.filter((f) => f.kind === 'STOP' && f.busStopId === stop.id);
+    const chosen = stopFees.length > 0
+        ? stopFees
+        : allFees.filter((f) => f.kind === 'SLAB' && stop.slabName && stopInSlab(stop.slabName, f.slabName));
+    return chosen
+        .map((f) => ({ busFeeId: f.id, dueDate: f.dueDate, amount: Number(f.twoWayAmount), basis: f.kind }))
+        .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+}
+
+/** Adds academicYear / phase / phaseCount / feeName to every fee ("Transport Fee - Phase 1"). */
+function labelFees(fees) {
+    const byYear = new Map();
+    fees.forEach((f) => {
+        f.academicYear = academicYearOf(f.dueDate);
+        if (!byYear.has(f.academicYear)) byYear.set(f.academicYear, []);
+        byYear.get(f.academicYear).push(f);
+    });
+    byYear.forEach((list) => {
+        list.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+        list.forEach((f, i) => {
+            f.phase = i + 1;
+            f.phaseCount = list.length;
+            f.feeName = list.length > 1 ? `${TRANSPORT_CATEGORY_NAME} - Phase ${i + 1}` : TRANSPORT_CATEGORY_NAME;
+        });
+    });
+    return fees;
+}
+
+const invoiceCustomData = (fee) => ({
+    source: TRANSPORT_SOURCE,
+    busFeeId: fee.busFeeId,
+    academicYear: fee.academicYear,
+    phase: fee.phase,
+    phaseCount: fee.phaseCount
+});
 
 /** The shared structure of one bus fee; creates it on first use and keeps it in sync. */
 async function upsertStructure(schoolId, fee, studentIds, categoryId, tx) {
@@ -107,6 +142,46 @@ async function upsertStructure(schoolId, fee, studentIds, categoryId, tx) {
  * @param {object} [tx] prisma transaction client
  * @returns {Promise<{ created: number, updated: number, cancelled: number }>}
  */
+const fmtDueDate = (d) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || ''));
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : String(d || '');
+};
+const fmtRupees = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+
+/**
+ * Tell the student's parent(s) that new transport fee(s) were added.
+ * Shows in the parent's bell + the "Transport" menu badge (notification type 'transport').
+ * Runs inside the same transaction as the invoice creation, so a rollback leaves no stray alert.
+ */
+async function notifyParentsOfNewFees(schoolId, studentId, newFees, tx) {
+    if (!newFees.length) return;
+    const [student, links] = await Promise.all([
+        tx.student.findFirst({ where: { schoolId, id: studentId }, select: { firstName: true, lastName: true, classId: true } }),
+        tx.parentStudentLink.findMany({ where: { schoolId, studentId }, select: { parent: { select: { userId: true } } } })
+    ]);
+    const userIds = [...new Set(links.map((l) => l.parent?.userId).filter(Boolean))];
+    if (!student || userIds.length === 0) return;
+
+    const name = `${student.firstName || ''} ${student.lastName || ''}`.trim() || 'your child';
+    const parts = newFees.map((f) => `${fmtRupees(f.amount)} (due ${fmtDueDate(f.dueDate)})`);
+    const message = newFees.length === 1
+        ? `New transport fee for ${name}: ${parts[0]}`
+        : `New transport fees for ${name}: ${parts.join(', ')}`;
+    const today = new Date().toISOString().slice(0, 10);
+
+    await tx.notification.createMany({
+        data: userIds.map((userId) => ({
+            schoolId,
+            userId,
+            classId: student.classId || null,
+            type: 'transport',
+            message,
+            date: today,
+            read: false
+        }))
+    });
+}
+
 export async function syncTransportInvoices(schoolId, studentIds, tx = prisma) {
     const result = { created: 0, updated: 0, cancelled: 0 };
     const ids = [...new Set((studentIds || []).filter(Boolean))];
@@ -130,10 +205,11 @@ export async function syncTransportInvoices(schoolId, studentIds, tx = prisma) {
         for (const st of students) {
             const active = ['active'].includes(String(st.status || '').toLowerCase());
             const mapped = Boolean(st.transportRouteId && st.busStopId);
-            const fees = active && mapped ? resolveFees(allFees, st.busStop) : [];
+            const fees = active && mapped ? labelFees(resolveFees(allFees, st.busStop)) : [];
             const wantedBusFeeIds = new Set(fees.map((f) => f.busFeeId));
 
             // ---- create / refresh invoices for the fees that apply ----
+            const newFees = []; // fees the parent has not been billed for before -> one alert per student
             for (const fee of fees) {
                 if (!categoryId) categoryId = (await ensureTransportCategory(schoolId, tx)).id;
                 const structure = await upsertStructure(schoolId, fee, [st.id], categoryId, tx);
@@ -149,31 +225,57 @@ export async function syncTransportInvoices(schoolId, studentIds, tx = prisma) {
                             studentId: st.id,
                             feeStructureId: structure.id,
                             collectionPeriodId: null,
-                            feeName: structure.name,
+                            feeName: fee.feeName,
                             amount: fee.amount,
                             dueDate: fee.dueDate,
                             status: 'Pending',
-                            customData: { source: TRANSPORT_SOURCE, busFeeId: fee.busFeeId }
+                            customData: invoiceCustomData(fee)
                         }
                     });
                     result.created += 1;
+                    newFees.push(fee);
                     continue;
                 }
 
-                if (invoice.status === 'Paid') continue; // never touch a paid invoice
+                if (invoice.status === 'Paid') {
+                    // never touch the money / dates of a paid invoice. Only a one-time label back-fill
+                    // (academic year + phase) for invoices paid before phases existed, so receipts show them.
+                    if (!invoice.customData?.phase) {
+                        await tx.invoice.update({
+                            where: { id: invoice.id },
+                            data: { feeName: fee.feeName, customData: { ...(invoice.customData || {}), ...invoiceCustomData(fee) } }
+                        });
+                        result.updated += 1;
+                    }
+                    continue;
+                }
 
+                const cd = invoice.customData || {};
                 const changed =
                     invoice.status === 'Cancelled' ||
                     Number(invoice.amount) !== Number(fee.amount) ||
-                    invoice.dueDate !== fee.dueDate;
+                    invoice.dueDate !== fee.dueDate ||
+                    invoice.feeName !== fee.feeName ||
+                    cd.academicYear !== fee.academicYear ||
+                    cd.phase !== fee.phase ||
+                    cd.phaseCount !== fee.phaseCount;
+                if (invoice.status === 'Cancelled') newFees.push(fee); // fee assigned again
                 if (changed) {
                     await tx.invoice.update({
                         where: { id: invoice.id },
-                        data: { status: 'Pending', amount: fee.amount, dueDate: fee.dueDate, feeName: structure.name }
+                        data: {
+                            status: 'Pending',
+                            amount: fee.amount,
+                            dueDate: fee.dueDate,
+                            feeName: fee.feeName,
+                            customData: { ...cd, ...invoiceCustomData(fee) }
+                        }
                     });
                     result.updated += 1;
                 }
             }
+
+            await notifyParentsOfNewFees(schoolId, st.id, newFees, tx);
 
             // ---- cancel unpaid transport invoices that no longer apply (unmapped / stop changed / fee deleted) ----
             const stale = await tx.invoice.findMany({

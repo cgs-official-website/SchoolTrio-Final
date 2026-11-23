@@ -30,7 +30,8 @@ export const NotificationProvider = ({ children }) => {
     canteen: 0,
     chats: 0,
     notifications: 0,
-    resources: 0
+    resources: 0,
+    transport: 0
   });
 
   const [lastViewed, setLastViewed] = useState({
@@ -69,6 +70,14 @@ export const NotificationProvider = ({ children }) => {
         .catch(() => { });
     }
 
+    // Opening Transport = the parent has seen the new transport fee alerts
+    if (moduleKey === 'transport') {
+      notificationsApi
+        .markAllNotificationsRead({ type: 'transport' })
+        .then(() => notifyDataChanged('notifications'))
+        .catch(() => { });
+    }
+
     // Auto-mark personal notifications as read when notifications panel is opened
     if (moduleKey === 'notifications') {
       notificationsApi.markAllNotificationsRead().catch(() => { });
@@ -85,7 +94,8 @@ export const NotificationProvider = ({ children }) => {
         canteen: 0,
         chats: 0,
         notifications: 0,
-        resources: 0
+        resources: 0,
+        transport: 0
       });
       return;
     }
@@ -225,6 +235,21 @@ export const NotificationProvider = ({ children }) => {
 
     fetchResourceUnread();
 
+    // 9. Transport fee alerts (parents): unread notifications of type 'transport'
+    const fetchTransportUnread = async () => {
+      if (role !== 'parent') return;
+      try {
+        const res = await notificationsApi.getUnreadNotificationCount({ type: 'transport' });
+        if (!isMounted) return;
+        const count = typeof res?.data?.count === 'number' ? res.data.count : (typeof res?.count === 'number' ? res.count : 0);
+        setUnreadCounts(prev => ({ ...prev, transport: count }));
+      } catch (err) {
+        console.error("Error fetching transport unread count from REST:", err);
+      }
+    };
+
+    fetchTransportUnread();
+
     const handleLiveDataUpdate = (entity) => {
       if (!isMounted) return;
       if (entity === 'notices' || entity === 'all') fetchNoticeUnread();
@@ -235,6 +260,7 @@ export const NotificationProvider = ({ children }) => {
       if (entity === 'chats' || entity === 'all') fetchChatUnread();
       if (entity === 'notifications' || entity === 'all') fetchNotificationUnread();
       if (entity === 'resources' || entity === 'notifications' || entity === 'all') fetchResourceUnread();
+      if (entity === 'transport' || entity === 'notifications' || entity === 'all') fetchTransportUnread();
     };
 
     const handleCustomEvent = (event) => {
@@ -276,6 +302,7 @@ export const NotificationProvider = ({ children }) => {
         fetchCanteenPending();
         fetchComplaintsPending();
         fetchResourceUnread();
+        fetchTransportUnread();
       }
     };
 
@@ -292,6 +319,7 @@ export const NotificationProvider = ({ children }) => {
         fetchCanteenPending();
         fetchComplaintsPending();
         fetchResourceUnread();
+        fetchTransportUnread();
       }
     }, 15000);
 

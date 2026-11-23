@@ -153,6 +153,7 @@ export async function findRoutes(schoolId, filters = {}, tx = prisma) {
         select: {
           id: true,
           registrationNumber: true,
+          customData: true,
           model: true,
           capacity: true,
           status: true
@@ -177,6 +178,7 @@ export async function findRouteById(schoolId, id, tx = prisma) {
         select: {
           id: true,
           registrationNumber: true,
+          customData: true,
           model: true,
           capacity: true,
           status: true
@@ -236,6 +238,7 @@ export async function createRoute(schoolId, data, tx = prisma) {
         select: {
           id: true,
           registrationNumber: true,
+          customData: true,
           model: true,
           capacity: true,
           status: true
@@ -266,6 +269,7 @@ export async function updateRoute(schoolId, id, data, tx = prisma) {
         select: {
           id: true,
           registrationNumber: true,
+          customData: true,
           model: true,
           capacity: true,
           status: true
@@ -428,7 +432,7 @@ export async function findStudentAssignments(schoolId, filters = {}, tx = prisma
           driverName: true,
           driverPhone: true,
           vehicle: {
-            select: { id: true, registrationNumber: true, model: true }
+            select: { id: true, registrationNumber: true, customData: true, model: true }
           }
         }
       },

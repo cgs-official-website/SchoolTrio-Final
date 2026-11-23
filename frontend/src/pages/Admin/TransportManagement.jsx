@@ -16,7 +16,8 @@ import BusStopTab from './transport/BusStopTab';
 import BusFeeTab from './transport/BusFeeTab';
 import StudentMappingTab from './transport/StudentMappingTab';
 import { ExportButtons, Field, Modal, EmptyState, inputCls, primaryBtn, ghostBtn, cardCls, thCls, tdCls, theadRowCls } from './transport/ui';
-import { exportRowsToExcel, exportRowsToPdf, formatDisplayDate } from '../../utils/transportExport';
+import { exportRowsToExcel, exportRowsToPdf, exportReportWithHeader, formatDisplayDate } from '../../utils/transportExport';
+import { getSchoolSettings } from '../../api/settings';
 import {
   LuBus as Bus,
   LuPlus as Plus,
@@ -33,7 +34,7 @@ import {
   LuMapPin as MapPin,
   LuIndianRupee as IndianRupee
 } from 'react-icons/lu';
-import { Edit, Trash2, Eye } from 'lucide-react';
+import { Edit, Trash2, Eye, FileSpreadsheet, FileText } from 'lucide-react';
 import ConfirmModal from '../../components/ConfirmModal';
 import toast from 'react-hot-toast';
 import usePermissions from '../../hooks/usePermissions';
@@ -51,6 +52,21 @@ export default function TransportManagement() {
   const [activeTab, setActiveTab] = useState('routes'); // 'routes' | 'stops' | 'fees' | 'assignments' | 'vehicles'
   const [mappingPreset, setMappingPreset] = useState(null);
   const [assignmentRows, setAssignmentRows] = useState([]);
+  const [schoolInfo, setSchoolInfo] = useState({ name: '', address: '', academicYear: '' });
+
+  // school name / address / academic year printed at the top of the bus route list
+  useEffect(() => {
+    getSchoolSettings()
+      .then((res) => {
+        const d = res?.data || res || {};
+        setSchoolInfo({
+          name: d.name || d.schoolName || '',
+          address: d.address || d.location || '',
+          academicYear: d.academicConfig?.currentYear || ''
+        });
+      })
+      .catch(() => { });
+  }, []);
 
   const [routes, setRoutes] = useState([]);
   const [routeSearch, setRouteSearch] = useState('');
@@ -129,6 +145,7 @@ export default function TransportManagement() {
     name: r.name,
     routeNumber: r.routeNumber || '',
     vehicleNumber: r.vehicle?.registrationNumber || r.routeNumber || 'N/A',
+    vehicleName: r.vehicle?.customData?.vehicleName || r.vehicle?.model || '',
     vehicleId: r.vehicleId || null,
     driverName: r.driverName || '',
     driverPhone: String(r.driverPhone || '').replace(/\D/g, '').slice(-10),
@@ -520,17 +537,45 @@ export default function TransportManagement() {
     else exportRowsToPdf(base, `Student List - ${route.name} (${route.vehicleNumber})`, headers, rows);
   };
 
+  // "BUS ROUTE LIST - VAN 1": one-click report of the students on a bus, with the school header
+  const downloadRouteList = (route, type) => {
+    const students = assignmentRows.filter(a => a.transportRouteId === route.id);
+    if (students.length === 0) {
+      toast.error(`No students are mapped to ${route.name} yet.`);
+      return;
+    }
+    const rows = students.map((a, i) => [
+      i + 1,
+      `${a.firstName || ''} ${a.lastName || ''}`.trim(),
+      a.admissionNumber || '',
+      a.class?.name || '',
+      a.section?.name || '',
+      a.parents?.[0]?.parent?.phone || '',
+      a.busStop?.stopName || a.pickupStop?.stopName || '',
+      a.busStop?.slabName || ''
+    ]);
+    exportReportWithHeader(type, {
+      fileName: `BusRoute_${route.name}`,
+      schoolName: schoolInfo.name,
+      address: schoolInfo.address,
+      title: `BUS ROUTE LIST - ${route.name}${route.vehicleName ? ` (${route.vehicleName})` : ''}`,
+      academicYear: schoolInfo.academicYear,
+      headers: ['SL. NO.', 'STUDENT NAME', 'ADM NO', 'CLASS', 'SEC', 'MOBILE', 'STOP', 'DISTANCE (KM)'],
+      rows
+    });
+  };
+
   // Bus routes table: search + export
   const filteredRoutes = routes.filter(r => {
     const q = routeSearch.trim().toLowerCase();
     if (!q) return true;
-    return [r.name, r.vehicleNumber, r.driverName].some(v => (v || '').toLowerCase().includes(q));
+    return [r.name, r.vehicleNumber, r.vehicleName, r.driverName].some(v => (v || '').toLowerCase().includes(q));
   });
 
   const exportRoutesList = (type) => {
-    const headers = ['S.No', 'Bus Route Name', 'Bus Number', 'Driver Name', 'Driver Phone', 'Students', 'Seats'];
+    const headers = ['S.No', 'Vehicle Name', 'Bus Route Name', 'Bus Number', 'Driver Name', 'Driver Phone', 'Students', 'Seats'];
     const rows = filteredRoutes.map((r, i) => [
-      i + 1, r.name, r.vehicleId ? r.vehicleNumber : '', r.driverName || '', r.driverPhone || '', r.assignedStudents?.length || 0, r.capacity
+      i + 1, r.vehicleName || '', r.name, r.vehicleId ? r.vehicleNumber : '', r.driverName || '', r.driverPhone || '', r.assignedStudents?.length || 0, r.capacity
     ]);
     if (type === 'excel') exportRowsToExcel('Bus_Routes', headers, rows, 'Bus Routes');
     else exportRowsToPdf('Bus_Routes', 'Bus Routes', headers, rows);
@@ -686,6 +731,7 @@ export default function TransportManagement() {
                 <thead>
                   <tr className={theadRowCls}>
                     <th className={thCls}>S.No</th>
+                    <th className={thCls}>Vehicle Name</th>
                     <th className={thCls}>Bus Route Name</th>
                     <th className={thCls}>Bus Number</th>
                     <th className={thCls}>Driver</th>
@@ -697,7 +743,7 @@ export default function TransportManagement() {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm text-slate-600 dark:text-slate-300 font-medium">
                   {filteredRoutes.length === 0 ? (
                     <tr>
-                      <td colSpan="7">
+                      <td colSpan="8">
                         <EmptyState
                           icon={Bus}
                           title="No Bus Routes Found"
@@ -712,6 +758,7 @@ export default function TransportManagement() {
                       return (
                         <tr key={route.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
                           <td className={tdCls}>{i + 1}</td>
+                          <td className={`${tdCls} font-semibold text-slate-800 dark:text-slate-100`}>{route.vehicleName || '-'}</td>
                           <td className={`${tdCls} font-bold text-slate-900 dark:text-white`}>{route.name}</td>
                           <td className={`${tdCls} font-mono text-xs font-bold`}>
                             {route.vehicleId ? route.vehicleNumber : <span className="text-amber-600 font-sans font-semibold">No bus assigned</span>}
@@ -731,7 +778,23 @@ export default function TransportManagement() {
                               <Users size={16} /> <span className="text-xs font-bold">{count}</span>
                             </button>
                           </td>
-                          <td className={`${tdCls} text-right`}>
+                          <td className={`${tdCls} text-right whitespace-nowrap`}>
+                            <button
+                              type="button"
+                              onClick={() => downloadRouteList(route, 'excel')}
+                              className="p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                              title={`Download ${route.name} student list (Excel)`}
+                            >
+                              <FileSpreadsheet size={18} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => downloadRouteList(route, 'pdf')}
+                              className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                              title={`Download ${route.name} student list (PDF)`}
+                            >
+                              <FileText size={18} />
+                            </button>
                             {hasEditPermission && (
                               <button
                                 type="button"

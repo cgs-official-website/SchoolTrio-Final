@@ -18,7 +18,6 @@ import {
     LuArrowLeftRight
 } from 'react-icons/lu';
 
-const BASIS_LABEL = { STOP: 'Bus stop fee', SLAB: 'Distance slab fee' };
 
 function InfoTile({ icon: Icon, label, value, mono = false }) {
     return (
@@ -114,7 +113,10 @@ function ChildTransportCard({ item, showName }) {
                                 {item.fees.map((f) => (
                                     <tr key={f.id}>
                                         <td className="py-3 px-4 font-medium">{formatDisplayDate(f.dueDate)}</td>
-                                        <td className="py-3 px-4">{BASIS_LABEL[f.basis] || 'Transport fee'}</td>
+                                        <td className="py-3 px-4">
+                                            {f.phaseCount > 1 ? `Transport Fee - Phase ${f.phase}` : 'Transport Fee'}
+                                            {f.academicYear && <span className="block text-xs text-slate-400">Academic Year {f.academicYear}</span>}
+                                        </td>
                                         <td className="py-3 px-4 text-right font-bold">₹{formatAmount(f.amount)}</td>
                                     </tr>
                                 ))}

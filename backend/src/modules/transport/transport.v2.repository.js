@@ -8,7 +8,7 @@ const stopInclude = {
                     id: true,
                     name: true,
                     routeNumber: true,
-                    vehicle: { select: { id: true, registrationNumber: true } }
+                    vehicle: { select: { id: true, registrationNumber: true, model: true, customData: true } }
                 }
             }
         }
@@ -119,6 +119,21 @@ export async function findBusFeeById(schoolId, id, tx = prisma) {
     return tx.busFee.findFirst({ where: { schoolId, id }, include: feeInclude });
 }
 
+export async function findSlabFeesByDueDate(schoolId, dueDate, excludeId = null, tx = prisma) {
+    return tx.busFee.findMany({
+        where: { schoolId, kind: 'SLAB', dueDate, ...(excludeId ? { id: { not: excludeId } } : {}) },
+        select: { id: true, slabName: true }
+    });
+}
+
+/** Every fee entry of one kind (SLAB or STOP) - used to enforce "one range / one stop, max 2 phases a year". */
+export async function findFeesByKind(schoolId, kind, excludeId = null, tx = prisma) {
+    return tx.busFee.findMany({
+        where: { schoolId, kind, ...(excludeId ? { id: { not: excludeId } } : {}) },
+        select: { id: true, slabName: true, busStopId: true, dueDate: true }
+    });
+}
+
 export async function findDuplicateFee(schoolId, data, excludeId = null, tx = prisma) {
     const where = { schoolId, kind: data.kind, dueDate: data.dueDate };
     if (data.kind === 'STOP') where.busStopId = data.busStopId;
@@ -227,7 +242,7 @@ export async function findStudentsTransportDetail(schoolId, studentIds, tx = pri
                     name: true,
                     driverName: true,
                     driverPhone: true,
-                    vehicle: { select: { id: true, registrationNumber: true, model: true } }
+                    vehicle: { select: { id: true, registrationNumber: true, model: true, customData: true } }
                 }
             },
             busStop: { select: { id: true, stopName: true, slabName: true } },

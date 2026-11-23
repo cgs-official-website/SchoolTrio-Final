@@ -1,7 +1,8 @@
 import * as repo from './transport.v2.repository.js';
 import * as baseRepo from './transport.repository.js';
 import { createAuditLog } from '../audit/audit.repository.js';
-import { syncTransportInvoices, findMappedStudentIds, syncAllTransportInvoices } from './transport.billing.js';
+import { parseSlab, formatSlab, slabsOverlap } from './transport.slab.js';
+import { syncTransportInvoices, findMappedStudentIds, syncAllTransportInvoices, resolveFees, academicYearOf } from './transport.billing.js';
 import { SYSTEM_ROLES } from '../../config/constants.js';
 import { TenantAccessError, NotFoundError, ConflictError, ValidationError, ForbiddenError } from '../../utils/app-error.js';
 
@@ -30,15 +31,17 @@ const parseKm = (label) => {
     return m ? Number(m[1]) : null;
 };
 const formatKm = (n) => `${Number(n)} KM`;
+// Vehicle display name: name typed in the Vehicle tab, else model, else registration number
+const vehicleNameOf = (v) => v?.customData?.vehicleName || v?.model || v?.registrationNumber || null;
 const slabFromInput = (data) => {
     if (data.distanceKm !== null && data.distanceKm !== undefined && data.distanceKm !== '') return formatKm(data.distanceKm);
     return data.slabName ? String(data.slabName).trim() : null;
 };
-const sameDistance = (a, b) => {
-    const na = parseKm(a);
-    const nb = parseKm(b);
-    if (na !== null && nb !== null) return na === nb;
-    return String(a ?? '').toLowerCase().replace(/\s+/g, '') === String(b ?? '').toLowerCase().replace(/\s+/g, '');
+// Slab fee label from the form: a From-To range wins, then the legacy single distance
+const slabFromFeeInput = (data) => {
+    const has = (v) => v !== null && v !== undefined && v !== '';
+    if (has(data.distanceFromKm) && has(data.distanceToKm)) return formatSlab(data.distanceFromKm, data.distanceToKm);
+    return slabFromInput(data);
 };
 
 const shapeStop = (s) => {
@@ -55,7 +58,8 @@ const shapeStop = (s) => {
         buses: routes.map((r) => ({
             routeId: r.id,
             routeName: r.name,
-            busNumber: r.vehicle?.registrationNumber || r.routeNumber || null
+            busNumber: r.vehicle?.registrationNumber || r.routeNumber || null,
+            vehicleName: vehicleNameOf(r.vehicle)
         })),
         studentCount: s._count?.students ?? 0,
         feeCount: s._count?.fees ?? 0,
@@ -72,6 +76,10 @@ const shapeFee = (f) => {
         stopName: f.busStop?.stopName || null,
         slabName: slab,
         distanceKm: parseKm(slab),
+        // slab fees cover a range: { from, to } in KM (a single distance has from === to)
+        distanceFromKm: f.kind === 'SLAB' ? parseSlab(slab)?.from ?? null : null,
+        distanceToKm: f.kind === 'SLAB' ? parseSlab(slab)?.to ?? null : null,
+        slabLabel: f.kind === 'SLAB' && parseSlab(slab) ? formatSlab(parseSlab(slab).from, parseSlab(slab).to) : slab,
         dueDate: f.dueDate,
         // single amount (the old one-way / two-way pair is kept in sync in the DB)
         amount: Number(f.twoWayAmount),
@@ -159,13 +167,50 @@ export async function deleteBusStop(schoolId, id, actor = {}) {
 const normalizeFee = (data) => ({
     ...data,
     busStopId: data.kind === 'STOP' ? data.busStopId : null,
-    slabName: data.kind === 'SLAB' ? slabFromInput(data) : null
+    slabName: data.kind === 'SLAB' ? slabFromFeeInput(data) : null
 });
+
+const MAX_PHASES_PER_YEAR = 2;
+const fmtDue = (d) => String(d || '').split('-').reverse().join('/');
 
 async function validateFeeTarget(schoolId, data, excludeId = null) {
     if (data.kind === 'STOP') {
         const stop = await repo.findBusStopById(schoolId, data.busStopId);
         if (!stop) throw new NotFoundError('Bus stop not found in active school');
+        // one stop = max 2 payments (Phase 1 / Phase 2) per academic year, each on a different due date
+        const mine = (await repo.findFeesByKind(schoolId, 'STOP', excludeId)).filter((f) => f.busStopId === data.busStopId);
+        if (mine.some((f) => f.dueDate === data.dueDate)) {
+            throw new ConflictError('This stop already has a stop fee for this due date. Edit that entry instead of adding another.');
+        }
+        const sameYear = mine.filter((f) => academicYearOf(f.dueDate) === academicYearOf(data.dueDate));
+        if (sameYear.length >= MAX_PHASES_PER_YEAR) {
+            throw new ConflictError(`This stop already has Phase 1 and Phase 2 stop fees for ${academicYearOf(data.dueDate)}. Edit them instead of adding more.`);
+        }
+        return;
+    }
+    if (data.kind === 'SLAB') {
+        const all = await repo.findFeesByKind(schoolId, 'SLAB', excludeId);
+        const mine = parseSlab(data.slabName);
+        // a distance can belong to ONE slab range only (whatever the due date)
+        const clash = all.find((f) => {
+            if (!slabsOverlap(f.slabName, data.slabName)) return false;
+            const o = parseSlab(f.slabName);
+            return !(o && mine && o.from === mine.from && o.to === mine.to); // same range = its other phase, allowed
+        });
+        if (clash) {
+            const c = parseSlab(clash.slabName);
+            throw new ConflictError(`This distance range overlaps the existing slab ${c ? formatSlab(c.from, c.to) : clash.slabName} (due ${fmtDue(clash.dueDate)}). A distance can be in only one slab - edit that slab instead.`);
+        }
+        // same range: max 2 payments (Phase 1 / Phase 2) per academic year, on different due dates
+        const same = all.filter((f) => slabsOverlap(f.slabName, data.slabName));
+        if (same.some((f) => f.dueDate === data.dueDate)) {
+            throw new ConflictError('This slab already has a fee for this due date. Edit that entry instead of adding another.');
+        }
+        const sameYear = same.filter((f) => academicYearOf(f.dueDate) === academicYearOf(data.dueDate));
+        if (sameYear.length >= MAX_PHASES_PER_YEAR) {
+            throw new ConflictError(`This slab already has Phase 1 and Phase 2 fees for ${academicYearOf(data.dueDate)}. Edit them instead of adding more.`);
+        }
+        return;
     }
     const dup = await repo.findDuplicateFee(schoolId, data, excludeId);
     if (dup) throw new ConflictError('A fee entry already exists for this stop/distance and due date');
@@ -293,18 +338,21 @@ export async function deleteMapping(schoolId, studentId, actor = {}) {
 // ---------------- PARENT / STUDENT SELF-SERVICE ----------------
 const roleOf = (actor) => String(actor?.systemRole || actor?.role || '').toUpperCase();
 
-// Fee schedule for one stop: stop-specific fee wins over a distance-slab fee for the same due date.
+// Fee schedule for one stop: if the stop has its own fee, only that is used (the slab fee is skipped).
+// Same rule as the invoices (resolveFees in transport.billing.js), plus a phase / academic year label.
 async function resolveFeesForStop(schoolId, stop) {
     if (!stop) return [];
     const all = await repo.findFeesForStop(schoolId, stop.id);
-    const byDue = new Map();
-    all
-        .filter((f) => f.kind === 'SLAB' && stop.slabName && sameDistance(f.slabName, stop.slabName))
-        .forEach((f) => byDue.set(f.dueDate, { id: f.id, dueDate: f.dueDate, amount: Number(f.twoWayAmount), basis: 'SLAB' }));
-    all
-        .filter((f) => f.kind === 'STOP')
-        .forEach((f) => byDue.set(f.dueDate, { id: f.id, dueDate: f.dueDate, amount: Number(f.twoWayAmount), basis: 'STOP' }));
-    return [...byDue.values()].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+    const fees = resolveFees(all, stop).map((f) => ({
+        id: f.busFeeId, dueDate: f.dueDate, amount: f.amount, basis: f.basis, academicYear: academicYearOf(f.dueDate)
+    }));
+    const perYear = {};
+    fees.forEach((f) => { perYear[f.academicYear] = (perYear[f.academicYear] || 0) + 1; });
+    const seen = {};
+    return fees.map((f) => {
+        seen[f.academicYear] = (seen[f.academicYear] || 0) + 1;
+        return { ...f, phase: seen[f.academicYear], phaseCount: perYear[f.academicYear] };
+    });
 }
 
 /**
@@ -351,6 +399,7 @@ export async function getMyTransport(schoolId, query = {}, actor = {}) {
                 assigned,
                 routeName: st.transportRoute?.name || null,
                 busNumber: st.transportRoute?.vehicle?.registrationNumber || null,
+                vehicleName: vehicleNameOf(st.transportRoute?.vehicle),
                 busModel: st.transportRoute?.vehicle?.model || null,
                 driverName: st.transportRoute?.driverName || null,
                 driverPhone: st.transportRoute?.driverPhone || null,

@@ -1,22 +1,23 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { getStudentInvoices, payInvoice } from '../../api/invoices';
-import { notifyDataChanged } from '../../utils/liveData';
+import { getStudentInvoices } from '../../api/invoices';
+import { getSchoolSettings } from '../../api/settings';
+import { downloadInvoicePdf } from '../../utils/feeDocuments';
 import { useLiveDataRefresh } from '../../hooks/useLiveDataRefresh';
-import { LuCreditCard as _CreditCard, LuReceipt as Receipt, LuCircleCheck as CheckCircle2, LuTrendingUp as TrendingUp, LuTriangleAlert as AlertTriangle, LuInfo as _Info } from 'react-icons/lu';
+import { LuCreditCard as _CreditCard, LuReceipt as Receipt, LuCircleCheck as CheckCircle2, LuTrendingUp as TrendingUp, LuTriangleAlert as AlertTriangle, LuInfo as _Info, LuDownload as Download, LuClock as Clock } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 
 export default function ParentFees() {
   const { userProfile } = useAuth();
   const outletContext = useOutletContext();
+  const activeChild = outletContext?.activeChild;
   const studentId = outletContext?.activeStudentId || userProfile?.linkedStudentId;
 
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ totalInvoiced: 0, paid: 0, outstanding: 0, overdueCount: 0, overdueAmount: 0 });
-  const [selectedInvoice, setSelectedInvoice] = useState(null);
-  const [paying, setPaying] = useState(false);
+  const [schoolName, setSchoolName] = useState('');
 
   const mountedRef = useRef(true);
   const currentStudentRef = useRef(studentId);
@@ -86,7 +87,6 @@ export default function ParentFees() {
       return;
     }
 
-    setSelectedInvoice(null);
     fetchInvoices(studentId, false);
 
     return () => {
@@ -103,46 +103,31 @@ export default function ParentFees() {
 
   useLiveDataRefresh(handleLiveRefresh, [handleLiveRefresh], ['fees', 'invoices']);
 
-  const handleSimulatePayment = (invoice) => {
-    setSelectedInvoice(invoice);
+  // School name for the invoice / receipt header (silently ignored if the parent role cannot read it)
+  useEffect(() => {
+    getSchoolSettings()
+      .then((res) => {
+        const d = res?.data || res;
+        if (mountedRef.current) setSchoolName(d?.name || d?.schoolName || '');
+      })
+      .catch(() => { });
+  }, []);
+
+  const studentInfo = {
+    name: [activeChild?.firstName, activeChild?.lastName].filter(Boolean).join(' ') || activeChild?.name || userProfile?.name || '',
+    admissionNumber: activeChild?.admissionNumber || '',
+    className: activeChild?.className || activeChild?.class?.name || '',
+    sectionName: activeChild?.sectionName || activeChild?.section?.name || ''
   };
 
-  const executePayment = async () => {
-    if (!selectedInvoice) return;
-    setPaying(true);
-
-    try {
-      const res = await payInvoice(selectedInvoice.id, {
-        paymentMode: 'Online',
-        remarks: 'Online payment via parent portal'
-      });
-
-      const paidInvoice = res?.data;
-      const invoiceName = selectedInvoice.feeName || selectedInvoice.name || 'Fee Invoice';
-      const amount = paidInvoice?.amount !== undefined ? paidInvoice.amount : selectedInvoice.amount;
-      const receiptNo = paidInvoice?.receiptNumber ? ` (Receipt: ${paidInvoice.receiptNumber})` : '';
-
-      toast.success(`Payment of ₹${amount} for "${invoiceName}" successfully processed!${receiptNo}`);
-      setSelectedInvoice(null);
-
-      // Refresh authoritative invoice list and balance summary from PostgreSQL
-      await fetchInvoices(studentId, false);
-
-      notifyDataChanged('fees');
-      notifyDataChanged('invoices');
-
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('sms:invoice-paid', { detail: { studentId } }));
-      }
-    } catch (e) {
-      console.error("Payment error:", e);
-      toast.error(e.message || "Failed to process payment. Please try again.");
-    } finally {
-      if (mountedRef.current) {
-        setPaying(false);
-      }
-    }
+  const daysBetween = (dueDate) => {
+    const due = new Date(`${String(dueDate).slice(0, 10)}T00:00:00`);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return Math.round((due - now) / 86400000);
   };
+
+  const handleInvoice = (inv) => downloadInvoicePdf({ schoolName, student: studentInfo, invoice: inv });
 
   if (loading) {
     return (
@@ -215,8 +200,8 @@ export default function ParentFees() {
       {/* Dues Alert Banner */}
       {stats.outstanding > 0 && (
         <div className={`rounded-3xl p-5 border shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fade-in ${stats.overdueCount > 0
-            ? 'bg-gradient-to-r from-red-50 to-orange-50 border-red-200 text-red-900'
-            : 'bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200 text-amber-900'
+          ? 'bg-gradient-to-r from-red-50 to-orange-50 border-red-200 text-red-900'
+          : 'bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200 text-amber-900'
           }`}>
           <div className="flex items-start gap-4 min-w-0 w-full">
             <div className={`p-3 rounded-2xl shrink-0 mt-0.5 ${stats.overdueCount > 0 ? 'bg-red-500 text-white shadow-md shadow-red-500/20 animate-pulse' : 'bg-amber-500 text-white shadow-md shadow-amber-500/20'
@@ -227,7 +212,7 @@ export default function ParentFees() {
               <div className="flex items-center gap-2">
                 <span className={`text-xs font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${stats.overdueCount > 0 ? 'bg-red-200 text-red-950 font-black' : 'bg-amber-200 text-amber-950 font-bold'
                   }`}>
-                  {stats.overdueCount > 0 ? '⚠️ Immediate Action Required' : '💳 Pending Payment Alert'}
+                  {stats.overdueCount > 0 ? '⚠️ Overdue Fees' : '💳 Pending Fees'}
                 </span>
                 {stats.overdueCount > 0 && (
                   <span className="text-xs font-bold text-red-700 bg-white/80 px-2 py-0.5 rounded-full border border-red-200">
@@ -237,14 +222,14 @@ export default function ParentFees() {
               </div>
               <h3 className="text-lg font-black text-slate-900 dark:text-white mt-1">
                 {stats.overdueCount > 0
-                  ? `You have ₹${stats.outstanding.toLocaleString()} in overdue fees requiring immediate settlement.`
+                  ? `You have ₹${stats.overdueAmount.toLocaleString()} in overdue fees. Please pay at the school office.`
                   : `You have an outstanding balance of ₹${stats.outstanding.toLocaleString()} pending payment.`
                 }
               </h3>
               <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5">
                 {stats.overdueCount > 0
-                  ? 'Please click "Pay Immediately" below on overdue items to clear your account.'
-                  : 'Please settle pending invoices before their due date to keep your child’s account active.'
+                  ? 'Payments are collected at the school office. Please settle overdue invoices as soon as possible.'
+                  : 'Payments are collected at the school office. Please settle pending invoices before their due date.'
                 }
               </p>
             </div>
@@ -288,7 +273,7 @@ export default function ParentFees() {
                       <td className="py-4 px-6">
                         <p className="font-semibold text-slate-900 dark:text-white">{feeTitle}</p>
                         <p className="text-xs text-slate-400 dark:text-slate-300 mt-0.5">
-                          {inv.createdAt ? `Invoiced on ${new Date(inv.createdAt).toLocaleDateString('en-GB')}` : 'Standard Fee'}
+                          {inv.createdAt ? `Invoiced on ${new Date(inv.createdAt).toLocaleDateString('en-GB')}` : 'Standard Fee'}{inv.customData?.academicYear ? ` · AY ${inv.customData.academicYear}` : ''}
                         </p>
                       </td>
                       <td className="py-4 px-6">
@@ -320,20 +305,34 @@ export default function ParentFees() {
                         )}
                       </td>
                       <td className="py-4 px-6 text-right">
-                        {inv.status !== 'Paid' && inv.status !== 'Cancelled' ? (
-                          <button
-                            onClick={() => handleSimulatePayment(inv)}
-                            className={`px-4 py-2 text-white rounded-xl text-xs font-bold shadow-sm transition-all hover:scale-105 active:scale-95 ${isOverdue ? 'bg-red-600 hover:bg-red-700 shadow-red-600/30' : 'bg-primary-600 hover:bg-primary-700 shadow-primary-600/30'
-                              }`}
-                          >
-                            {isOverdue ? 'Pay Immediately' : 'Pay Dues'}
-                          </button>
-                        ) : inv.status === 'Cancelled' ? (
+                        {inv.status === 'Cancelled' ? (
                           <span className="text-slate-400 dark:text-slate-300 text-xs font-medium italic">Cancelled</span>
+                        ) : inv.status === 'Paid' ? (
+                          <div className="flex flex-col items-end gap-1.5">
+                            <button
+                              onClick={() => handleInvoice(inv)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors"
+                            >
+                              <Download size={13} /> Invoice
+                            </button>
+                            <span className="text-[11px] text-slate-400 dark:text-slate-300">
+                              {inv.receiptNumber ? `${inv.receiptNumber}` : 'Fully Settled'}
+                              {inv.paidAt ? ` · Paid ${new Date(inv.paidAt).toLocaleDateString('en-GB')}` : ''}
+                            </span>
+                          </div>
                         ) : (
-                          <span className="text-slate-400 dark:text-slate-300 text-xs font-medium italic">
-                            {inv.receiptNumber ? `Paid (${inv.receiptNumber})` : 'Fully Settled'}
-                          </span>
+                          <div className="flex flex-col items-end gap-1.5">
+                            {inv.dueDate && (() => {
+                              const d = daysBetween(inv.dueDate);
+                              return d < 0 ? (
+                                <span className="text-[11px] font-bold text-red-600">Overdue by {Math.abs(d)} day{Math.abs(d) === 1 ? '' : 's'} · Pay at school office</span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700">
+                                  <Clock size={11} /> {d === 0 ? 'Due today' : `Due in ${d} day${d === 1 ? '' : 's'}`} · Pay at school office
+                                </span>
+                              );
+                            })()}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -345,54 +344,6 @@ export default function ParentFees() {
         )}
       </div>
 
-      {/* Simulated Payment Modal */}
-      {selectedInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto custom-scrollbar border border-slate-100 dark:border-slate-800 shadow-2xl relative animate-in fade-in zoom-in duration-200">
-            <h3 className="text-lg font-bold text-slate-950 mb-2">Simulate Fee Payment</h3>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">
-              You are simulating a secure online payment of <span className="font-bold text-slate-900 dark:text-white">₹{selectedInvoice.amount}</span> for <strong>{selectedInvoice.feeName || selectedInvoice.name}</strong>.
-            </p>
-            <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 mb-6 border border-slate-100 dark:border-slate-800 space-y-2">
-              <div className="flex justify-between text-xs font-medium text-slate-400 dark:text-slate-300">
-                <span>INVOICE</span>
-                <span className="text-slate-800 dark:text-slate-100 font-mono">#{selectedInvoice.id.slice(0, 8).toUpperCase()}</span>
-              </div>
-              <div className="flex justify-between text-xs font-medium text-slate-400 dark:text-slate-300">
-                <span>DUE DATE</span>
-                <span className="text-slate-800 dark:text-slate-100">{new Date(selectedInvoice.dueDate).toLocaleDateString('en-GB')}</span>
-              </div>
-              <div className="border-t border-slate-200 dark:border-slate-700 my-2 pt-2 flex justify-between text-sm font-bold text-slate-900 dark:text-white">
-                <span>Total Amount Due</span>
-                <span>₹{selectedInvoice.amount}</span>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                disabled={paying}
-                onClick={() => setSelectedInvoice(null)}
-                className="px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-sm transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={paying}
-                onClick={executePayment}
-                className="w-full sm:w-auto px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-semibold transition-all flex justify-center items-center gap-2 shadow-sm"
-              >
-                {paying ? (
-                  <>
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    <span>Processing...</span>
-                  </>
-                ) : (
-                  <span>Simulate Payment</span>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

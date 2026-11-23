@@ -31,9 +31,16 @@ const distanceKm = z.preprocess(
     z.coerce.number({ invalid_type_error: 'Distance must be a number' }).min(0, 'Distance cannot be negative').max(9999, 'Distance is too large').nullable().optional()
 );
 
+// Bus stop distance is mandatory: it decides which distance-slab fee applies to the stop
+const requiredDistanceKm = z.preprocess(
+    (v) => (v === '' || v === undefined ? null : v),
+    z.coerce.number({ invalid_type_error: 'Distance (KM) is required', required_error: 'Distance (KM) is required' })
+        .min(0, 'Distance cannot be negative').max(9999, 'Distance is too large')
+);
+
 const busStopBody = {
     stopName: z.string().trim().min(1, 'Stop name is required').max(150, 'Stop name cannot exceed 150 characters'),
-    distanceKm,
+    distanceKm: requiredDistanceKm,
     slabName: optionalText(100), // legacy - still accepted
     geocode: optionalText(100),
     routeIds: z.array(uuid('routeId')).min(1, 'Select at least one route').max(200)
@@ -64,7 +71,9 @@ const busFeeBody = z
     .object({
         kind: z.enum(['STOP', 'SLAB']),
         busStopId: uuid('busStopId').nullable().optional(),
-        distanceKm,
+        distanceKm, // legacy single distance - still accepted
+        distanceFromKm: distanceKm, // slab range start (KM)
+        distanceToKm: distanceKm, // slab range end (KM)
         slabName: optionalText(100), // legacy - still accepted
         dueDate: dateStr('Due date'),
         amount: amount('Fee amount')
@@ -73,8 +82,17 @@ const busFeeBody = z
         if (d.kind === 'STOP' && !d.busStopId) {
             ctx.addIssue({ code: 'custom', path: ['busStopId'], message: 'Bus stop is required' });
         }
-        if (d.kind === 'SLAB' && (d.distanceKm === null || d.distanceKm === undefined) && !(d.slabName && d.slabName.trim())) {
-            ctx.addIssue({ code: 'custom', path: ['distanceKm'], message: 'Distance (KM) is required' });
+        if (d.kind === 'SLAB') {
+            const hasFrom = d.distanceFromKm !== null && d.distanceFromKm !== undefined;
+            const hasTo = d.distanceToKm !== null && d.distanceToKm !== undefined;
+            const hasLegacy = (d.distanceKm !== null && d.distanceKm !== undefined) || Boolean(d.slabName && d.slabName.trim());
+            if (hasFrom !== hasTo) {
+                ctx.addIssue({ code: 'custom', path: [hasFrom ? 'distanceToKm' : 'distanceFromKm'], message: 'Enter both From KM and To KM' });
+            } else if (!hasFrom && !hasLegacy) {
+                ctx.addIssue({ code: 'custom', path: ['distanceFromKm'], message: 'Distance range (From KM and To KM) is required' });
+            } else if (hasFrom && Number(d.distanceFromKm) > Number(d.distanceToKm)) {
+                ctx.addIssue({ code: 'custom', path: ['distanceToKm'], message: 'To KM must be greater than or equal to From KM' });
+            }
         }
     });
 
