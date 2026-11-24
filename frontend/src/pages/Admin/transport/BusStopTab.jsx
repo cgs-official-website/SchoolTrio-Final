@@ -21,6 +21,7 @@ export default function BusStopTab({ routes, canCreate, canEdit, canDelete, onCh
     const [stops, setStops] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
+    const [vehicleFilter, setVehicleFilter] = useState('ALL');
     const [form, setForm] = useState(null);
     const [saving, setSaving] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, id: null, name: '' });
@@ -42,14 +43,25 @@ export default function BusStopTab({ routes, canCreate, canEdit, canDelete, onCh
 
     const vehicleNamesOf = (s) => [...new Set((s.buses || []).map((b) => b.vehicleName || b.busNumber).filter(Boolean))];
 
+    // every vehicle that serves at least one stop (for the filter dropdown)
+    const vehicleOptions = useMemo(() => {
+        const names = new Set();
+        stops.forEach((s) => vehicleNamesOf(s).forEach((n) => names.add(n)));
+        return [...names].sort((x, y) => x.localeCompare(y, undefined, { numeric: true, sensitivity: 'base' }));
+    }, [stops]);
+
+    // if the chosen vehicle no longer has any stop (e.g. after an edit), fall back to "All"
+    const activeVehicle = vehicleOptions.includes(vehicleFilter) ? vehicleFilter : 'ALL';
+
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
-        if (!q) return stops;
-        return stops.filter((s) =>
-            [s.stopName, s.distanceLabel, s.geocode, ...(s.buses || []).flatMap((b) => [b.vehicleName, b.busNumber, b.routeName])]
-                .some((v) => (v || '').toLowerCase().includes(q))
-        );
-    }, [stops, search]);
+        return stops.filter((s) => {
+            if (activeVehicle !== 'ALL' && !vehicleNamesOf(s).includes(activeVehicle)) return false;
+            if (!q) return true;
+            return [s.stopName, s.distanceLabel, s.geocode, ...(s.buses || []).flatMap((b) => [b.vehicleName, b.busNumber, b.routeName])]
+                .some((v) => (v || '').toLowerCase().includes(q));
+        });
+    }, [stops, search, activeVehicle]);
 
     const headers = ['S.No', 'Bus Stop Name', 'Vehicle Name', 'Distance (KM)', 'Geocode', 'Students'];
     const rowsForExport = () =>
@@ -132,18 +144,29 @@ export default function BusStopTab({ routes, canCreate, canEdit, canDelete, onCh
 
     return (
         <div className="space-y-6">
-            <div className={`${cardCls} flex flex-col md:flex-row justify-between items-center gap-4 p-4`}>
-                <div className="relative w-full md:max-w-md">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input
-                        type="text"
-                        placeholder="Search bus stop, bus number, route..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
-                    />
+            <div className={`${cardCls} flex flex-wrap items-center gap-3 p-4`}>
+                <div className="flex flex-1 min-w-[260px] gap-3">
+                    <div className="relative flex-1 md:max-w-md">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Search bus stop, bus number, route..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                        />
+                    </div>
+                    <select
+                        value={activeVehicle}
+                        onChange={(e) => setVehicleFilter(e.target.value)}
+                        className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-semibold text-slate-700 dark:text-slate-200"
+                        title="Filter by vehicle"
+                    >
+                        <option value="ALL">All Vehicles</option>
+                        {vehicleOptions.map((v) => <option key={v} value={v}>{v}</option>)}
+                    </select>
                 </div>
-                <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+                <div className="flex flex-nowrap items-center gap-3 ml-auto">
                     <ExportButtons
                         disabled={filtered.length === 0}
                         onExcel={() => exportRowsToExcel('Bus_Stops', headers, rowsForExport(), 'Bus Stops')}
@@ -178,7 +201,7 @@ export default function BusStopTab({ routes, canCreate, canEdit, canDelete, onCh
                                         <EmptyState
                                             icon={MapPin}
                                             title="No Bus Stops Found"
-                                            text={stops.length === 0 ? 'Add your first bus stop to start mapping students and fees.' : 'No bus stop matches your search.'}
+                                            text={stops.length === 0 ? 'Add your first bus stop to start mapping students and fees.' : 'No bus stop matches your search/filter.'}
                                         />
                                     </td>
                                 </tr>

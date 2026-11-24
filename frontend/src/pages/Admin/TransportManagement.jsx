@@ -534,7 +534,7 @@ export default function TransportManagement() {
     const headers = ['S.No', 'Admission No', 'Student Name', 'Mobile No', 'Class', 'Section', 'Stop Name', 'Distance (KM)', 'Travel Mode', 'Effect From'];
     const base = `Route_${route.name}_${route.vehicleNumber}_Students`;
     if (type === 'excel') exportRowsToExcel(base, headers, rows, route.name);
-    else exportRowsToPdf(base, `Student List - ${route.name} (${route.vehicleNumber})`, headers, rows);
+    else exportRowsToPdf(base, `Student List - ${route.name} (${route.vehicleName ? `${route.vehicleName} - ` : ''}${route.vehicleNumber})`, headers, rows);
   };
 
   // "BUS ROUTE LIST - VAN 1": one-click report of the students on a bus, with the school header
@@ -1135,6 +1135,7 @@ export default function TransportManagement() {
           <Modal title={`Student List - ${viewRoute.name}`} onClose={() => setShowViewModal(false)} xwide>
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div className="flex flex-wrap items-center gap-3 text-sm">
+                <span className="text-slate-500 dark:text-slate-400">Vehicle: <b className="text-slate-800 dark:text-slate-100">{viewRoute.vehicleName || 'N/A'}</b></span>
                 <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-700 font-mono text-xs font-bold rounded-md text-slate-700 dark:text-slate-200">
                   {viewRoute.vehicleId ? viewRoute.vehicleNumber : 'No bus assigned'}
                 </span>

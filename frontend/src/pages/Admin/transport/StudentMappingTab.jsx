@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { LuPlus as Plus, LuSearch as Search, LuUsers as Users } from 'react-icons/lu';
+import { LuPlus as Plus, LuSearch as Search, LuUsers as Users, LuFileSpreadsheet as SheetIcon, LuFileText as PdfIcon } from 'react-icons/lu';
 import { Edit, Trash2 } from 'lucide-react';
 import ConfirmModal from '../../../components/ConfirmModal';
 import {
@@ -11,7 +11,7 @@ import { listClasses } from '../../../api/classes';
 import { sortClassesAscending, sortSectionsAscending } from '../../../utils/classSorting';
 import { useLiveDataRefresh } from '../../../hooks/useLiveDataRefresh';
 import { notifyDataChanged } from '../../../utils/liveData';
-import { exportRowsToExcel, exportRowsToPdf, formatDisplayDate } from '../../../utils/transportExport';
+import { exportRowsToExcel, exportRowsToPdf, formatDisplayDate, formatAmount } from '../../../utils/transportExport';
 import {
     inputCls, primaryBtn, ghostBtn, cardCls, thCls, tdCls, theadRowCls,
     Field, Modal, ExportButtons, EmptyState, todayStr
@@ -145,13 +145,37 @@ export default function StudentMappingTab({ routes, canCreate, canEdit, canDelet
         });
     }, [assignments, search, routeFilter, classFilter, sectionFilter]);
 
-    const headers = ['S.No', 'Admission No', 'Student Name', 'Mobile No', 'Class', 'Section', 'Vehicle Name', 'Bus Number', 'Route Name', 'Stop Name', 'Distance (KM)', 'Travel Mode', 'Effect From'];
+    const headers = ['S.No', 'Admission No', 'Student Name', 'Mobile No', 'Class', 'Section', 'Vehicle Name', 'Bus Number', 'Route Name', 'Stop Name', 'Distance (KM)', 'Travel Mode', 'Effect From', 'Fees (Rs.)', 'Due Date'];
+
+    // one export row (plain text only - the PDF font has no rupee sign, so amounts are numbers under "Fees (Rs.)")
+    const rowOf = (a, i, feeCell, dueCell) => [
+        i + 1, a.admissionNumber || '', studentName(a), a.parents?.[0]?.parent?.phone || '',
+        a.class?.name || '', a.section?.name || '', vehicleNameOf(a) === '-' ? '' : vehicleNameOf(a), vehicleNo(a), a.transportRoute?.name || '',
+        stopOf(a), distanceOf(a) === '-' ? '' : distanceOf(a), a.travelMode || '', formatDisplayDate(a.transportEffectFrom), feeCell, dueCell
+    ];
+
     const rowsForExport = () =>
-        filtered.map((a, i) => [
-            i + 1, a.admissionNumber || '', studentName(a), a.parents?.[0]?.parent?.phone || '',
-            a.class?.name || '', a.section?.name || '', vehicleNameOf(a) === '-' ? '' : vehicleNameOf(a), vehicleNo(a), a.transportRoute?.name || '',
-            stopOf(a), distanceOf(a) === '-' ? '' : distanceOf(a), a.travelMode || '', formatDisplayDate(a.transportEffectFrom)
-        ]);
+        filtered.map((a, i) => rowOf(
+            a, i,
+            a.fees?.length ? a.totalFee : '',
+            (a.fees || []).map((f) => formatDisplayDate(f.dueDate)).join(', ')
+        ));
+
+    // hover text on the Fees cell, e.g. "Phase 1: ₹5,000 due 11-12-2026; Phase 2: ₹5,000 due 11-03-2027"
+    const feeDetailText = (a) =>
+        (a.fees || [])
+            .map((f) => `${f.phaseCount > 1 ? `Phase ${f.phase}: ` : ''}₹${formatAmount(f.amount)} due ${formatDisplayDate(f.dueDate)}`)
+            .join('; ');
+
+    // Excel / PDF of ONE student: same layout and columns as the list export.
+    // A student with several fee phases gets one row per phase (amount + its due date).
+    const exportOne = (a, type) => {
+        const phases = a.fees?.length ? a.fees : [null];
+        const rows = phases.map((f) => rowOf(a, 0, f ? f.amount : '', f ? formatDisplayDate(f.dueDate) : ''));
+        const base = `Transport_${studentName(a)}_${a.admissionNumber || ''}`;
+        if (type === 'excel') exportRowsToExcel(base, headers, rows, 'Transport Student');
+        else exportRowsToPdf(base, `Transport Details - ${studentName(a)}`, headers, rows);
+    };
 
     const stopsForRoute = (routeId) => stops.filter((s) => (s.routes || []).some((r) => r.id === routeId));
 
@@ -323,13 +347,15 @@ export default function StudentMappingTab({ routes, canCreate, canEdit, canDelet
                                 <th className={thCls}>Distance (KM)</th>
                                 <th className={thCls}>Travel Mode</th>
                                 <th className={thCls}>Effect From</th>
+                                <th className={thCls}>Fees</th>
+                                <th className={thCls}>Due Date</th>
                                 <th className={`${thCls} text-right`}>Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm text-slate-600 dark:text-slate-300 font-medium">
                             {filtered.length === 0 ? (
                                 <tr>
-                                    <td colSpan="14">
+                                    <td colSpan="16">
                                         <EmptyState icon={Users} title="No Transport Students Found"
                                             text={assignments.length === 0 ? 'Use "Student Add" to map students to a bus and stop.' : 'No student matches your search/filter.'} />
                                     </td>
@@ -350,7 +376,34 @@ export default function StudentMappingTab({ routes, canCreate, canEdit, canDelet
                                         <td className={tdCls}>{distanceOf(a)}</td>
                                         <td className={tdCls}>{a.travelMode || '-'}</td>
                                         <td className={tdCls}>{formatDisplayDate(a.transportEffectFrom) || '-'}</td>
+                                        <td className={tdCls}>
+                                            {a.fees?.length ? (
+                                                <div title={feeDetailText(a)}>
+                                                    <span className="font-bold text-slate-900 dark:text-white">₹{formatAmount(a.totalFee)}</span>
+                                                    {a.fees.length > 1 && (
+                                                        <span className="block text-[11px] text-slate-400 dark:text-slate-500 font-normal">{a.fees.length} phases</span>
+                                                    )}
+                                                </div>
+                                            ) : '-'}
+                                        </td>
+                                        <td className={tdCls}>
+                                            {a.fees?.length ? (
+                                                <div title={feeDetailText(a)}>
+                                                    {a.fees.map((f) => (
+                                                        <span key={f.dueDate} className="block">{formatDisplayDate(f.dueDate)}</span>
+                                                    ))}
+                                                </div>
+                                            ) : '-'}
+                                        </td>
                                         <td className={`${tdCls} text-right`}>
+                                            <button type="button" onClick={() => exportOne(a, 'excel')} title="Export this student to Excel"
+                                                className="p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors">
+                                                <SheetIcon size={18} />
+                                            </button>
+                                            <button type="button" onClick={() => exportOne(a, 'pdf')} title="Export this student to PDF"
+                                                className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors">
+                                                <PdfIcon size={18} />
+                                            </button>
                                             {canEdit && (
                                                 <>
                                                     <button type="button" onClick={() => openEdit(a)} title="Edit Mapping"

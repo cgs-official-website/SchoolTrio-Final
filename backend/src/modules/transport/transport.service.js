@@ -9,6 +9,8 @@ import {
   ValidationError
 } from '../../utils/app-error.js';
 import { normalizeRegistrationNumber, normalizePhoneNumber } from './transport.schemas.js';
+import { resolveFees, academicYearOf } from './transport.billing.js';
+import { findBusFees } from './transport.v2.repository.js';
 
 /**
  * Checks if actor is a Parent.
@@ -421,6 +423,29 @@ function stripGuardianContacts(assignment) {
 // STUDENT TRANSPORT ASSIGNMENT SERVICE OPERATIONS
 // ============================================================
 
+/**
+ * Adds the transport fee of every mapped student (same rule as the invoices and the parent page:
+ * a stop's own fee replaces the distance-slab fee). One query for all fees, resolved per student.
+ *   fees:     [{ dueDate, amount, phase, phaseCount, academicYear }]
+ *   totalFee: sum of the fees
+ */
+async function attachTransportFees(schoolId, assignments) {
+  if (!assignments.length) return assignments;
+  const allFees = await findBusFees(schoolId);
+  return assignments.map((a) => {
+    const base = a.busStop ? resolveFees(allFees, a.busStop) : [];
+    const perYear = {};
+    const withYear = base.map((f) => ({ dueDate: f.dueDate, amount: f.amount, academicYear: academicYearOf(f.dueDate) }));
+    withYear.forEach((f) => { perYear[f.academicYear] = (perYear[f.academicYear] || 0) + 1; });
+    const seen = {};
+    const fees = withYear.map((f) => {
+      seen[f.academicYear] = (seen[f.academicYear] || 0) + 1;
+      return { ...f, phase: seen[f.academicYear], phaseCount: perYear[f.academicYear] };
+    });
+    return { ...a, fees, totalFee: fees.reduce((sum, f) => sum + f.amount, 0) };
+  });
+}
+
 export async function listStudentAssignments(schoolId, query = {}, actor = {}) {
   if (!schoolId) {
     throw new TenantAccessError('Tenant context required to list assignments');
@@ -459,7 +484,8 @@ export async function listStudentAssignments(schoolId, query = {}, actor = {}) {
   }
 
   const results = await transportRepository.findStudentAssignments(schoolId, filterOptions);
-  return isTeacher(actor) && !actor.hasPermission ? results.map(stripGuardianContacts) : results;
+  const withFees = await attachTransportFees(schoolId, results);
+  return isTeacher(actor) && !actor.hasPermission ? withFees.map(stripGuardianContacts) : withFees;
 }
 
 /**
