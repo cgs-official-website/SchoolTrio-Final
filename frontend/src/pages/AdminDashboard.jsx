@@ -46,7 +46,8 @@ export const allNavItems = [
     moduleKey: 'fees',
     subItems: [
       { name: 'Fee Management', path: '/admin/fees', icon: CreditCard, moduleKey: 'fees' },
-      { name: 'Collection', path: '/admin/fees/collection', icon: Banknote, moduleKey: 'fees' }
+      { name: 'Collection', path: '/admin/fees/collection', icon: Banknote, moduleKey: 'fees' },
+      { name: 'Reports', path: '/admin/fees/reports', icon: BarChart2, moduleKey: 'fees' }
     ]
   },
   { name: 'Transport', path: '/admin/transport', icon: Bus, moduleKey: 'transport' },

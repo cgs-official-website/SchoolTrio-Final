@@ -52,6 +52,7 @@ const StaffAssignment = lazy(() => import('./pages/Admin/StaffAssignment'));
 const LinkGenerator = lazy(() => import('./pages/Admin/LinkGenerator'));
 const FeeManagement = lazy(() => import('./pages/Admin/FeeManagement'));
 const FeeCollection = lazy(() => import('./pages/Admin/FeeCollection'));
+const FeeReports = lazy(() => import('./pages/Admin/FeeReports'));
 const TimetableManagement = lazy(() => import('./pages/Admin/TimetableManagement'));
 const TransportManagement = lazy(() => import('./pages/Admin/TransportManagement'));
 const LibraryManagement = lazy(() => import('./pages/Admin/LibraryManagement'));
@@ -235,6 +236,7 @@ function App() {
                 <Route path="links" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="links"><LinkGenerator /></ProtectedRoute>} />
                 <Route path="fees" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="fees"><FeeManagement /></ProtectedRoute>} />
                 <Route path="fees/collection" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="fees"><FeeCollection /></ProtectedRoute>} />
+                <Route path="fees/reports" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="fees"><FeeReports /></ProtectedRoute>} />
                 <Route path="timetables" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="timetables"><TimetableManagement /></ProtectedRoute>} />
                 <Route path="transport" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="transport"><TransportManagement /></ProtectedRoute>} />
                 <Route path="library" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'teacher']} moduleKey="library"><LibraryManagement /></ProtectedRoute>} />
