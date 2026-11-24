@@ -66,7 +66,8 @@ export const feeCategoriesApi = {
   getFeeCategory,
   createFeeCategory,
   updateFeeCategory,
-  deleteFeeCategory
+  deleteFeeCategory,
+  listFeeCategoryTypes
 };
 
 export default feeCategoriesApi;

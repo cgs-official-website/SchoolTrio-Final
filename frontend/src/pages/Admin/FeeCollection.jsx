@@ -80,16 +80,45 @@ const invoiceLateFee = (inv) => {
     return Number.isFinite(v) && v > 0 ? v : 0;
 };
 
+/** Concession given on a fee (comes from the API; 0 when none). */
+const concessionOf = (inv) => {
+    const v = Number(inv?.concessionAmount);
+    return Number.isFinite(v) && v > 0 ? v : 0;
+};
+/** What the parent actually pays for a fee: the fee minus its concession. */
+const netOf = (inv) => {
+    const v = Number(inv?.netAmount);
+    return Number.isFinite(v) ? v : Number(inv?.amount || 0) - concessionOf(inv);
+};
+const concessionLabel = (inv) => {
+    const names = Array.from(new Set((inv?.concessions || []).map((c) => c.category).filter(Boolean)));
+    return names.join(', ');
+};
+
 function buildReceiptHtml({ schoolName, student, receiptNumber, paidAt, mode, reference, items }) {
-    const feesTotal = items.reduce((sum, i) => sum + Number(i.amount || 0), 0);
+    const grossTotal = items.reduce((sum, i) => sum + Number(i.amount || 0), 0);
+    const concessionTotal = items.reduce((sum, i) => sum + concessionOf(i), 0);
+    const hasConcession = concessionTotal > 0;
+    const feesTotal = grossTotal - concessionTotal;
     const lateFeeTotal = items.reduce((sum, i) => sum + invoiceLateFee(i), 0);
     const total = feesTotal + lateFeeTotal;
+    // The Concession column only appears when at least one fee on this receipt has a concession.
+    const span = hasConcession ? 4 : 2;
     const lateRow = lateFeeTotal > 0
-        ? `<tr><td colspan="2">Late fee (penalty)</td><td class="r">${escapeHtml(formatMoney(lateFeeTotal))}</td></tr>`
+        ? `<tr><td colspan="${span}">Late fee (penalty)</td><td class="r">${escapeHtml(formatMoney(lateFeeTotal))}</td></tr>`
         : '';
     const rows = items
-        .map((i) => `<tr><td>${escapeHtml(i.feeName)}</td><td>${escapeHtml(formatDate(i.dueDate))}</td><td class="r">${escapeHtml(formatMoney(i.amount))}</td></tr>`)
+        .map((i) => {
+            const c = concessionOf(i);
+            const concessionCells = hasConcession
+                ? `<td class="r">${c > 0 ? `- ${escapeHtml(formatMoney(c))}` : '—'}</td><td class="r">${escapeHtml(formatMoney(netOf(i)))}</td>`
+                : '';
+            return `<tr><td>${escapeHtml(i.feeName)}</td><td>${escapeHtml(formatDate(i.dueDate))}</td><td class="r">${escapeHtml(formatMoney(i.amount))}</td>${concessionCells}</tr>`;
+        })
         .join('');
+    const head = hasConcession
+        ? '<th>Fee</th><th>Due date</th><th class="r">Fee amount</th><th class="r">Concession</th><th class="r">Net amount</th>'
+        : '<th>Fee</th><th>Due date</th><th class="r">Amount</th>';
     return `<!doctype html><html><head><meta charset="utf-8"><title>Receipt ${escapeHtml(receiptNumber || '')}</title>
 <style>
 body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:32px}
@@ -105,10 +134,10 @@ th,td{border:1px solid #bbb;padding:8px;text-align:left}th{background:#f2f2f2}
 <h1>${escapeHtml(schoolName || '')}</h1><h2>Fee Receipt</h2>
 <div class="meta">
 <div><b>Student:</b> ${escapeHtml(studentFullName(student))}<br><b>Adm No:</b> ${escapeHtml(student.admissionNumber)}<br><b>Class &amp; Sec:</b> ${escapeHtml(classSectionLabel(student))}<br><b>Father:</b> ${escapeHtml(studentFather(student) || '—')}</div>
-<div><b>Receipt No:</b> ${escapeHtml(receiptNumber || '—')}<br><b>Date:</b> ${escapeHtml(formatDate(paidAt))}<br><b>Mode:</b> ${escapeHtml(mode || '—')}<br><b>Reference:</b> ${escapeHtml(reference || '—')}</div>
+<div><b>Receipt No:</b> ${escapeHtml(receiptNumber || '—')}<br><b>Date:</b> ${escapeHtml(formatDate(paidAt))}<br><b>Mode:</b> ${escapeHtml(mode || '—')}</div>
 </div>
-<table><thead><tr><th>Fee</th><th>Due date</th><th class="r">Amount</th></tr></thead><tbody>${rows}
-${lateRow}<tr class="total"><td colspan="2">Total paid</td><td class="r">${escapeHtml(formatMoney(total))}</td></tr></tbody></table>
+<table><thead><tr>${head}</tr></thead><tbody>${rows}
+${lateRow}<tr class="total"><td colspan="${span}">Total paid</td><td class="r">${escapeHtml(formatMoney(total))}</td></tr></tbody></table>
 <div class="foot"><span>Received by: ____________</span><span>Authorised signature</span></div>
 <script>window.onload=function(){window.focus();window.print();}</script>
 </body></html>`;
@@ -398,28 +427,37 @@ export default function FeeCollection() {
         let carried = 0;
         const perMonth = monthKeys.map((mk) => {
             const inMonth = active.filter((i) => String(i.dueDate).slice(0, 7) === mk);
-            const total = inMonth.reduce((s, i) => s + Number(i.amount), 0);
-            const paid = inMonth.filter((i) => i.status === 'Paid').reduce((s, i) => s + Number(i.amount), 0);
+            // Totals are after concession: what the student really has to pay
+            const total = inMonth.reduce((s, i) => s + netOf(i), 0);
+            const concession = inMonth.reduce((s, i) => s + concessionOf(i), 0);
+            const paid = inMonth.filter((i) => i.status === 'Paid').reduce((s, i) => s + netOf(i), 0);
             const previousDue = carried;
             const balance = previousDue + total - paid;
             carried = balance;
-            return { key: mk, total, paid, previousDue, balance, pending: inMonth.filter((i) => i.status === 'Pending') };
+            return { key: mk, total, concession, paid, previousDue, balance, pending: inMonth.filter((i) => i.status === 'Pending') };
         });
 
         const pending = active.filter((i) => i.status === 'Pending');
-        const total = active.reduce((s, i) => s + Number(i.amount), 0);
-        const paid = active.filter((i) => i.status === 'Paid').reduce((s, i) => s + Number(i.amount), 0);
+        const concession = active.reduce((s, i) => s + concessionOf(i), 0);
+        const total = active.reduce((s, i) => s + netOf(i), 0);
+        const paid = active.filter((i) => i.status === 'Paid').reduce((s, i) => s + netOf(i), 0);
+        // per fee row (the separate Concession column in the ledger)
+        const feeConcession = new Map();
+        active.forEach((i) => feeConcession.set(i.feeName, (feeConcession.get(i.feeName) || 0) + concessionOf(i)));
         const nextDue = pending.length ? pending.map((i) => i.dueDate).sort()[0] : null;
 
-        return { active, monthKeys, feeNames, cells, perMonth, pending, total, paid, balance: total - paid, nextDue };
+        return { active, monthKeys, feeNames, cells, perMonth, pending, total, paid, concession, feeConcession, balance: total - paid, nextDue };
     }, [invoices]);
 
     const todayStr = todayString();
+    // The Concession column shows only when this student has a concession on any fee
+    const showConcessionColumn = ledger.concession > 0;
     const selectedInvoices = useMemo(
         () => ledger.pending.filter((i) => selectedIds.has(i.id)).sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate))),
         [ledger.pending, selectedIds]
     );
-    const selectedTotal = selectedInvoices.reduce((s, i) => s + Number(i.amount), 0);
+    const selectedTotal = selectedInvoices.reduce((s, i) => s + netOf(i), 0);
+    const selectedConcession = selectedInvoices.reduce((s, i) => s + concessionOf(i), 0);
 
     // Late fee (penalty): optional, only offered when a selected fee is past its due date.
     const hasOverdueSelected = selectedInvoices.some((i) => String(i.dueDate).slice(0, 10) < payDate);
@@ -444,10 +482,10 @@ export default function FeeCollection() {
         const smallest = payableOrder[0];
         if (!smallest) return { ok: false, message: 'There are no pending fees to collect.' };
         if (selectedInvoices.length === 0) {
-            return { ok: false, message: `Amount is less than the oldest pending fee (${smallest.feeName}, ${formatMoney(smallest.amount)}). Partial payments are not supported yet.` };
+            return { ok: false, message: `Amount is less than the oldest pending fee (${smallest.feeName}, ${formatMoney(netOf(smallest))}). Partial payments are not supported yet.` };
         }
         const nextInv = payableOrder[selectedInvoices.length];
-        const upper = nextInv ? ` or ${formatMoney(selectedTotal + Number(nextInv.amount))} (${selectedInvoices.length + 1} fees)` : '';
+        const upper = nextInv ? ` or ${formatMoney(selectedTotal + netOf(nextInv))} (${selectedInvoices.length + 1} fees)` : '';
         return { ok: false, message: `${formatMoney(value)} does not match whole fees. Collect ${formatMoney(selectedTotal)} (${selectedInvoices.length} fee${selectedInvoices.length === 1 ? '' : 's'})${upper}.` };
     }, [amountText, selectedInvoices, selectedTotal, payableOrder, lateFeeValue]);
 
@@ -512,7 +550,7 @@ export default function FeeCollection() {
         if (Number.isFinite(value)) {
             let running = 0;
             for (const inv of payableOrder) {
-                const next = running + Number(inv.amount);
+                const next = running + netOf(inv);
                 if (next > value) break;
                 running = next;
                 ids.add(inv.id);
@@ -609,6 +647,8 @@ export default function FeeCollection() {
                     transactionReference: reference.trim() || undefined,
                     receiptNumber: receiptNumber || undefined,
                     paidAt: paidAtIso,
+                    // the server re-checks this against the fee minus its concession (catches a concession added meanwhile)
+                    amount: netOf(inv),
                     // the penalty is recorded once per receipt, on the first fee settled
                     ...(settled.length === 0 && lateFeeValue > 0 ? { lateFee: lateFeeValue } : {})
                 });
@@ -624,7 +664,7 @@ export default function FeeCollection() {
         setPaying(false);
 
         if (settled.length > 0) {
-            const total = settled.reduce((s, i) => s + Number(i.amount), 0) + lateFeeValue;
+            const total = settled.reduce((s, i) => s + netOf(i), 0) + lateFeeValue;
             toast.success(`${formatMoney(total)} collected${receiptNumber ? ` · Receipt ${receiptNumber}` : ''}`);
             notifyDataChanged('fees');
             notifyDataChanged('invoices');
@@ -842,7 +882,7 @@ export default function FeeCollection() {
                                 hint={ledger.nextDue && ledger.nextDue < todayStr ? 'Overdue' : null}
                             />
                             <SummaryStat label="Paid" value={formatMoney(ledger.paid)} tone="green" />
-                            <SummaryStat label="Total fee" value={formatMoney(ledger.total)} tone="neutral" />
+                            <SummaryStat label="Total fee" value={formatMoney(ledger.total)} tone="neutral" hint={ledger.concession > 0 ? `after ${formatMoney(ledger.concession)} concession` : null} hintTone="rose" />
                             <div className="col-span-2 lg:col-span-1 flex items-center gap-2 rounded-2xl bg-slate-50 dark:bg-slate-800 px-3 py-2.5">
                                 <Bus size={18} className="text-slate-500 shrink-0" />
                                 <div className="min-w-0 text-xs">
@@ -913,6 +953,9 @@ export default function FeeCollection() {
                                                                 </button>
                                                             </th>
                                                         ))}
+                                                        {showConcessionColumn && (
+                                                            <th className="border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-300 bg-rose-50/60 dark:bg-rose-900/10">Concession</th>
+                                                        )}
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -929,14 +972,19 @@ export default function FeeCollection() {
                                                                     </td>
                                                                 );
                                                             })}
+                                                            {showConcessionColumn && (
+                                                                <td className="border border-slate-200 dark:border-slate-700 px-4 py-2 text-center font-bold tabular-nums text-rose-600 dark:text-rose-300 bg-rose-50/60 dark:bg-rose-900/10">
+                                                                    {(ledger.feeConcession.get(fee) || 0) > 0 ? `- ${ledger.feeConcession.get(fee).toLocaleString('en-IN')}` : ''}
+                                                                </td>
+                                                            )}
                                                         </tr>
                                                     ))}
-                                                    <SummaryRow label="Total" values={ledger.perMonth.map((m) => m.total)} className="bg-teal-100 dark:bg-teal-900/40 text-teal-900 dark:text-teal-100" />
-                                                    <SummaryRow label="Paid" values={ledger.perMonth.map((m) => m.paid)} className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-200" />
+                                                    <SummaryRow label="Total" values={ledger.perMonth.map((m) => m.total)} className="bg-teal-100 dark:bg-teal-900/40 text-teal-900 dark:text-teal-100" extra={showConcessionColumn ? `- ${ledger.concession.toLocaleString('en-IN')}` : null} />
+                                                    <SummaryRow label="Paid" values={ledger.perMonth.map((m) => m.paid)} className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-200" extra={showConcessionColumn ? '' : null} />
                                                     {ledger.perMonth.some((m) => m.previousDue > 0) && (
-                                                        <SummaryRow label="Previous Due (B/F)" values={ledger.perMonth.map((m) => m.previousDue)} className="bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200" hideZero />
+                                                        <SummaryRow label="Previous Due (B/F)" values={ledger.perMonth.map((m) => m.previousDue)} className="bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200" hideZero extra={showConcessionColumn ? '' : null} />
                                                     )}
-                                                    <SummaryRow label="Balance" values={ledger.perMonth.map((m) => m.balance)} className="bg-rose-100 dark:bg-rose-900/30 text-rose-800 dark:text-rose-200" hideZero />
+                                                    <SummaryRow label="Balance" values={ledger.perMonth.map((m) => m.balance)} className="bg-rose-100 dark:bg-rose-900/30 text-rose-800 dark:text-rose-200" hideZero extra={showConcessionColumn ? '' : null} />
                                                 </tbody>
                                             </table>
                                         </div>
@@ -965,7 +1013,7 @@ export default function FeeCollection() {
                                         </div>
                                         <p className={`text-[11px] mt-1 ${amountText !== null && !amountCheck.ok ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-slate-400'}`}>
                                             {amountText !== null && !amountCheck.ok ? amountCheck.message : null}
-                                            {!(amountText !== null && !amountCheck.ok) && <>{selectedInvoices.length} fee{selectedInvoices.length === 1 ? '' : 's'} selected{lateFeeValue > 0 ? ` · incl. late fee ${formatMoney(lateFeeValue)}` : ''}</>}
+                                            {!(amountText !== null && !amountCheck.ok) && <>{selectedInvoices.length} fee{selectedInvoices.length === 1 ? '' : 's'} selected{selectedConcession > 0 ? ` · after ${formatMoney(selectedConcession)} concession` : ''}{lateFeeValue > 0 ? ` · incl. late fee ${formatMoney(lateFeeValue)}` : ''}</>}
                                         </p>
                                     </div>
                                     <div>
@@ -1055,7 +1103,8 @@ export default function FeeCollection() {
                                         </thead>
                                         <tbody>
                                             {history.map((g) => {
-                                                const amount = g.items.reduce((s, i) => s + Number(i.amount) + invoiceLateFee(i), 0);
+                                                const amount = g.items.reduce((s, i) => s + netOf(i) + invoiceLateFee(i), 0);
+                                                const concession = g.items.reduce((s, i) => s + concessionOf(i), 0);
                                                 return (
                                                     <tr key={g.key} className="border-t border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-200">
                                                         <td className="px-4 py-3 font-semibold">{g.receiptNumber || '—'}</td>
@@ -1063,7 +1112,10 @@ export default function FeeCollection() {
                                                         <td className="px-4 py-3">{g.items.map((i) => i.feeName).join(', ')}</td>
                                                         <td className="px-4 py-3">{g.mode || '—'}</td>
                                                         <td className="px-4 py-3">{g.reference || '—'}</td>
-                                                        <td className="px-4 py-3 text-right font-bold">{formatMoney(amount)}</td>
+                                                        <td className="px-4 py-3 text-right font-bold">
+                                                            {formatMoney(amount)}
+                                                            {concession > 0 && <span className="block text-[11px] font-semibold text-rose-600 dark:text-rose-400">incl. concession - {formatMoney(concession)}</span>}
+                                                        </td>
                                                         <td className="px-4 py-3 text-right">
                                                             <button type="button" onClick={() => printReceipt(null, { student, receiptNumber: g.receiptNumber, paidAt: g.paidAt, mode: g.mode, reference: g.reference, items: g.items })} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800">
                                                                 <Printer size={13} /> Print
@@ -1080,16 +1132,11 @@ export default function FeeCollection() {
                     )}
                 </>
             )}
-
-            {/* Shortcut hints (only the keys that are wired up) */}
-            <div className="rounded-2xl bg-slate-100 dark:bg-slate-800/60 px-4 py-3 text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 text-center leading-relaxed">
-                <kbd className="font-bold">Alt+C</kbd> Clear student &nbsp;|&nbsp; <kbd className="font-bold">Alt+M</kbd> Payment mode &nbsp;|&nbsp; <kbd className="font-bold">Alt+H</kbd> Payment history &nbsp;|&nbsp; <kbd className="font-bold">Ctrl+Enter</kbd> Pay &nbsp;|&nbsp; <kbd className="font-bold">Ctrl+Shift+Enter</kbd> Print receipt
-            </div>
         </div>
     );
 }
 
-function SummaryStat({ label, value, tone = 'neutral', hint }) {
+function SummaryStat({ label, value, tone = 'neutral', hint, hintTone = 'red' }) {
     const tones = {
         red: 'text-red-600 dark:text-red-400',
         green: 'text-emerald-600 dark:text-emerald-400',
@@ -1100,7 +1147,7 @@ function SummaryStat({ label, value, tone = 'neutral', hint }) {
         <div className="text-center lg:border-l border-slate-100 dark:border-slate-800 lg:px-2">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{label}</p>
             <p className={`text-lg font-black ${tones[tone]}`}>{value}</p>
-            {hint && <p className="text-[11px] font-bold text-red-600 dark:text-red-400">{hint}</p>}
+            {hint && <p className={`text-[11px] font-bold ${hintTone === 'rose' ? 'text-rose-600 dark:text-rose-400' : 'text-red-600 dark:text-red-400'}`}>{hint}</p>}
         </div>
     );
 }
@@ -1120,29 +1167,43 @@ function TabButton({ active, onClick, icon, children }) {
 
 function LedgerCell({ inv, todayStr, selected, onToggle }) {
     const amount = Number(inv.amount).toLocaleString('en-IN');
+    const concession = concessionOf(inv);
+    const concessionNote = concession > 0 ? (
+        <span className="text-[11px] font-bold text-rose-600 dark:text-rose-300 tabular-nums" title={concessionLabel(inv) || 'Concession'}>
+            - {concession.toLocaleString('en-IN')} = {netOf(inv).toLocaleString('en-IN')}
+        </span>
+    ) : null;
     if (inv.status === 'Paid') {
-        return <span className="text-emerald-700 dark:text-emerald-300 line-through decoration-1 tabular-nums" title={`Paid ${formatDate(inv.paidAt)}`}>{amount}</span>;
+        return (
+            <span className="flex flex-col items-center leading-tight">
+                <span className="text-emerald-700 dark:text-emerald-300 line-through decoration-1 tabular-nums" title={`Paid ${formatDate(inv.paidAt)}`}>{amount}</span>
+                {concessionNote}
+            </span>
+        );
     }
     const overdue = inv.dueDate < todayStr;
     return (
-        <button
-            type="button"
-            onClick={onToggle}
-            aria-pressed={selected}
-            title={overdue ? 'Overdue — click to select' : 'Click to select'}
-            className={`px-2.5 py-1 rounded-lg text-sm font-bold tabular-nums border transition-colors ${selected
-                ? 'bg-primary-600 border-primary-600 text-white'
-                : overdue
-                    ? 'border-red-300 text-red-700 bg-red-50 hover:bg-red-100 dark:border-red-800 dark:text-red-300 dark:bg-red-900/20'
-                    : 'border-slate-300 text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800'
-                }`}
-        >
-            {amount}
-        </button>
+        <span className="flex flex-col items-center gap-0.5">
+            <button
+                type="button"
+                onClick={onToggle}
+                aria-pressed={selected}
+                title={overdue ? 'Overdue — click to select' : 'Click to select'}
+                className={`px-2.5 py-1 rounded-lg text-sm font-bold tabular-nums border transition-colors ${selected
+                    ? 'bg-primary-600 border-primary-600 text-white'
+                    : overdue
+                        ? 'border-red-300 text-red-700 bg-red-50 hover:bg-red-100 dark:border-red-800 dark:text-red-300 dark:bg-red-900/20'
+                        : 'border-slate-300 text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800'
+                    }`}
+            >
+                {amount}
+            </button>
+            {concessionNote}
+        </span>
     );
 }
 
-function SummaryRow({ label, values, className, hideZero = false }) {
+function SummaryRow({ label, values, className, hideZero = false, extra = null }) {
     return (
         <tr className={className}>
             <td className="sticky left-0 z-10 px-4 py-2 font-bold border border-slate-200 dark:border-slate-700 bg-inherit">{label}</td>
@@ -1151,6 +1212,7 @@ function SummaryRow({ label, values, className, hideZero = false }) {
                     {hideZero && v === 0 ? '' : v.toLocaleString('en-IN')}
                 </td>
             ))}
+            {extra !== null && <td className="px-4 py-2 text-center font-bold tabular-nums border border-slate-200 dark:border-slate-700">{extra}</td>}
         </tr>
     );
 }

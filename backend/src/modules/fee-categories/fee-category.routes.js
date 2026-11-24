@@ -18,20 +18,20 @@ router.get(
 );
 
 router.get(
+  '/types',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('fees', 'read'),
+  controller.listCategoryTypes
+);
+
+router.get(
   '/:id',
   authenticate,
   tenantContext({ requireTenant: true }),
   requirePermission('fees', 'read'),
   validate(schemas.feeCategoryParamsSchema),
   controller.getFeeCategory
-);
-
-router.get(
-  '/types',
-  authenticate,
-  tenantContext({ requireTenant: true }),
-  requirePermission('fees', 'read'),
-  controller.listCategoryTypes
 );
 
 router.post(

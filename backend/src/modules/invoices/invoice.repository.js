@@ -66,6 +66,18 @@ export const INVOICE_SELECT_CONFIG = {
       dueDate: true,
       displayOrder: true
     }
+  },
+  // Active concessions given on this fee (deleted ones are Cancelled and never shown)
+  concessions: {
+    where: { status: 'Active' },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      amount: true,
+      valueType: true,
+      value: true,
+      concessionCategory: { select: { id: true, name: true } }
+    }
   }
 };
 
@@ -642,4 +654,21 @@ export async function findStudentInTenant(schoolId, studentId, tx = prisma) {
       section: { select: { id: true, name: true } }
     }
   });
+}
+
+
+/**
+ * Total of the Active concessions given on one fee (used to work out what is really payable).
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {string} invoiceId - Invoice UUID
+ * @param {Object} [tx=prisma]
+ * @returns {Promise<number>}
+ */
+export async function sumActiveConcessions(schoolId, invoiceId, tx = prisma) {
+  const res = await tx.feeConcession.aggregate({
+    where: { schoolId, invoiceId, status: 'Active' },
+    _sum: { amount: true }
+  });
+  return Number(res._sum.amount ?? 0);
 }

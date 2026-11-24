@@ -31,10 +31,25 @@ import { SYSTEM_ROLES } from '../../config/constants.js';
  * @param {string} todayStr - Current calendar date string (YYYY-MM-DD)
  * @returns {Object}
  */
+const toPaise = (v) => Math.round(Number(v || 0) * 100);
+
 export function formatInvoice(inv, todayStr = new Date().toISOString().slice(0, 10)) {
   if (!inv) return null;
 
   const isOverdue = inv.status === 'Pending' && typeof inv.dueDate === 'string' && inv.dueDate < todayStr;
+
+  // `amount` is always the original (gross) fee. Concessions reduce what is payable: netAmount = amount - concessionAmount.
+  const concessions = Array.isArray(inv.concessions)
+    ? inv.concessions.map((c) => ({
+      id: c.id,
+      amount: Number(c.amount),
+      valueType: c.valueType,
+      value: Number(c.value),
+      category: c.concessionCategory?.name ?? null
+    }))
+    : [];
+  const grossPaise = toPaise(inv.amount);
+  const concessionPaise = concessions.reduce((sum, c) => sum + toPaise(c.amount), 0);
 
   return {
     id: inv.id,
@@ -44,6 +59,9 @@ export function formatInvoice(inv, todayStr = new Date().toISOString().slice(0, 
     collectionPeriodId: inv.collectionPeriodId || null,
     feeName: inv.feeName,
     amount: inv.amount !== null && inv.amount !== undefined ? Number(inv.amount) : 0,
+    concessionAmount: concessionPaise / 100,
+    netAmount: Math.max(grossPaise - concessionPaise, 0) / 100,
+    concessions,
     dueDate: inv.dueDate,
     status: inv.status,
     isOverdue,
@@ -548,11 +566,14 @@ export async function payInvoice(schoolId, id, data = {}, actor = null) {
       throw new ConflictError(`Cannot pay invoice with status '${existing.status}'`);
     }
 
-    // 4. Amount validation if supplied
+    // 4. What is payable is the fee minus any concession given on it (read once, reused below)
+    const concessionTotal = await invoiceRepository.sumActiveConcessions(schoolId, id, tx);
+
+    // Amount validation if supplied
     if (data.amount !== undefined && data.amount !== null) {
       const numericSupplied = Number(data.amount);
-      const numericExpected = Number(existing.amount);
-      if (numericSupplied !== numericExpected) {
+      const numericExpected = (toPaise(existing.amount) - toPaise(concessionTotal)) / 100;
+      if (toPaise(numericSupplied) !== toPaise(numericExpected)) {
         throw new ValidationError('Payment amount does not match invoice obligation');
       }
     }
@@ -609,15 +630,18 @@ export async function payInvoice(schoolId, id, data = {}, actor = null) {
       tx
     );
 
+    const concessionApplied = concessionTotal;
     auditMetadata = {
       amount: Number(existing.amount),
+      concession: concessionApplied,
+      netAmount: (toPaise(existing.amount) - toPaise(concessionApplied)) / 100,
       lateFee,
       paidAt,
       paymentMode,
       transactionReference,
       receiptNumber
     };
-  });
+  }, { maxWait: 15000, timeout: 30000 }); // default 5s is too short on a remote DB
 
   // 9. Post-commit non-blocking audit log dispatch (only for new payment)
   if (!isIdempotentRetry && auditMetadata) {
@@ -635,6 +659,8 @@ export async function payInvoice(schoolId, id, data = {}, actor = null) {
             new: 'Paid'
           },
           amount: auditMetadata.amount,
+          concession: auditMetadata.concession,
+          netAmount: auditMetadata.netAmount,
           lateFee: auditMetadata.lateFee,
           paidAt: auditMetadata.paidAt,
           paymentMode: auditMetadata.paymentMode,
@@ -650,5 +676,3 @@ export async function payInvoice(schoolId, id, data = {}, actor = null) {
   const todayStr = new Date().toISOString().slice(0, 10);
   return formatInvoice(settledInvoice, todayStr);
 }
-
-

@@ -128,7 +128,7 @@ export const payInvoiceSchema = {
       .optional(),
     amount: z
       .coerce.number({ invalid_type_error: 'Amount must be a numeric value' })
-      .positive('Amount must be greater than zero')
+      .min(0, 'Amount cannot be negative')
       .optional(),
     // Optional penalty for overdue fees, entered by the admin at collection time.
     lateFee: z
