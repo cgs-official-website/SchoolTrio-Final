@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { LuFilter as Filter, LuTrash2 as Trash2 } from 'react-icons/lu';
+import { LuTrash2 as Trash2 } from 'react-icons/lu';
 import { feeConcessionsApi, VALUE_TYPE_OPTIONS } from '../../../../api/feeConcessions';
 import { feeCategoriesApi } from '../../../../api/feeCategories';
 import { concessionCategoriesApi } from '../../../../api/concessionCategories';
@@ -17,6 +17,9 @@ import {
 } from '../FeeMaster/components';
 import StudentSelect from './StudentSelect';
 import useClassSectionOptions from './useClassSectionOptions';
+import ExportModal from '../../../../components/ExportModal';
+import useExcelExport from '../../../../hooks/useExcelExport';
+import { formatExportDate } from '../../../../utils/excelExport';
 
 const PAGE_SIZE = 20;
 const AMOUNT_RE = /^\d+(\.\d{1,2})?$/;
@@ -33,6 +36,22 @@ const EMPTY_FORM = {
   description: ''
 };
 const EMPTY_FILTERS = { classId: '', sectionId: '', student: null, feeCategoryId: '', concessionCategoryId: '' };
+
+const EXPORT_COLUMNS = [
+  { key: 'admissionNumber', label: 'Admission No', value: (r) => r.admissionNumber },
+  { key: 'studentName', label: 'Student Name', value: (r) => r.studentName },
+  { key: 'className', label: 'Class', value: (r) => r.className },
+  { key: 'sectionName', label: 'Section', value: (r) => r.sectionName },
+  { key: 'feeCategory', label: 'Fee Category', value: (r) => r.feeCategory },
+  { key: 'feeAmount', label: 'Amount', value: (r) => r.feeAmount },
+  { key: 'amount', label: 'Concession', value: (r) => r.amount },
+  { key: 'percentage', label: 'Percentage', value: (r) => (r.valueType === 'PERCENTAGE' ? r.value : '') },
+  { key: 'balance', label: 'Balance', value: (r) => r.balance },
+  { key: 'createdAt', label: 'Date', value: (r) => formatExportDate(r.createdAt) },
+  { key: 'concessionType', label: 'Concession Type', value: (r) => r.concessionType },
+  { key: 'concessionCategory', label: 'Concession Category', value: (r) => r.concessionCategory },
+  { key: 'description', label: 'Description', value: (r) => r.description }
+];
 
 const formatMoney = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
 
@@ -102,6 +121,14 @@ export default function FeeConcessionTab() {
     defaultOrder: 'desc',
     limit: PAGE_SIZE,
     errorMessage: 'Failed to load concessions.'
+  });
+
+  const exporter = useExcelExport({
+    columns: EXPORT_COLUMNS,
+    fetcher,
+    getQuery: () => ({ search: list.search, sortBy: list.sortBy, order: list.order }),
+    defaultFileName: 'Fee_Concession',
+    sheetName: 'Fee Concession'
   });
 
   const updateFilter = (patch) => {
@@ -280,6 +307,12 @@ export default function FeeConcessionTab() {
       key: 'amount',
       label: 'Amount',
       sortable: true,
+      render: (row) => <span className="font-mono font-bold whitespace-nowrap">{formatMoney(row.feeAmount)}</span>
+    },
+    {
+      key: 'concessionAmount',
+      label: 'Concession',
+      sortable: true,
       render: (row) => (
         <div className="whitespace-nowrap">
           <div className="font-mono font-bold">{formatMoney(row.amount)}</div>
@@ -288,6 +321,12 @@ export default function FeeConcessionTab() {
           )}
         </div>
       )
+    },
+    {
+      key: 'balance',
+      label: 'Balance',
+      sortable: false,
+      render: (row) => <span className="font-mono font-bold whitespace-nowrap">{formatMoney(row.balance)}</span>
     },
     {
       key: 'createdAt',
@@ -336,28 +375,11 @@ export default function FeeConcessionTab() {
         onAdd={openAdd}
         canAdd={allowCreate}
         addDisabled={showForm}
+        onFilter={() => setShowFilters((v) => !v)}
+        filterOpen={showFilters}
+        filterActive={hasActiveFilter}
+        onExport={exporter.openModal}
       />
-
-      {/* Filter icon: right side, below the Add button */}
-      <div className="flex justify-end mb-3">
-        <button
-          type="button"
-          onClick={() => setShowFilters((v) => !v)}
-          aria-label="Toggle filters"
-          aria-expanded={showFilters}
-          title="Filter"
-          className={`relative p-2.5 rounded-xl border transition-colors ${
-            showFilters
-              ? 'bg-primary-600 border-primary-600 text-white'
-              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Filter size={18} />
-          {hasActiveFilter && !showFilters && (
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white dark:border-slate-900" />
-          )}
-        </button>
-      </div>
 
       {showFilters && (
         <div className="mb-4 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
@@ -671,6 +693,22 @@ export default function FeeConcessionTab() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+
+      <ExportModal
+        isOpen={exporter.open}
+        onClose={exporter.closeModal}
+        title="Export Concessions"
+        subtitle="Customize file settings and select columns to export."
+        defaultFileName="Fee_Concession"
+        availableFields={exporter.availableFields}
+        selectedFields={exporter.selected}
+        onToggleField={exporter.toggleField}
+        onSelectAll={exporter.selectAll}
+        onExport={exporter.exportNow}
+        exporting={exporter.exporting}
+        exportButtonText="Generate Excel"
+      />
+
     </div>
   );
 }

@@ -21,12 +21,14 @@ const CONCESSION_SELECT = {
     }
   },
   concessionCategory: { select: { id: true, name: true } },
-  invoice: {
+    invoice: {
     select: {
       id: true,
       status: true,
       feeName: true,
-      feeStructure: { select: { feeCategory: { select: { id: true, name: true } } } }
+      amount: true,
+      feeStructure: { select: { feeCategory: { select: { id: true, name: true } } } },
+      concessions: { where: { status: 'Active' }, select: { amount: true } }
     }
   }
 };
@@ -37,7 +39,8 @@ const SORTERS = {
   className: (d) => [{ student: { class: { name: d } } }],
   sectionName: (d) => [{ student: { section: { name: d } } }],
   feeCategory: (d) => [{ invoice: { feeName: d } }],
-  amount: (d) => [{ amount: d }],
+  amount: (d) => [{ invoice: { amount: d } }],
+  concessionAmount: (d) => [{ amount: d }],
   concessionType: (d) => [{ concessionType: d }],
   concessionCategory: (d) => [{ concessionCategory: { name: d } }],
   createdAt: (d) => [{ createdAt: d }]

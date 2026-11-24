@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { LuFilter as Filter, LuEye as Eye } from 'react-icons/lu';
+import { LuEye as Eye } from 'react-icons/lu';
 import { feeCancellationsApi } from '../../../../api/feeCancellations';
 import usePermissions from '../../../../hooks/usePermissions';
 import { notifyDataChanged } from '../../../../utils/liveData';
@@ -15,10 +15,27 @@ import {
 import StudentSelect from '../FeeConcession/StudentSelect';
 import useClassSectionOptions from '../FeeConcession/useClassSectionOptions';
 import FeeCancellationDetail from './FeeCancellationDetail';
+import ExportModal from '../../../../components/ExportModal';
+import useExcelExport from '../../../../hooks/useExcelExport';
+import { formatExportDate } from '../../../../utils/excelExport';
 
 const PAGE_SIZE = 20;
 const EMPTY_FORM = { classId: '', sectionId: '', student: null, invoiceId: '', description: '' };
 const EMPTY_FILTERS = { classId: '', sectionId: '', student: null };
+
+const EXPORT_COLUMNS = [
+  { key: 'admissionNumber', label: 'Admission No', value: (r) => r.admissionNumber },
+  { key: 'studentName', label: 'Student Name', value: (r) => r.studentName },
+  { key: 'className', label: 'Class', value: (r) => r.className },
+  { key: 'sectionName', label: 'Section', value: (r) => r.sectionName },
+  { key: 'feeCategory', label: 'Fee Category', value: (r) => r.feeCategory },
+  { key: 'receiptNumber', label: 'Receipt No', value: (r) => r.receiptNumber },
+  { key: 'paymentMode', label: 'Payment Mode', value: (r) => r.paymentMode },
+  { key: 'amount', label: 'Amount', value: (r) => r.amount },
+  { key: 'description', label: 'Description', value: (r) => r.description },
+  { key: 'cancelledBy', label: 'Cancelled By', value: (r) => r.cancelledBy },
+  { key: 'createdAt', label: 'Date', value: (r) => formatExportDate(r.createdAt) }
+];
 
 const formatMoney = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
 
@@ -63,6 +80,14 @@ export default function FeeCancellationTab() {
     defaultOrder: 'desc',
     limit: PAGE_SIZE,
     errorMessage: 'Failed to load cancellations.'
+  });
+
+  const exporter = useExcelExport({
+    columns: EXPORT_COLUMNS,
+    fetcher,
+    getQuery: () => ({ search: list.search, sortBy: list.sortBy, order: list.order }),
+    defaultFileName: 'Fee_Cancellation',
+    sheetName: 'Fee Cancellation'
   });
 
   const updateFilter = (patch) => {
@@ -226,28 +251,11 @@ export default function FeeCancellationTab() {
         onAdd={openAdd}
         canAdd={allowCancel}
         addDisabled={showForm}
+        onFilter={() => setShowFilters((v) => !v)}
+        filterOpen={showFilters}
+        filterActive={hasActiveFilter}
+        onExport={exporter.openModal}
       />
-
-      {/* Filter icon: right side, below the Add button */}
-      <div className="flex justify-end mb-3">
-        <button
-          type="button"
-          onClick={() => setShowFilters((v) => !v)}
-          aria-label="Toggle filters"
-          aria-expanded={showFilters}
-          title="Filter"
-          className={`relative p-2.5 rounded-xl border transition-colors ${
-            showFilters
-              ? 'bg-primary-600 border-primary-600 text-white'
-              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Filter size={18} />
-          {hasActiveFilter && !showFilters && (
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white dark:border-slate-900" />
-          )}
-        </button>
-      </div>
 
       {showFilters && (
         <div className="mb-4 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
@@ -444,6 +452,22 @@ export default function FeeCancellationTab() {
             : 'Click "Add Fee Cancellation" to cancel a wrong payment.'
         }
       />
+
+            <ExportModal
+        isOpen={exporter.open}
+        onClose={exporter.closeModal}
+        title="Export Fee Cancellations"
+        subtitle="Customize file settings and select columns to export."
+        defaultFileName="Fee_Cancellation"
+        availableFields={exporter.availableFields}
+        selectedFields={exporter.selected}
+        onToggleField={exporter.toggleField}
+        onSelectAll={exporter.selectAll}
+        onExport={exporter.exportNow}
+        exporting={exporter.exporting}
+        exportButtonText="Generate Excel"
+      />
+      
     </div>
   );
 }

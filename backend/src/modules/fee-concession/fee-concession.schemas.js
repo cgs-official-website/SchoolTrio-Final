@@ -10,6 +10,7 @@ export const FEE_CONCESSION_SORT_FIELDS = [
   'sectionName',
   'feeCategory',
   'amount',
+  'concessionAmount',
   'concessionType',
   'concessionCategory',
   'createdAt'

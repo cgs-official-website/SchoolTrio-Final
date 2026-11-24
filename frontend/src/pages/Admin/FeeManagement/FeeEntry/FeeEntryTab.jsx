@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
-  LuFilter as Filter,
   LuPencil as Pencil,
   LuX as X
 } from 'react-icons/lu';
@@ -28,6 +27,9 @@ import {
   useDebouncedValue
 } from '../FeeMaster/components';
 import FeeEntryTargetPicker from './FeeEntryTargetPicker';
+import ExportModal from '../../../../components/ExportModal';
+import useExcelExport from '../../../../hooks/useExcelExport';
+import { formatExportDate } from '../../../../utils/excelExport';
 
 const PAGE_SIZE = 20;
 const MAX_TARGETS = 1000;
@@ -62,6 +64,21 @@ const TYPE_BADGE = {
   SECTION: 'bg-teal-50 text-teal-700 border-teal-100',
   STUDENT: 'bg-amber-50 text-amber-700 border-amber-100'
 };
+
+const EXPORT_COLUMNS = [
+  { key: 'className', label: 'Class', value: (r) => r.className },
+  { key: 'sectionName', label: 'Section', value: (r) => r.sectionName },
+  { key: 'gender', label: 'Gender', value: (r) => r.gender },
+  { key: 'studentName', label: 'Student Name', value: (r) => r.studentName },
+  { key: 'admissionNumber', label: 'Admission No', value: (r) => r.admissionNumber },
+  { key: 'amount', label: 'Amount', value: (r) => r.amount },
+  { key: 'concessionAmount', label: 'Concession', value: (r) => r.concessionAmount },
+  { key: 'balance', label: 'Balance', value: (r) => r.balance },
+  { key: 'feeCategory', label: 'Fee Category', value: (r) => r.feeCategory },
+  { key: 'feeType', label: 'Student Type', value: (r) => FEE_TYPE_LABELS[r.feeType] || r.feeType },
+  { key: 'dueDate', label: 'Due Date', value: (r) => formatExportDate(r.dueDate) },
+  { key: 'status', label: 'Status', value: (r) => r.status }
+];
 
 const formatMoney = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
 
@@ -213,6 +230,14 @@ export default function FeeEntryTab() {
     defaultOrder: 'desc',
     limit: PAGE_SIZE,
     errorMessage: 'Failed to load fee entries.'
+  });
+
+  const exporter = useExcelExport({
+    columns: EXPORT_COLUMNS,
+    fetcher,
+    getQuery: () => ({ search: list.search, sortBy: list.sortBy, order: list.order }),
+    defaultFileName: 'Fee_Structure',
+    sheetName: 'Fee Structure'
   });
 
   const updateFilter = (patch) => {
@@ -520,6 +545,14 @@ export default function FeeEntryTab() {
         </span>
       )
     },
+    {
+      key: 'balance',
+      label: 'Balance',
+      sortable: false,
+      render: (row) => (
+        <span className="font-mono font-bold whitespace-nowrap">{formatMoney(row.balance)}</span>
+      )
+    },
     { key: 'feeCategory', label: 'Fee Category', sortable: true, className: 'font-semibold' },
     {
       key: 'feeType',
@@ -577,28 +610,11 @@ export default function FeeEntryTab() {
         onAdd={openAdd}
         canAdd={allowCreate}
         addDisabled={showForm || Boolean(editing)}
+        onFilter={() => setShowFilters((v) => !v)}
+        filterOpen={showFilters}
+        filterActive={hasActiveFilter}
+        onExport={exporter.openModal}
       />
-
-      {/* Filter icon: right side, below the Add Fee Entry button */}
-      <div className="flex justify-end mb-3">
-        <button
-          type="button"
-          onClick={() => setShowFilters((v) => !v)}
-          aria-label="Toggle filters"
-          aria-expanded={showFilters}
-          title="Filter"
-          className={`relative p-2.5 rounded-xl border transition-colors ${
-            showFilters
-              ? 'bg-primary-600 border-primary-600 text-white'
-              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Filter size={18} />
-          {hasActiveFilter && !showFilters && (
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white dark:border-slate-900" />
-          )}
-        </button>
-      </div>
 
       {showFilters && (
         <div className="mb-4 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
@@ -857,6 +873,21 @@ export default function FeeEntryTab() {
             : 'Click "Add Fee Entry" to assign the first fee.'
         }
       />
+      <ExportModal
+        isOpen={exporter.open}
+        onClose={exporter.closeModal}
+        title="Export Fee Structure"
+        subtitle="Customize file settings and select columns to export."
+        defaultFileName="Fee_Structure"
+        availableFields={exporter.availableFields}
+        selectedFields={exporter.selected}
+        onToggleField={exporter.toggleField}
+        onSelectAll={exporter.selectAll}
+        onExport={exporter.exportNow}
+        exporting={exporter.exporting}
+        exportButtonText="Generate Excel"
+      />
+
     </div>
   );
 }

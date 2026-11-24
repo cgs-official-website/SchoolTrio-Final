@@ -28,7 +28,8 @@ export default function ExportModal({
   onToggleField,
   onSelectAll,
   onExport,
-  exportButtonText = "Export Excel"
+  exportButtonText = "Export Excel",
+  exporting = false
 }) {
   const [fileName, setFileName] = useState(defaultFileName);
 
@@ -150,11 +151,11 @@ export default function ExportModal({
           <button 
             type="button"
             onClick={handleExportClick}
-            disabled={selectedCount === 0}
+            disabled={selectedCount === 0 || exporting}
             className="px-6 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-primary-600/20 transition-all flex items-center gap-2 active:scale-[0.98]"
           >
             <Download size={18} />
-            {exportButtonText}
+            {exporting ? 'Exporting...' : exportButtonText}
           </button>
         </div>
       </div>

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { LuFilter as Filter } from 'react-icons/lu';
 import { feeDeletionsApi } from '../../../../api/feeDeletions';
 import usePermissions from '../../../../hooks/usePermissions';
 import { notifyDataChanged } from '../../../../utils/liveData';
@@ -14,10 +13,26 @@ import {
 } from '../FeeMaster/components';
 import StudentSelect from '../FeeConcession/StudentSelect';
 import useClassSectionOptions from '../FeeConcession/useClassSectionOptions';
+import ExportModal from '../../../../components/ExportModal';
+import useExcelExport from '../../../../hooks/useExcelExport';
+import { formatExportDate } from '../../../../utils/excelExport';
 
 const PAGE_SIZE = 20;
 const EMPTY_FORM = { student: null, selectedIds: [], reason: '' };
 const EMPTY_FILTERS = { classId: '', sectionId: '', student: null };
+
+const EXPORT_COLUMNS = [
+  { key: 'admissionNumber', label: 'Admission No', value: (r) => r.admissionNumber },
+  { key: 'studentName', label: 'Student Name', value: (r) => r.studentName },
+  { key: 'className', label: 'Class', value: (r) => r.className },
+  { key: 'sectionName', label: 'Section', value: (r) => r.sectionName },
+  { key: 'feeCategory', label: 'Category Name', value: (r) => r.feeCategory },
+  { key: 'dueDate', label: 'Due Date', value: (r) => formatExportDate(r.dueDate) },
+  { key: 'amount', label: 'Amount', value: (r) => r.amount },
+  { key: 'reason', label: 'Reason', value: (r) => r.reason },
+  { key: 'deletedBy', label: 'Deleted By', value: (r) => r.deletedBy },
+  { key: 'createdAt', label: 'Date', value: (r) => formatExportDate(r.createdAt) }
+];
 
 const formatMoney = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
 
@@ -61,6 +76,14 @@ export default function FeeDeletionTab() {
     defaultOrder: 'desc',
     limit: PAGE_SIZE,
     errorMessage: 'Failed to load deleted fees.'
+  });
+
+  const exporter = useExcelExport({
+    columns: EXPORT_COLUMNS,
+    fetcher,
+    getQuery: () => ({ search: list.search, sortBy: list.sortBy, order: list.order }),
+    defaultFileName: 'Deleted_Student_Fees',
+    sheetName: 'Deleted Student Fees'
   });
 
   const updateFilter = (patch) => {
@@ -212,28 +235,11 @@ export default function FeeDeletionTab() {
         onAdd={openAdd}
         canAdd={allowDelete}
         addDisabled={showForm}
+        onFilter={() => setShowFilters((v) => !v)}
+        filterOpen={showFilters}
+        filterActive={hasActiveFilter}
+        onExport={exporter.openModal}
       />
-
-      {/* Filter icon: right side, below the Add button */}
-      <div className="flex justify-end mb-3">
-        <button
-          type="button"
-          onClick={() => setShowFilters((v) => !v)}
-          aria-label="Toggle filters"
-          aria-expanded={showFilters}
-          title="Filter"
-          className={`relative p-2.5 rounded-xl border transition-colors ${
-            showFilters
-              ? 'bg-primary-600 border-primary-600 text-white'
-              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Filter size={18} />
-          {hasActiveFilter && !showFilters && (
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white dark:border-slate-900" />
-          )}
-        </button>
-      </div>
 
       {showFilters && (
         <div className="mb-4 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
@@ -407,6 +413,22 @@ export default function FeeDeletionTab() {
             : 'Click "Add Student Fee Delete" to remove a fee from a student.'
         }
       />
+
+            <ExportModal
+        isOpen={exporter.open}
+        onClose={exporter.closeModal}
+        title="Export Deleted Student Fees"
+        subtitle="Customize file settings and select columns to export."
+        defaultFileName="Deleted_Student_Fees"
+        availableFields={exporter.availableFields}
+        selectedFields={exporter.selected}
+        onToggleField={exporter.toggleField}
+        onSelectAll={exporter.selectAll}
+        onExport={exporter.exportNow}
+        exporting={exporter.exporting}
+        exportButtonText="Generate Excel"
+      />
+
     </div>
   );
 }

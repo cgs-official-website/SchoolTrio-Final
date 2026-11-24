@@ -29,6 +29,8 @@ function isPending(invoice) {
 
 export function formatFeeConcession(c) {
   const s = c.student;
+  const feePaise = toPaise(c.invoice?.amount ?? 0);
+  const givenPaise = (c.invoice?.concessions || []).reduce((sum, x) => sum + toPaise(x.amount), 0);
   return {
     id: c.id,
     invoiceId: c.invoiceId,
@@ -38,7 +40,9 @@ export function formatFeeConcession(c) {
     className: s?.class?.name ?? null,
     sectionName: s?.section?.name ?? null,
     feeCategory: c.invoice?.feeStructure?.feeCategory?.name ?? c.invoice?.feeName ?? null,
+    feeAmount: fromPaise(feePaise),
     amount: Number(c.amount),
+    balance: fromPaise(feePaise - givenPaise),
     valueType: c.valueType,
     value: Number(c.value),
     concessionType: c.concessionType,

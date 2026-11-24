@@ -48,6 +48,7 @@ function assertModifiable(invoice, action) {
  */
 export function formatFeeEntry(inv) {
   const student = inv.student;
+  const amountPaise = Math.round(Number(inv.amount) * 100);
   const concessionPaise = (inv.concessions || []).reduce(
     (sum, c) => sum + Math.round(Number(c.amount) * 100),
     0
@@ -64,6 +65,7 @@ export function formatFeeEntry(inv) {
     gender: student?.gender ?? null,
     amount: Number(inv.amount),
     concessionAmount: concessionPaise / 100,
+    balance: (amountPaise - concessionPaise) / 100,
     dueDate: inv.dueDate,
     status: inv.status,
     feeCategory: inv.feeStructure?.feeCategory?.name ?? inv.feeName,
