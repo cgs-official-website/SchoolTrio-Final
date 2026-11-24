@@ -206,7 +206,7 @@ export default function BusFeeTab({ canCreate, canEdit, canDelete }) {
                 <div className="flex flex-nowrap items-center gap-3 ml-auto">
                     <ExportButtons
                         disabled={filtered.length === 0}
-                        onExcel={() => exportRowsToExcel('Bus_Fee_Entries', headers, rowsForExport(), 'Bus Fees')}
+                        onExcel={() => exportRowsToExcel('Bus_Fee_Entries', headers, rowsForExport(), 'Bus Fees', 'BUS FEE ENTRY LIST')}
                         onPdf={() => exportRowsToPdf('Bus_Fee_Entries', 'Bus Fee Entries', headers, rowsForExport())}
                     />
                     {canCreate && (

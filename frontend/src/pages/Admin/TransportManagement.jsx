@@ -533,7 +533,7 @@ export default function TransportManagement() {
     }
     const headers = ['S.No', 'Admission No', 'Student Name', 'Mobile No', 'Class', 'Section', 'Stop Name', 'Distance (KM)', 'Travel Mode', 'Effect From'];
     const base = `Route_${route.name}_${route.vehicleNumber}_Students`;
-    if (type === 'excel') exportRowsToExcel(base, headers, rows, route.name);
+    if (type === 'excel') exportRowsToExcel(base, headers, rows, route.name, `BUS ROUTE LIST - ${route.name}`);
     else exportRowsToPdf(base, `Student List - ${route.name} (${route.vehicleName ? `${route.vehicleName} - ` : ''}${route.vehicleNumber})`, headers, rows);
   };
 
@@ -577,7 +577,7 @@ export default function TransportManagement() {
     const rows = filteredRoutes.map((r, i) => [
       i + 1, r.vehicleName || '', r.name, r.vehicleId ? r.vehicleNumber : '', r.driverName || '', r.driverPhone || '', r.assignedStudents?.length || 0, r.capacity
     ]);
-    if (type === 'excel') exportRowsToExcel('Bus_Routes', headers, rows, 'Bus Routes');
+    if (type === 'excel') exportRowsToExcel('Bus_Routes', headers, rows, 'Bus Routes', 'BUS ROUTE LIST');
     else exportRowsToPdf('Bus_Routes', 'Bus Routes', headers, rows);
   };
 

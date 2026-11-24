@@ -1,22 +1,124 @@
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx-js-style'; // same API as "xlsx", plus cell styles (bold, centre, fill, border)
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { getSchoolSettings } from '../api/settings';
 
 const safeName = (name) => String(name || 'export').replace(/[^a-z0-9-_ ]/gi, '_').trim() || 'export';
 
+// ---------- school header (name / address / academic year), fetched once ----------
+let metaPromise = null;
+const EMPTY_META = { schoolName: '', address: '', academicYear: '' };
+
+export function loadReportMeta() {
+    if (!metaPromise) {
+        metaPromise = getSchoolSettings()
+            .then((res) => {
+                const d = res?.data || res || {};
+                return {
+                    schoolName: d.name || d.schoolName || '',
+                    address: d.address || d.location || '',
+                    academicYear: d.academicConfig?.currentYear || ''
+                };
+            })
+            .catch(() => {
+                metaPromise = null; // try again next time
+                return EMPTY_META;
+            });
+    }
+    return metaPromise;
+}
+
+const todayDmy = () => {
+    const t = new Date();
+    return `${String(t.getDate()).padStart(2, '0')}-${String(t.getMonth() + 1).padStart(2, '0')}-${t.getFullYear()}`;
+};
+
+// text columns are left aligned (like the student name in the sample), everything else is centred
+const LEFT_HEADER = /name|address|stop|route|vehicle|driver|applies|type|email|class\s*&/i;
+
+const CENTER = { horizontal: 'center', vertical: 'center', wrapText: true };
+const THIN = { style: 'thin', color: { rgb: '9CA3AF' } };
+
 /**
+ * One Excel layout for every transport list (the "BUS ROUTE LIST - VAN 1" sheet):
+ *
+ *        SCHOOL NAME                (bold, centred over the whole table)
+ *        address
+ *
+ *        BUS ROUTE LIST - VAN 1     (bold, centred)
+ *        Report Generated As on 24-11-2026
+ *        Period:
+ *        For A.Y : 2026-2027
+ *   SL. NO. | STUDENT NAME | ADM NO | ...   (bold, centred, grey)
+ *   rows ...
+ */
+function writeStyledExcel({ fileName, sheetName, title, headers, rows, meta = EMPTY_META }) {
+    const lines = [
+        { text: meta.schoolName, size: 16, bold: true },
+        { text: meta.address, size: 11, bold: false },
+        { text: '', size: 11, bold: false },
+        { text: title, size: 13, bold: true },
+        { text: `Report Generated As on ${todayDmy()}`, size: 11, bold: true },
+        { text: 'Period:', size: 11, bold: true },
+        { text: meta.academicYear ? `For A.Y : ${meta.academicYear}` : '', size: 11, bold: true }
+    ];
+    const headerRow = lines.length; // 0-based row index of the table header
+    const aoa = [...lines.map((l) => [l.text]), headers, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const last = Math.max(headers.length - 1, 0);
+
+    // title block: merged over the table width, bold + centred
+    ws['!merges'] = lines.map((_, r) => ({ s: { r, c: 0 }, e: { r, c: last } }));
+    lines.forEach((l, r) => {
+        const addr = XLSX.utils.encode_cell({ r, c: 0 });
+        if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+        ws[addr].s = { font: { bold: l.bold, sz: l.size }, alignment: { horizontal: 'center', vertical: 'center' } };
+    });
+
+    // table header: bold, centred, light grey, border
+    headers.forEach((_, c) => {
+        const addr = XLSX.utils.encode_cell({ r: headerRow, c });
+        ws[addr].s = {
+            font: { bold: true },
+            alignment: CENTER,
+            fill: { patternType: 'solid', fgColor: { rgb: 'EDEDED' } },
+            border: { top: THIN, bottom: THIN, left: THIN, right: THIN }
+        };
+    });
+
+    // data cells
+    rows.forEach((row, i) => {
+        headers.forEach((h, c) => {
+            const addr = XLSX.utils.encode_cell({ r: headerRow + 1 + i, c });
+            if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+            ws[addr].s = {
+                alignment: { horizontal: LEFT_HEADER.test(String(h)) ? 'left' : 'center', vertical: 'center', wrapText: true },
+                border: { top: THIN, bottom: THIN, left: THIN, right: THIN }
+            };
+        });
+    });
+
+    ws['!cols'] = headers.map((h, i) => ({
+        wch: Math.min(45, Math.max(10, String(h).length + 2, ...rows.map((r) => String(r[i] ?? '').length + 2)))
+    }));
+    ws['!rows'] = [{ hpt: 24 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, String(sheetName || title).slice(0, 31).replace(/[\\/?*[\]:]/g, ' '));
+    XLSX.writeFile(wb, `${safeName(fileName)}.xlsx`);
+}
+
+/**
+ * Excel download used by every transport tab.
  * @param {string} fileName - without extension
  * @param {string[]} headers
  * @param {Array<Array<string|number>>} rows
+ * @param {string} [sheetName]
+ * @param {string} [title] - heading printed on the sheet, e.g. "BUS STOP LIST"
  */
-export function exportRowsToExcel(fileName, headers, rows, sheetName = 'Sheet1') {
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    ws['!cols'] = headers.map((h, i) => ({
-        wch: Math.min(40, Math.max(String(h).length, ...rows.map((r) => String(r[i] ?? '').length)) + 2)
-    }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, String(sheetName).slice(0, 31));
-    XLSX.writeFile(wb, `${safeName(fileName)}.xlsx`);
+export async function exportRowsToExcel(fileName, headers, rows, sheetName = 'Sheet1', title) {
+    const meta = await loadReportMeta();
+    writeStyledExcel({ fileName, sheetName, title: title || String(sheetName).toUpperCase(), headers, rows, meta });
 }
 
 export function exportRowsToPdf(fileName, title, headers, rows) {
@@ -55,17 +157,7 @@ export function exportReportWithHeader(type, opts) {
     ];
 
     if (type === 'excel') {
-        const aoa = [...lines.map((l) => [l]), [], headers, ...rows];
-        const ws = XLSX.utils.aoa_to_sheet(aoa);
-        const last = headers.length - 1;
-        // header block spans the whole table width
-        ws['!merges'] = lines.map((_, r) => ({ s: { r, c: 0 }, e: { r, c: last } }));
-        ws['!cols'] = headers.map((h, i) => ({
-            wch: Math.min(40, Math.max(String(h).length, ...rows.map((r) => String(r[i] ?? '').length)) + 2)
-        }));
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, String(title).slice(0, 31).replace(/[\\/?*[\]:]/g, ' '));
-        XLSX.writeFile(wb, `${safeName(fileName)}.xlsx`);
+        writeStyledExcel({ fileName, sheetName: title, title, headers, rows, meta: { schoolName, address, academicYear } });
         return;
     }
 

@@ -169,7 +169,7 @@ export default function BusStopTab({ routes, canCreate, canEdit, canDelete, onCh
                 <div className="flex flex-nowrap items-center gap-3 ml-auto">
                     <ExportButtons
                         disabled={filtered.length === 0}
-                        onExcel={() => exportRowsToExcel('Bus_Stops', headers, rowsForExport(), 'Bus Stops')}
+                        onExcel={() => exportRowsToExcel('Bus_Stops', headers, rowsForExport(), 'Bus Stops', 'BUS STOP LIST')}
                         onPdf={() => exportRowsToPdf('Bus_Stops', 'Bus Stops', headers, rowsForExport())}
                     />
                     {canCreate && (

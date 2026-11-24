@@ -173,7 +173,7 @@ export default function StudentMappingTab({ routes, canCreate, canEdit, canDelet
         const phases = a.fees?.length ? a.fees : [null];
         const rows = phases.map((f) => rowOf(a, 0, f ? f.amount : '', f ? formatDisplayDate(f.dueDate) : ''));
         const base = `Transport_${studentName(a)}_${a.admissionNumber || ''}`;
-        if (type === 'excel') exportRowsToExcel(base, headers, rows, 'Transport Student');
+        if (type === 'excel') exportRowsToExcel(base, headers, rows, 'Transport Student', `TRANSPORT DETAILS - ${studentName(a)}`);
         else exportRowsToPdf(base, `Transport Details - ${studentName(a)}`, headers, rows);
     };
 
@@ -318,7 +318,7 @@ export default function StudentMappingTab({ routes, canCreate, canEdit, canDelet
                 <div className="flex items-center gap-3 justify-end shrink-0">
                     <ExportButtons
                         disabled={filtered.length === 0}
-                        onExcel={() => exportRowsToExcel('Transport_Students', headers, rowsForExport(), 'Transport Students')}
+                        onExcel={() => exportRowsToExcel('Transport_Students', headers, rowsForExport(), 'Transport Students', 'TRANSPORT STUDENTS LIST')}
                         onPdf={() => exportRowsToPdf('Transport_Students', 'Transport Student List', headers, rowsForExport())}
                     />
                     {canCreate && (
