@@ -121,18 +121,33 @@ export async function exportRowsToExcel(fileName, headers, rows, sheetName = 'Sh
     writeStyledExcel({ fileName, sheetName, title: title || String(sheetName).toUpperCase(), headers, rows, meta });
 }
 
-export function exportRowsToPdf(fileName, title, headers, rows) {
-    const doc = new jsPDF({ orientation: headers.length > 6 ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' });
+// Same PDF as the existing transport lists: title on top, purple table header, S.No first column.
+function buildRowsPdf(title, headers, rows, { fontSize = 8, cellPadding = 4 } = {}) {
+    const wide = headers.length > 6;
+    const doc = new jsPDF({ orientation: wide ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' });
     doc.setFontSize(14);
     doc.text(title, 40, 40);
     autoTable(doc, {
         head: [headers],
         body: rows.map((r) => r.map((c) => String(c ?? ''))),
         startY: 56,
-        styles: { fontSize: 8, cellPadding: 4 },
+        styles: { fontSize, cellPadding },
         headStyles: { fillColor: [147, 100, 150] }
     });
-    doc.save(`${safeName(fileName)}.pdf`);
+    return doc;
+}
+
+export function exportRowsToPdf(fileName, title, headers, rows, opts) {
+    buildRowsPdf(title, headers, rows, opts).save(`${safeName(fileName)}.pdf`);
+}
+
+/** Opens the same PDF in a new tab and starts the browser print dialog ("Print PDF" button). */
+export function printRowsPdf(title, headers, rows, opts) {
+    const doc = buildRowsPdf(title, headers, rows, opts);
+    doc.autoPrint();
+    const url = doc.output('bloburl');
+    const win = window.open(url, '_blank');
+    if (!win) doc.save(`${safeName(title)}.pdf`); // pop-up blocked -> download instead
 }
 
 /**

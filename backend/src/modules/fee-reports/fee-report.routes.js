@@ -28,6 +28,9 @@ router.get(
 );
 router.get('/ledger/:studentId', ...guard, validate(schemas.ledgerSchema), controller.getStudentLedger);
 
+// Fee analysis
+router.get('/analysis', ...guard, controller.getFeeAnalysis);
+
 // Concession reports
 router.get(
   '/concessions',

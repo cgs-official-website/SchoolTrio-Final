@@ -67,6 +67,14 @@ export async function getCategoryCancellationSummary(query = {}) {
   return get('/cancellations/categories/summary', query);
 }
 
+/**
+ * One row per (non-cancelled) invoice with student, class, fee category, term, concession and
+ * payment details. Every Fee Analysis report and the dashboard are built from these rows.
+ */
+export async function getFeeAnalysisRows() {
+  return get('/analysis');
+}
+
 export const feeReportsApi = {
   getDayReport,
   getStudentLedger,
@@ -81,7 +89,8 @@ export const feeReportsApi = {
   getInvoiceCancellationReport,
   getInvoiceCancellationSummary,
   getCategoryCancellationReport,
-  getCategoryCancellationSummary
+  getCategoryCancellationSummary,
+  getFeeAnalysisRows
 };
 
 export default feeReportsApi;

@@ -340,4 +340,23 @@ router.delete(
   v2Controller.deleteMapping
 );
 
+// Fee Reports -> Transport Report (read-only, needs fees.read)
+router.get(
+  '/reports/students',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('fees', 'read'),
+  validate(v2Schemas.transportReportStudentsSchema),
+  v2Controller.getReportStudents
+);
+
+router.get(
+  '/reports/payments',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requirePermission('fees', 'read'),
+  validate(v2Schemas.transportReportPaymentsSchema),
+  v2Controller.getReportPayments
+);
+
 export default router;

@@ -36,3 +36,12 @@ export async function getStudentLedger(req, res, next) {
     return next(error);
   }
 }
+
+export async function getFeeAnalysis(req, res, next) {
+  try {
+    const { data } = await service.getFeeAnalysisReport(req.tenant.schoolId);
+    return ApiResponse.success(res, data, 'Fee analysis retrieved successfully');
+  } catch (error) {
+    return next(error);
+  }
+}

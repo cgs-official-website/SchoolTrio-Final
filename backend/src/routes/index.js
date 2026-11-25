@@ -163,7 +163,7 @@ router.use('/concession-categories', concessionCategoryRoutes);
  */
 router.use('/fee-entries', feeEntryRoutes);
 
-router.use('/fee-concessions', feeConcessionRoutes); 
+router.use('/fee-concessions', feeConcessionRoutes);
 
 router.use('/fee-cancellations', feeCancellationRoutes);
 

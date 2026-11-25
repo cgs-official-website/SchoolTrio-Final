@@ -398,3 +398,115 @@ export async function getStudentLedger(schoolId, studentId, query = {}) {
     }
   };
 }
+
+/**
+ * Fee Reports -> Fee Analysis (read-only, tenant scoped).
+ * Returns ONE ROW PER (non-cancelled) INVOICE with student, class, fee category, term, concession, and payment details.
+ */
+const round2 = (n) => Math.round(n * 100) / 100;
+const fullName = (s) => `${s?.firstName || ''} ${s?.lastName || ''}`.trim();
+const categoryOf = (s) => s?.customData?.studentCategory || s?.customData?.category || s?.class?.category?.name || '';
+
+const analysisStudentSelect = {
+  id: true,
+  admissionNumber: true,
+  firstName: true,
+  lastName: true,
+  gender: true,
+  status: true,
+  customData: true,
+  class: { select: { id: true, name: true, category: { select: { name: true } } } },
+  section: { select: { id: true, name: true } },
+  busStop: { select: { stopName: true } },
+  transportRoute: { select: { name: true } }
+};
+
+/** studentId -> { father: {name, phone}, mother: {name, phone} } */
+async function loadAnalysisParents(schoolId, studentIds) {
+  const map = new Map();
+  if (!studentIds.length) return map;
+  const links = await prisma.parentStudentLink.findMany({
+    where: { schoolId, studentId: { in: studentIds } },
+    select: { studentId: true, relationship: true, parent: { select: { name: true, phone: true } } },
+    orderBy: { createdAt: 'asc' }
+  });
+  for (const l of links) {
+    const entry = map.get(l.studentId) || {};
+    const rel = String(l.relationship || '').toLowerCase();
+    if (rel === 'mother') entry.mother = entry.mother || l.parent;
+    else if (rel === 'father') entry.father = entry.father || l.parent;
+    else entry.other = entry.other || l.parent;
+    map.set(l.studentId, entry);
+  }
+  return map;
+}
+
+export async function getFeeAnalysisReport(schoolId) {
+  const invoices = await prisma.invoice.findMany({
+    where: { schoolId, studentId: { not: null }, status: { not: 'Cancelled' } },
+    select: {
+      id: true,
+      feeName: true,
+      amount: true,
+      dueDate: true,
+      status: true,
+      paidAt: true,
+      paymentMode: true,
+      transactionReference: true,
+      receiptNumber: true,
+      collectionPeriod: { select: { name: true, displayOrder: true } },
+      feeStructure: { select: { feeCategory: { select: { name: true, categoryType: true } } } },
+      concessions: { where: { status: 'Active' }, select: { amount: true } },
+      student: { select: analysisStudentSelect }
+    },
+    orderBy: [{ dueDate: 'asc' }, { id: 'asc' }]
+  });
+
+  const rowsWithStudent = invoices.filter((i) => i.student);
+  const parents = await loadAnalysisParents(schoolId, [...new Set(rowsWithStudent.map((i) => i.student.id))]);
+
+  const data = rowsWithStudent.map((i) => {
+    const s = i.student;
+    const p = parents.get(s.id) || {};
+    const father = p.father || p.other || null;
+    const concession = (i.concessions || []).reduce((t, c) => t + Number(c.amount || 0), 0);
+    const net = Math.max(0, Number(i.amount || 0) - concession);
+    const isPaid = i.status === 'Paid';
+    return {
+      id: i.id,
+      studentId: s.id,
+      admissionNumber: s.admissionNumber,
+      studentName: fullName(s),
+      gender: s.gender || '',
+      studentStatus: s.status || '',
+      studentCategory: categoryOf(s),
+      classId: s.class?.id || null,
+      className: s.class?.name || '',
+      sectionId: s.section?.id || null,
+      sectionName: s.section?.name || '',
+      fatherName: father?.name || '',
+      fatherPhone: father?.phone || '',
+      motherName: p.mother?.name || '',
+      motherPhone: p.mother?.phone || '',
+      busStop: s.busStop?.stopName || '',
+      busRoute: s.transportRoute?.name || '',
+      feeName: i.feeName,
+      feeCategory: i.feeStructure?.feeCategory?.name || i.feeName,
+      categoryType: i.feeStructure?.feeCategory?.categoryType || 'Normal',
+      term: i.collectionPeriod?.name || '',
+      termOrder: i.collectionPeriod?.displayOrder ?? null,
+      dueDate: i.dueDate,
+      amount: round2(Number(i.amount || 0)),
+      concession: round2(concession),
+      paid: round2(isPaid ? net : 0),
+      balance: round2(isPaid ? 0 : net),
+      invoiceStatus: i.status,
+      paidAt: i.paidAt ? i.paidAt.toISOString() : null,
+      payMode: i.paymentMode || '',
+      receiptNo: i.receiptNumber || '',
+      referenceNo: i.transactionReference || ''
+    };
+  });
+
+  return { data };
+}
