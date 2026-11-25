@@ -40,6 +40,7 @@ function formatCategoryRow(c) {
     studentName: fullName(c.student),
     classSection: classSection(c.student),
     receiptNumber: c.receiptNumber ?? '',
+    paymentMode: c.paymentMode ?? '',
     paidAt: c.paidAt,
     cancelDate: c.createdAt,
     feeCategory: c.invoice?.feeStructure?.feeCategory?.name ?? c.feeName,

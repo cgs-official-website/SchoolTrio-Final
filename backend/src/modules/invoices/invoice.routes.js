@@ -173,5 +173,19 @@ studentInvoiceRouter.get(
   invoiceController.getStudentInvoices
 );
 
+/**
+ * Student fee ledger (for the ledger PDF)
+ * GET /api/v1/students/:studentId/fee-ledger
+ * Staff with 'fees.read', or a parent for their own linked children (checked in the service).
+ */
+studentInvoiceRouter.get(
+  '/:studentId/fee-ledger',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requireFeesReadOrParent,
+  validate(invoiceSchemas.studentLedgerSchema),
+  invoiceController.getStudentFeeLedger
+);
+
 export { invoiceRouter as invoiceRoutes, studentInvoiceRouter as studentInvoiceRoutes };
 export default invoiceRouter;

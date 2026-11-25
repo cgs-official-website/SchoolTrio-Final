@@ -40,6 +40,12 @@ const SORTERS = {
   amount: (d) => [{ amount: d }]
 };
 
+/** "Bank Transfer" also matches "bank_transfer", "bank-transfer" and "BankTransfer". */
+function paymentModeVariants(mode) {
+  const spaced = String(mode).trim().replace(/[\s_-]+/g, ' ');
+  return [...new Set([spaced, spaced.replace(/ /g, '_'), spaced.replace(/ /g, '-'), spaced.replace(/ /g, '')])];
+}
+
 /** range: { start, end } - the cancel date window (either side can be null). */
 function buildWhere(schoolId, range, options = {}) {
   const and = [{ schoolId }];
@@ -51,8 +57,13 @@ function buildWhere(schoolId, range, options = {}) {
 
   if (options.studentId) and.push({ studentId: options.studentId });
   if (options.feeCategoryId) and.push({ invoice: { feeStructure: { feeCategoryId: options.feeCategoryId } } });
-  if (options.paymentMode) and.push({ paymentMode: { equals: options.paymentMode, mode: 'insensitive' } });
-
+  if (options.paymentMode) {
+    and.push({
+      OR: paymentModeVariants(options.paymentMode).map((m) => ({
+        paymentMode: { equals: m, mode: 'insensitive' }
+      }))
+    });
+  }  
   const created = {};
   if (range.start) created.gte = range.start;
   if (range.end) created.lt = range.end;

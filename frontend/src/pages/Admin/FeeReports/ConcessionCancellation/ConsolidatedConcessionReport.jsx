@@ -4,6 +4,7 @@ import { feeReportsApi } from '../../../../api/feeReports';
 import { formatMoney } from '../shared/reportUtils';
 
 const money = (value) => (value ? formatMoney(value) : '-');
+const percent = (value) => (value ? `${value}%` : '-');
 
 // The fee columns come from the fee categories, so the columns are built once they load
 const columns = ({ feeCategories }) => [
@@ -19,17 +20,17 @@ const columns = ({ feeCategories }) => [
         render: (row) => <span className="font-mono whitespace-nowrap">{money(row.fees?.[c.id])}</span>
     })),
     {
-        key: 'fee-other',
-        label: 'Other Fees',
-        sortable: false,
-        render: (row) => <span className="font-mono whitespace-nowrap">{money(row.fees?.other)}</span>
-    },
-    {
         key: 'totalFee',
         label: 'Total Fee',
         sortable: false,
         render: (row) => <span className="font-mono font-bold whitespace-nowrap">{formatMoney(row.totalFee)}</span>
     },
+    ...feeCategories.map((c) => ({
+        key: `pct-${c.id}`,
+        label: `Conc. % in ${c.name}`,
+        sortable: false,
+        render: (row) => <span className="whitespace-nowrap">{percent(row.percents?.[c.id])}</span>
+    })),
     {
         key: 'concessionAmount',
         label: 'Concession Amount',
@@ -40,7 +41,7 @@ const columns = ({ feeCategories }) => [
         key: 'concessionPercent',
         label: 'Concession %',
         sortable: false,
-        render: (row) => (row.concessionPercent ? `${row.concessionPercent}%` : '-')
+        render: (row) => percent(row.concessionPercent)
     },
     {
         key: 'netAmount',
@@ -61,8 +62,12 @@ const exportColumns = ({ feeCategories }) => [
         label: c.name,
         value: (r) => r.fees?.[c.id] ?? 0
     })),
-    { key: 'fee-other', label: 'Other Fees', value: (r) => r.fees?.other ?? 0 },
     { key: 'totalFee', label: 'Total Fee', value: (r) => r.totalFee },
+    ...feeCategories.map((c) => ({
+        key: `pct-${c.id}`,
+        label: `Conc. % in ${c.name}`,
+        value: (r) => r.percents?.[c.id] ?? 0
+    })),
     { key: 'concessionAmount', label: 'Concession Amount', value: (r) => r.concessionAmount },
     { key: 'concessionPercent', label: 'Concession %', value: (r) => r.concessionPercent },
     { key: 'netAmount', label: 'Net Amount', value: (r) => r.netAmount }

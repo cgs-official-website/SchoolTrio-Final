@@ -57,7 +57,8 @@ export default function FilteredReport({
     summaryCards,
     defaultSortBy,
     defaultOrder = 'desc',
-    emptyMessage = 'Nothing to show yet.'
+    emptyMessage = 'Nothing to show yet.',
+    paymentModes
 }) {
     const { classOptions, sectionOptions } = useClassSectionOptions();
     const has = (key) => filterKeys.includes(key);
@@ -280,7 +281,7 @@ export default function FilteredReport({
                                     className={inputClass}
                                 >
                                     <option value="">All pay modes</option>
-                                    {summary.paymentModes.map((mode) => (
+                                        {(paymentModes || summary.paymentModes).map((mode) => (
                                         <option key={mode} value={mode}>
                                             {mode}
                                         </option>

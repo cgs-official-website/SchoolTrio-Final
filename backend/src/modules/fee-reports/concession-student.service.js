@@ -79,14 +79,23 @@ export async function getStudentConcessionReport(schoolId, query = {}) {
 
 /**
  * One row per student: every fee by category (the student's full fees, not only the concessioned
- * ones), then the total fee, the concession given and what is left to pay.
+ * ones), the concession percentage in each category, then the total fee, the concession given
+ * and what is left to pay.
  */
 export async function getConsolidatedConcessionReport(schoolId, query = {}) {
-  const { ids, paise } = await loadGroups(schoolId, query);
+  const { range, ids, paise } = await loadGroups(schoolId, query);
   const students = await repo.findStudentsPage(schoolId, ids, query);
-  const invoices =
-    students.length > 0 ? await repo.findInvoicesForStudents(schoolId, students.map((s) => s.id)) : [];
+  const studentIds = students.map((s) => s.id);
 
+  const [invoices, concessions] =
+    studentIds.length > 0
+      ? await Promise.all([
+          repo.findInvoicesForStudents(schoolId, studentIds),
+          repo.findConcessionsForStudents(schoolId, studentIds, range, query)
+        ])
+      : [[], []];
+
+  // Full fees of each student, by fee category (in paise)
   const feesByStudent = new Map();
   for (const inv of invoices) {
     const bucket = feesByStudent.get(inv.studentId) || new Map();
@@ -95,13 +104,33 @@ export async function getConsolidatedConcessionReport(schoolId, query = {}) {
     feesByStudent.set(inv.studentId, bucket);
   }
 
+  // Concession given to each student, by fee category (in paise)
+  const concessionsByStudent = new Map();
+  for (const c of concessions) {
+    const bucket = concessionsByStudent.get(c.studentId) || new Map();
+    const key = c.invoice?.feeStructure?.feeCategoryId || 'other';
+    bucket.set(key, (bucket.get(key) || 0) + toPaise(c.amount));
+    concessionsByStudent.set(c.studentId, bucket);
+  }
+
   const rows = students.map((s) => {
+    const feePaise = feesByStudent.get(s.id) || new Map();
+    const givenPaise = concessionsByStudent.get(s.id) || new Map();
+
     const fees = {};
+    const concessionByCategory = {};
+    const percents = {};
     let totalPaise = 0;
-    for (const [key, p] of feesByStudent.get(s.id) || []) {
+
+    for (const [key, p] of feePaise) {
       fees[key] = fromPaise(p);
       totalPaise += p;
+
+      const given = givenPaise.get(key) || 0;
+      concessionByCategory[key] = fromPaise(given);
+      percents[key] = p > 0 ? Math.round((given / p) * 10000) / 100 : 0;
     }
+
     const concessionPaise = paise.get(s.id) || 0;
     const parents = s.parents || [];
 
@@ -113,6 +142,8 @@ export async function getConsolidatedConcessionReport(schoolId, query = {}) {
       sectionName: s.section?.name ?? null,
       parentName: fromCustomData(s.customData, PARENT_KEYS) ?? parents[0]?.parent?.name ?? '',
       fees,
+      concessionByCategory,
+      percents,
       totalFee: fromPaise(totalPaise),
       concessionAmount: fromPaise(concessionPaise),
       concessionPercent: totalPaise > 0 ? Math.round((concessionPaise / totalPaise) * 10000) / 100 : 0,

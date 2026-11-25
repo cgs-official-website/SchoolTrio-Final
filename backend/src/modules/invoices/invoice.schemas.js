@@ -130,7 +130,6 @@ export const payInvoiceSchema = {
       .coerce.number({ invalid_type_error: 'Amount must be a numeric value' })
       .min(0, 'Amount cannot be negative')
       .optional(),
-    // Optional penalty for overdue fees, entered by the admin at collection time.
     lateFee: z
       .coerce.number({ invalid_type_error: 'Late fee must be a numeric value' })
       .min(0, 'Late fee cannot be negative')
@@ -139,4 +138,22 @@ export const payInvoiceSchema = {
   }).optional().default({})
 };
 
+const isRealDate = (value) => {
+  const d = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+};
 
+export const studentLedgerSchema = {
+  params: z.object({
+    studentId: z
+      .string({ required_error: 'Student ID is required' })
+      .regex(REGEX.UUID, 'Invalid student ID format')
+  }),
+  query: z.object({
+    asOn: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format')
+      .refine(isRealDate, 'Enter a valid date')
+      .optional()
+  })
+};

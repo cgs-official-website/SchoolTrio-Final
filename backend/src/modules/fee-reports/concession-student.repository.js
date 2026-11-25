@@ -46,17 +46,23 @@ export async function findStudentsPage(schoolId, ids, options = {}, tx = prisma)
   });
 }
 
-/** The matching concessions of the students on one page (for the category names). */
+/** The matching concessions of the students on one page (category names, and amounts per fee category). */
 export async function findConcessionsForStudents(schoolId, studentIds, range, options = {}, tx = prisma) {
   return tx.feeConcession.findMany({
     where: { AND: [buildWhere(schoolId, range, options), { studentId: { in: studentIds } }] },
     select: {
       studentId: true,
+      amount: true,
       concessionCategory: { select: { name: true } },
       invoice: {
         select: {
           feeName: true,
-          feeStructure: { select: { feeCategory: { select: { name: true } } } }
+          feeStructure: {
+            select: {
+              feeCategoryId: true,
+              feeCategory: { select: { name: true } }
+            }
+          }
         }
       }
     }

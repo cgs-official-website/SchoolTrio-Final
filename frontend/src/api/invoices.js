@@ -6,7 +6,6 @@
  */
 
 import { apiClient } from './client.js';
-
 /**
  * Builds a clean query string omitting null, undefined, and empty string values.
  *
@@ -164,5 +163,13 @@ export const invoicesApi = {
   cancelInvoice,
   payInvoice
 };
+
+/** The student's fee ledger (what the office ledger PDF is built from). asOn is YYYY-MM-DD, default today. */
+export async function getStudentFeeLedger(studentId, asOn) {
+  return apiClient(
+    `/api/v1/students/${encodeURIComponent(studentId)}/fee-ledger${buildQueryString({ asOn })}`,
+    { method: 'GET' }
+  );
+}
 
 export default invoicesApi;

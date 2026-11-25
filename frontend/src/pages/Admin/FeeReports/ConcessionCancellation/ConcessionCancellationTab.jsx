@@ -2,16 +2,14 @@ import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ConcessionReport from './ConcessionReport';
 import ConsolidatedConcessionReport from './ConsolidatedConcessionReport';
-import InvoiceCancellationReport from './InvoiceCancellationReport';
-import CategoryCancellationReport from './CategoryCancellationReport';
+import CancellationReport from './CancellationReport';
 import StudentConcessionReport from './StudentConcessionReport';
 
 // Add new Concession & Cancellation sub-tabs here: { key, label, Component }
 const SUB_TABS = [
     { key: 'concession-report', label: 'Concession Report', Component: ConcessionReport },
     { key: 'consolidated', label: 'Consolidated Concession Report', Component: ConsolidatedConcessionReport },
-    { key: 'invoice-cancellation', label: 'Invoice Cancellation', Component: InvoiceCancellationReport },
-    { key: 'category-cancellation', label: 'Category Cancellation Report', Component: CategoryCancellationReport },
+    { key: 'cancellation', label: 'Cancellation Report', Component: CancellationReport },
     { key: 'student-concession', label: 'Student Wise Concession Report', Component: StudentConcessionReport }
 ];
 

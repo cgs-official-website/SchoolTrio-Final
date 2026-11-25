@@ -18,6 +18,7 @@ export const CATEGORY_CANCELLATION_SORT_FIELDS = [
   'studentName',
   'className',
   'receiptNumber',
+  'paymentMode',
   'paidAt',
   'cancelDate',
   'feeCategory',
