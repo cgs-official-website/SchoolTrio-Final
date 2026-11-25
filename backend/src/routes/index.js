@@ -17,6 +17,7 @@ import feeEntryRoutes from '../modules/fee-entries/fee-entry.routes.js';
 import feeConcessionRoutes from '../modules/fee-concession/fee-concession.routes.js';
 import feeCancellationRoutes from '../modules/fee-cancellations/fee-cancellation.routes.js';
 import feeDeletionRoutes from '../modules/fee-deletions/fee-deletion.routes.js';
+import feeReportRoutes from '../modules/fee-reports/fee-report.routes.js';
 import { invoiceRoutes, studentInvoiceRoutes } from '../modules/invoices/invoice.routes.js';
 import { leaveRoutes, studentLeaveRoutes, staffLeaveRoutes } from '../modules/leaves/leave.routes.js';
 import examRoutes from '../modules/exams/exam.routes.js';
@@ -167,6 +168,8 @@ router.use('/fee-concessions', feeConcessionRoutes);
 router.use('/fee-cancellations', feeCancellationRoutes);
 
 router.use('/fee-deletions', feeDeletionRoutes);
+
+router.use('/fee-reports', feeReportRoutes);
 
 /**
  * Invoice Endpoints mounted under /api/v1/invoices

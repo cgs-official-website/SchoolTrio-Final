@@ -49,3 +49,25 @@ export function downloadExcel({ fileName, sheetName = 'Sheet1', columns, rows })
   XLSX.utils.book_append_sheet(book, sheet, sheetName.slice(0, 31));
   XLSX.writeFile(book, `${cleanFileName(fileName)}.xlsx`);
 }
+
+/**
+ * Builds a workbook with several sheets and downloads it.
+ * sheets: [{ name, header: string[], rows: any[][] }]
+ */
+export function downloadWorkbook({ fileName, sheets }) {
+  const book = XLSX.utils.book_new();
+
+  for (const s of sheets) {
+    const sheet = XLSX.utils.aoa_to_sheet([s.header, ...s.rows]);
+    sheet['!cols'] = s.header.map((label, i) => {
+      const longest = Math.max(
+        String(label).length,
+        ...s.rows.slice(0, 500).map((r) => String(r[i] ?? '').length)
+      );
+      return { wch: Math.min(Math.max(longest + 2, 8), 50) };
+    });
+    XLSX.utils.book_append_sheet(book, sheet, String(s.name).slice(0, 31));
+  }
+
+  XLSX.writeFile(book, `${cleanFileName(fileName)}.xlsx`);
+}

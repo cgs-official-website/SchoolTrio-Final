@@ -6,21 +6,23 @@ const EXPORT_PAGE_SIZE = 100;
 const MAX_ROWS = 10000;
 
 /**
- * columns:     [{ key, label, value }] (define once, outside the component)
+ * columns:     [{ key, label, value }]
  * fetcher:     the same function the list uses: (params) => api.list({ ...params, ...filters })
  * getQuery:    () => ({ search, sortBy, order }) of the list right now
  */
 export default function useExcelExport({ columns, fetcher, getQuery, defaultFileName, sheetName }) {
   const [open, setOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [selected, setSelected] = useState(() => Object.fromEntries(columns.map((c) => [c.key, true])));
+  // Only the unticked columns are stored, so columns that appear later start ticked
+  const [unticked, setUnticked] = useState({});
 
   const availableFields = columns.map(({ key, label }) => ({ key, label }));
+  const selected = Object.fromEntries(columns.map((c) => [c.key, !unticked[c.key]]));
 
-  const toggleField = (key) => setSelected((prev) => ({ ...prev, [key]: !prev[key] }));
+  const toggleField = (key) => setUnticked((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const selectAll = (checked) =>
-    setSelected(Object.fromEntries(columns.map((c) => [c.key, Boolean(checked)])));
+    setUnticked(checked ? {} : Object.fromEntries(columns.map((c) => [c.key, true])));
 
   const exportNow = async (fileName) => {
     const picked = columns.filter((c) => selected[c.key]);

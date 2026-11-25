@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { listInvoices } from '../../../api/invoices';
+import { listInvoices } from '../../../../api/invoices';
 
 export const formatMoney = (v) => `₹${Number(v || 0).toLocaleString('en-IN')}`;
 
