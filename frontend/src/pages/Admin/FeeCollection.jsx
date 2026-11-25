@@ -16,12 +16,15 @@ import {
     LuReceipt as Receipt,
     LuHistory as History,
     LuPrinter as Printer,
+    LuDownload as Download,
+    LuFileSpreadsheet as FileSpreadsheet,
     LuIndianRupee as Rupee,
     LuTriangleAlert as AlertTriangle,
     LuLoader as Loader,
     LuMousePointerClick as Pointer
 } from 'react-icons/lu';
 import toast from 'react-hot-toast';
+import { buildLedgerStatement, printLedger, exportLedgerPdf, exportLedgerExcel } from '../../utils/studentLedgerStatement';
 
 /**
  * Payment modes accepted by POST /api/v1/invoices/:id/pay (see invoice.schemas.js).
@@ -166,6 +169,8 @@ export default function FeeCollection() {
     const [invoicesLoading, setInvoicesLoading] = useState(false);
     const [transport, setTransport] = useState(null); // { routeName, stopName } | null
     const [schoolName, setSchoolName] = useState('');
+    const [schoolAddress, setSchoolAddress] = useState('');
+    const [exporting, setExporting] = useState(''); // '' | 'pdf' | 'excel'
 
     // ----- payment form -----
     const [tab, setTab] = useState('ledger'); // 'ledger' | 'history'
@@ -214,7 +219,9 @@ export default function FeeCollection() {
         getSchoolSettings()
             .then((res) => {
                 const d = res?.data || res;
-                if (mountedRef.current) setSchoolName(d?.name || d?.schoolName || '');
+                if (!mountedRef.current) return;
+                setSchoolName(d?.name || d?.schoolName || '');
+                setSchoolAddress(d?.address || d?.location || '');
             })
             .catch(() => { });
     }, []);
@@ -616,6 +623,33 @@ export default function FeeCollection() {
         target.document.open();
         target.document.write(html);
         target.document.close();
+    };
+
+    // ----- overall ledger of this student (all fees + all payments): print / PDF / Excel -----
+    const makeLedgerModel = () => buildLedgerStatement({ schoolName, schoolAddress, student, invoices });
+
+    const printOverallLedger = () => {
+        if (!student || ledger.active.length === 0) {
+            toast.error('No fees have been assigned to this student yet.');
+            return;
+        }
+        if (!printLedger(makeLedgerModel())) toast.error('Allow pop-ups to print the ledger.');
+    };
+
+    const exportOverallLedger = async (type) => {
+        if (!student || ledger.active.length === 0) {
+            toast.error('No fees have been assigned to this student yet.');
+            return;
+        }
+        setExporting(type);
+        try {
+            const model = makeLedgerModel();
+            if (type === 'pdf') await exportLedgerPdf(model); else await exportLedgerExcel(model);
+        } catch (err) {
+            toast.error(err?.message || 'Could not export the ledger.');
+        } finally {
+            if (mountedRef.current) setExporting('');
+        }
     };
 
     const handlePay = async () => {
@@ -1091,6 +1125,18 @@ export default function FeeCollection() {
                         </>
                     ) : (
                         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                            <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+                                <span className="text-xs text-slate-500 dark:text-slate-400 mr-auto">Overall ledger: all fees and all payments of this student.</span>
+                                <button type="button" onClick={() => exportOverallLedger('pdf')} disabled={ledger.active.length === 0 || Boolean(exporting)} title="Download the overall ledger as PDF" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed">
+                                    {exporting === 'pdf' ? <Loader size={13} className="animate-spin" /> : <Download size={13} />} Export PDF
+                                </button>
+                                <button type="button" onClick={() => exportOverallLedger('excel')} disabled={ledger.active.length === 0 || Boolean(exporting)} title="Download the overall ledger as Excel" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed">
+                                    {exporting === 'excel' ? <Loader size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />} Export Excel
+                                </button>
+                                <button type="button" onClick={printOverallLedger} disabled={ledger.active.length === 0} title="Print the overall ledger" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-700 hover:bg-slate-800 text-white disabled:opacity-40 disabled:cursor-not-allowed">
+                                    <Printer size={13} /> Print ledger
+                                </button>
+                            </div>
                             {history.length === 0 ? (
                                 <div className="p-10 text-center text-sm text-slate-500 dark:text-slate-400">No payments have been recorded for this student.</div>
                             ) : (
