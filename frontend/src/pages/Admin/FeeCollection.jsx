@@ -229,7 +229,8 @@ export default function FeeCollection() {
     const selectedClass = useMemo(() => classes.find((c) => c.id === classId) || null, [classes, classId]);
     const sections = useMemo(() => sortSectionsAscending(selectedClass?.sections || []), [selectedClass]);
     const classHasSections = sections.length > 0;
-    const classReady = Boolean(classId) && (!classHasSections || Boolean(sectionId));
+    // A class is enough: with no section picked, the roster is every section of that class
+    const classReady = Boolean(classId);
     // No class chosen -> search the whole school; class chosen -> search inside that class/section
     const globalMode = !classId;
     const canSearchStudents = globalMode || classReady;
@@ -254,7 +255,14 @@ export default function FeeCollection() {
                 order: 'asc'
             });
             if (!mountedRef.current || reqId !== rosterReqRef.current) return;
-            setRoster({ key, students: Array.isArray(res?.data) ? res.data : [] });
+            let list = Array.isArray(res?.data) ? res.data : [];
+            // whole class (no section picked): group by section, then by name
+            if (!sId) {
+                list = [...list].sort((a, b) =>
+                    String(a.section?.name || '').localeCompare(String(b.section?.name || ''), undefined, { numeric: true, sensitivity: 'base' })
+                    || studentFullName(a).localeCompare(studentFullName(b), undefined, { sensitivity: 'base' }));
+            }
+            setRoster({ key, students: list });
         } catch (err) {
             if (mountedRef.current && reqId === rosterReqRef.current) {
                 setRoster({ key, students: [] });
@@ -808,7 +816,7 @@ export default function FeeCollection() {
                         <label htmlFor="fc-section" className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Section</label>
                         <select id="fc-section" value={sectionId} onChange={(e) => handleSectionChange(e.target.value)} disabled={!classId || !classHasSections} className={selectClass}>
                             <option value="">
-                                {!classId ? 'Select Section' : classHasSections ? 'Select Section' : 'No sections'}
+                                {!classId ? 'Select Section' : classHasSections ? 'All Sections' : 'No sections'}
                             </option>
                             {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
@@ -829,7 +837,7 @@ export default function FeeCollection() {
                                 value={studentInputValue}
                                 readOnly={Boolean(student)}
                                 disabled={!canSearchStudents}
-                                placeholder={!canSearchStudents ? 'Select a section first' : globalMode ? 'Search any student by name / admission no.' : 'Select student or type a name / admission no.'}
+                                placeholder={!canSearchStudents ? 'Select a class first' : globalMode ? 'Search any student by name / admission no.' : 'Select student or type a name / admission no.'}
                                 onFocus={() => { if (!student) setDropdownOpen(true); }}
                                 onChange={(e) => { setQuery(e.target.value); setDropdownOpen(true); }}
                                 onKeyDown={onComboKeyDown}
@@ -843,7 +851,7 @@ export default function FeeCollection() {
                                     <div className="flex items-center gap-2 p-4 text-sm text-slate-500"><Loader size={16} className="animate-spin" /> Loading students…</div>
                                 ) : results.length === 0 ? (
                                     <div className="p-4 text-sm text-slate-500 dark:text-slate-400">
-                                        {globalMode ? (query.trim() ? 'No active student matches that search.' : 'No active students found.') : query.trim() ? 'No student matches that search in this class.' : 'No active students in this class and section.'}
+                                        {globalMode ? (query.trim() ? 'No active student matches that search.' : 'No active students found.') : query.trim() ? 'No student matches that search in this class.' : sectionId || !classHasSections ? 'No active students in this class and section.' : 'No active students in this class.'}
                                     </div>
                                 ) : (
                                     results.map((s, idx) => (
