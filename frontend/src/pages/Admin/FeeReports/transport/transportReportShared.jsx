@@ -3,7 +3,6 @@ import toast from 'react-hot-toast';
 import {
     LuFilter as FilterIcon,
     LuFileSpreadsheet as SheetIcon,
-    LuFileText as PdfIcon,
     LuPrinter as PrintIcon,
     LuSettings as SettingsIcon,
     LuLoader as Loader,
@@ -15,7 +14,7 @@ import {
 } from 'react-icons/lu';
 import { getTransportReportStudents, getTransportReportPayments } from '../../../../api/transport';
 import { useLiveDataRefresh } from '../../../../hooks/useLiveDataRefresh';
-import { exportRowsToExcel, exportRowsToPdf, printRowsPdf } from '../../../../utils/transportExport';
+import { exportRowsToExcel, printRowsPdf } from '../../../../utils/transportExport';
 
 export const filterInputClass =
     'w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/40';
@@ -90,7 +89,7 @@ export const useTransportStudents = () => useReportData(getTransportReportStuden
 export const useTransportPayments = (range) => useReportData(getTransportReportPayments, range);
 
 // ------------------------------------------------------------------
-// Toolbar: Filter / Export (Excel + PDF) / Print PDF / Settings
+// Toolbar: Filter / Export Excel / Print PDF / Settings
 // ------------------------------------------------------------------
 
 const btnBase = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-bold border transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
@@ -99,7 +98,7 @@ const btnGhost = `${btnBase} bg-white dark:bg-slate-900 border-slate-200 dark:bo
 
 export function ReportToolbar({
     title, filterCount = 0, onToggleFilter, filterOpen,
-    onExcel, onPdf, onPrint, disabled,
+    onExcel, onPrint, disabled,
     columns, hidden, onToggleColumn
 }) {
     const [settingsOpen, setSettingsOpen] = useState(false);
@@ -123,9 +122,6 @@ export function ReportToolbar({
                 )}
                 <button type="button" onClick={onExcel} disabled={disabled} className={`${btnBase} border-green-200 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-900 dark:bg-green-950/40 dark:text-green-400`}>
                     <SheetIcon size={15} /> Export Excel
-                </button>
-                <button type="button" onClick={onPdf} disabled={disabled} className={`${btnBase} border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400`}>
-                    <PdfIcon size={15} /> Export PDF
                 </button>
                 {onPrint && (
                     <button type="button" onClick={onPrint} disabled={disabled} className={btnPrimary}>
@@ -287,10 +283,6 @@ export function useReportExports({ fileBase, sheetName, excelTitle, pdfTitle, vi
         onExcel: async () => {
             const d = exportData();
             if (d) await exportRowsToExcel(fileBase, d.headers, d.rows, sheetName, excelTitle);
-        },
-        onPdf: () => {
-            const d = exportData();
-            if (d) exportRowsToPdf(fileBase, pdfTitle, d.headers, d.rows, pdfOpts);
         },
         onPrint: () => {
             const d = exportData();

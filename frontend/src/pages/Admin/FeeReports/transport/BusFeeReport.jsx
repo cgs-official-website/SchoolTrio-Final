@@ -6,6 +6,20 @@ import {
 
 const num = (v) => Number(v || 0);
 
+// Paid = nothing left to pay, Partial = some paid, Unpaid = nothing paid, No fee = no transport invoice
+export const paymentStatusOf = (r) => {
+    if (num(r.totalAmount) <= 0) return 'No fee';
+    if (num(r.due) <= 0) return 'Paid';
+    return num(r.paid) > 0 ? 'Partial' : 'Unpaid';
+};
+
+const STATUS_STYLE = {
+    Paid: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-400 dark:border-green-900',
+    Partial: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900',
+    Unpaid: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-900',
+    'No fee': 'bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+};
+
 // Column order follows the reference "Bus Fee Report"; the fee amounts can be switched on from Settings.
 const COLUMNS = [
     { key: 'adm', label: 'Adm. No.', value: (r) => r.admissionNumber },
@@ -20,13 +34,20 @@ const COLUMNS = [
     { key: 'address', label: 'Address', value: (r) => r.address, wrap: true },
     { key: 'route', label: 'Route Name', value: (r) => r.routeName },
     { key: 'stop', label: 'Stop Name', value: (r) => r.stopName },
+    {
+        key: 'payStatus', label: 'Payment Status', value: (r) => paymentStatusOf(r),
+        render: (r) => {
+            const st = paymentStatusOf(r);
+            return <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold border ${STATUS_STYLE[st]}`}>{st}</span>;
+        }
+    },
     { key: 'total', label: 'Total Amount', value: (r) => num(r.totalAmount), align: 'right', defaultHidden: true },
     { key: 'concession', label: 'Concession', value: (r) => num(r.concession), align: 'right', defaultHidden: true },
     { key: 'paid', label: 'Paid', value: (r) => num(r.paid), align: 'right', defaultHidden: true },
     { key: 'due', label: 'Due', value: (r) => num(r.due), align: 'right', defaultHidden: true }
 ];
 
-const EMPTY = { className: '', sectionName: '', routeName: '', stopName: '', category: '', status: '' };
+const EMPTY = { className: '', sectionName: '', routeName: '', stopName: '', category: '', status: '', payStatus: '' };
 
 export default function BusFeeReport() {
     const { rows, loading } = useTransportStudents();
@@ -42,7 +63,8 @@ export default function BusFeeReport() {
             (!filters.routeName || r.routeName === filters.routeName) &&
             (!filters.stopName || r.stopName === filters.stopName) &&
             (!filters.category || r.category === filters.category) &&
-            (!filters.status || r.transportStatus === filters.status)
+            (!filters.status || r.transportStatus === filters.status) &&
+            (!filters.payStatus || paymentStatusOf(r) === filters.payStatus)
         ),
         [rows, filters]
     );
@@ -82,6 +104,7 @@ export default function BusFeeReport() {
                 <SelectField label="Stop" value={filters.stopName} onChange={set('stopName')} options={unique(rows, (r) => r.stopName).sort(natural)} />
                 <SelectField label="Student Category" value={filters.category} onChange={set('category')} options={unique(rows, (r) => r.category).sort(natural)} />
                 <SelectField label="Transport Status" value={filters.status} onChange={set('status')} options={['Active', 'Withdraw']} />
+                <SelectField label="Payment Status" value={filters.payStatus} onChange={set('payStatus')} options={['Paid', 'Partial', 'Unpaid', 'No fee']} />
             </FilterPanel>
 
             <TotalsStrip items={[

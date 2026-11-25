@@ -54,7 +54,7 @@ export default function BusSummary() {
             <ReportToolbar
                 title="Bus Student Summary"
                 disabled={loading || table.sorted.length === 0}
-                onExcel={exports.onExcel} onPdf={exports.onPdf}
+                onExcel={exports.onExcel} onPrint={exports.onPrint}
             />
 
             <div className="flex flex-wrap items-end gap-3 mb-5">

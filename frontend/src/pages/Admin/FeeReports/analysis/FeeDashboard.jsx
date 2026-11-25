@@ -142,7 +142,7 @@ export default function FeeDashboard({ ctx }) {
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
                         <ChartCard title="Fee category wise" subtitle="Collected and still to collect, largest categories first">
-                            <BarList items={d.categories.map((c) => ({
+                            <BarList normalize items={d.categories.map((c) => ({
                                 key: c.name, label: c.name,
                                 right: `${compactMoney(c.paid)} of ${compactMoney(c.paid + c.balance)} · ${pct(c.paid, c.paid + c.balance)}%`,
                                 segments: [
@@ -155,6 +155,7 @@ export default function FeeDashboard({ ctx }) {
 
                         <ChartCard title="Class wise collection" subtitle="Collected and balance for every class">
                             <BarList
+                                normalize
                                 maxHeightClass="max-h-[22rem] overflow-y-auto pr-1"
                                 items={d.classes.map((c) => ({
                                     key: c.name, label: c.name,

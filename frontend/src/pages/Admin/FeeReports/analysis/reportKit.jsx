@@ -142,7 +142,7 @@ export function AnalysisReport({
                 title={title}
                 filterOpen={ctx.filterOpen} filterCount={ctx.filterCount} onToggleFilter={ctx.toggleFilter}
                 disabled={ctx.loading || table.sorted.length === 0}
-                onExcel={exports.onExcel} onPdf={exports.onPdf} onPrint={exports.onPrint}
+                onExcel={exports.onExcel} onPrint={exports.onPrint}
                 columns={columns} hidden={table.hidden} onToggleColumn={table.toggleColumn}
             />
             <AnalysisFilterPanel ctx={ctx} />

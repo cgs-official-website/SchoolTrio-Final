@@ -125,7 +125,9 @@ export function ColumnChart({ labels, series, ariaLabel }) {
 // ------------------------------------------------------------------
 
 /** items: [{ key, label, sub?, segments: [{ value, color, label }], right }] */
-export function BarList({ items, maxHeightClass = '' }) {
+export function BarList({ items, maxHeightClass = '', normalize = false }) {
+    // normalize: every bar is 100% wide and split by its own parts (collected vs balance).
+    // default: bar length is relative to the largest item (shares / rankings).
     const max = Math.max(1, ...items.map((i) => i.segments.reduce((t, s) => t + s.value, 0)));
     return (
         <ul className={`space-y-3 ${maxHeightClass}`}>
@@ -143,7 +145,7 @@ export function BarList({ items, maxHeightClass = '' }) {
                             <span
                                 key={s.label}
                                 title={`${s.label}: ${compactMoney(s.value)}`}
-                                style={{ width: `${(s.value / max) * 100}%`, background: s.color }}
+                                style={{ width: `${(s.value / (normalize ? Math.max(1, item.segments.reduce((t, x) => t + x.value, 0)) : max)) * 100}%`, background: s.color }}
                             />
                         ))}
                     </div>

@@ -170,6 +170,7 @@ export default function TransportDashboard() {
                             {d.routes.length === 0 ? <EmptyChart /> : (
                                 <>
                                     <BarList
+                                        normalize
                                         maxHeightClass="max-h-[22rem] overflow-y-auto pr-1"
                                         items={d.routes.map((r) => ({
                                             key: r.name, label: r.name, sub: `${r.students} students`,

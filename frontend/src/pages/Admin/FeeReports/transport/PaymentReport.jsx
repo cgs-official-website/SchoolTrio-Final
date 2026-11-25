@@ -87,7 +87,7 @@ export default function PaymentReport({ title, columns, fileBase, excelTitle, sh
                 title={title}
                 filterOpen={filterOpen} filterCount={filterCount} onToggleFilter={() => setFilterOpen((v) => !v)}
                 disabled={loading || table.sorted.length === 0}
-                onExcel={exports.onExcel} onPdf={exports.onPdf} onPrint={hasPrint ? exports.onPrint : undefined}
+                onExcel={exports.onExcel} onPrint={exports.onPrint}
                 columns={hasPrint ? columns : undefined} hidden={table.hidden} onToggleColumn={table.toggleColumn}
             />
             <FilterPanel open={filterOpen} onReset={() => setFilters(EMPTY)}>
