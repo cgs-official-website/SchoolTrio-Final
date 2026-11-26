@@ -131,3 +131,13 @@ export const mappingStudentParamSchema = z.object({
 export const myTransportSchema = z.object({
     query: z.object({ studentId: z.string().uuid().optional() })
 });
+
+// ---------------- FEE REPORTS: TRANSPORT ----------------
+export const transportReportStudentsSchema = z.object({ query: z.object({}).passthrough() });
+
+export const transportReportPaymentsSchema = z.object({
+    query: z.object({
+        from: z.string().regex(DATE_REGEX, { message: 'From date must be in YYYY-MM-DD format' }).optional(),
+        to: z.string().regex(DATE_REGEX, { message: 'To date must be in YYYY-MM-DD format' }).optional()
+    })
+});

@@ -7,11 +7,11 @@ import {
     LuBus as Bus,
     LuChartColumn as Analysis
 } from 'react-icons/lu';
-import DailyCollectionTab from './FeeReports/DailyCollectionTab';
-import StudentCategoryWiseTab from './FeeReports/StudentCategoryWiseTab';
-import ConcessionCancellationTab from './FeeReports/ConcessionCancellationTab';
-import TransportReportTab from './FeeReports/TransportReportTab';
-import FeeAnalysisTab from './FeeReports/FeeAnalysisTab';
+import DailyCollectionTab from './FeeReports/DailyCollection/DailyCollectionTab';
+import StudentCategoryWiseTab from './FeeReports/StudentCategoryWise/StudentCategoryWiseTab';
+import ConcessionCancellationTab from './FeeReports/ConcessionCancellation/ConcessionCancellationTab';
+import TransportReportTab from './FeeReports/TransportReport/TransportReportTab';
+import FeeAnalysisTab from './FeeReports/FeeAnalysis/FeeAnalysisTab';
 
 const TABS = [
     { key: 'daily', label: 'Daily Collection', icon: CalendarDays, Component: DailyCollectionTab },

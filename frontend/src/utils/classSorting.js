@@ -107,6 +107,46 @@ export const formatClassSection = (c) => {
  * @param {Array<Object>} classes - Array of class objects ({ name, section, sections, ... })
  * @returns {Array<Object>} Sorted array of classes
  */
+const ROMAN_VALUES = { i: 1, v: 5, x: 10, l: 50, c: 100 };
+
+/** Roman numeral (I, IV, XII ...) -> number, or null when the text is not a roman numeral. */
+const romanToNumber = (text) => {
+  if (!/^[ivxlc]+$/i.test(text)) return null;
+  let total = 0;
+  const chars = text.toLowerCase().split('');
+  chars.forEach((ch, i) => {
+    const v = ROMAN_VALUES[ch];
+    total += v < (ROMAN_VALUES[chars[i + 1]] || 0) ? -v : v;
+  });
+  return total;
+};
+
+/**
+ * Where a class sits in the school, so "LKG, UKG, I, II ... X" lists in teaching order
+ * instead of alphabetical ("IV, LKG, V, VI ...").
+ * Pre-primary first (Playgroup, Nursery, Pre-KG, LKG, UKG), then numbers and roman numerals
+ * (1, 2 ... or I, II ...), then anything else by name.
+ */
+export const classRank = (name) => {
+  const text = (name || '').toString().trim().toLowerCase()
+    .replace(/\b(class|grade|std|standard)\b\.?/g, '')
+    .trim();
+
+  if (/play\s*(group|school)|^pg$/.test(text)) return 0;
+  if (/nursery/.test(text)) return 1;
+  if (/pre[\s-]*(kg|k\.g|school|primary)|^pre[\s-]*k/.test(text)) return 2;
+  if (/^(lkg|l\.k\.g|lower\s*kg)/.test(text)) return 3;
+  if (/^(ukg|u\.k\.g|upper\s*kg)/.test(text)) return 4;
+
+  const digits = text.match(/^\d+/);
+  if (digits) return 10 + Number(digits[0]);
+
+  const roman = romanToNumber(text.split(/[\s-]/)[0]);
+  if (roman !== null) return 10 + roman;
+
+  return 1000;
+};
+
 export const sortClassesAscending = (classes = []) => {
   if (!Array.isArray(classes)) return [];
   return [...classes].sort((a, b) => {
@@ -116,6 +156,9 @@ export const sortClassesAscending = (classes = []) => {
 
     const nameA = (a.name || a.className || a.title || '').toString().trim();
     const nameB = (b.name || b.className || b.title || '').toString().trim();
+
+    const rankDiff = classRank(nameA) - classRank(nameB);
+    if (rankDiff !== 0) return rankDiff;
 
     const nameCompare = nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
     if (nameCompare !== 0) return nameCompare;

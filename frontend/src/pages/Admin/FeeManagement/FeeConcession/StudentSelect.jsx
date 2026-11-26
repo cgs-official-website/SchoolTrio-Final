@@ -7,7 +7,7 @@ import { inputClass, useDebouncedValue } from '../FeeMaster/components';
 const toOption = (s) => {
   const name = [s.firstName, s.lastName].filter(Boolean).join(' ') || 'Unnamed student';
   const extra = [s.admissionNumber, s.class?.name || s.className].filter(Boolean).join(' • ');
-  return { value: s.id, label: extra ? `${name} (${extra})` : name };
+  return { value: s.id, label: extra ? `${name} (${extra})` : name, raw: s };
 };
 
 export default function StudentSelect({ value, onChange, classId = '', sectionId = '', disabled = false }) {

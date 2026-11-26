@@ -1,4 +1,5 @@
 import * as svc from './transport.v2.service.js';
+import * as reportSvc from './transport.report.service.js';
 
 const handler = (fn, { status = 200, message } = {}) => async (req, res, next) => {
     try {
@@ -37,3 +38,7 @@ export const deleteMapping = handler(({ schoolId, actor, req }) => svc.deleteMap
 
 // Parent / student self-service
 export const getMyTransport = handler(({ schoolId, actor, req }) => svc.getMyTransport(schoolId, req.query, actor));
+
+// Fee Reports -> Transport Report
+export const getReportStudents = handler(({ schoolId }) => reportSvc.getTransportStudentReport(schoolId).then((r) => r.data));
+export const getReportPayments = handler(({ schoolId, req }) => reportSvc.getTransportPaymentReport(schoolId, req.query).then((r) => r.data));

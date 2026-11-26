@@ -56,7 +56,9 @@ export const INVOICE_SELECT_CONFIG = {
       amount: true,
       dueDate: true,
       classId: true,
-      collectionPeriodId: true
+      collectionPeriodId: true,
+      feeCategoryId: true,
+      feeCategory: { select: { id: true, name: true } }
     }
   },
   collectionPeriod: {
@@ -130,6 +132,11 @@ export async function findInvoices(schoolId, options = {}, tx = prisma) {
   // Status filter
   if (options.status) {
     where.status = options.status;
+  }
+
+  // Deleted fees are stored as Cancelled; parents never see them
+  if (options.excludeCancelled && !options.status) {
+    where.status = { not: 'Cancelled' };
   }
 
   // Overdue filter
@@ -317,6 +324,11 @@ export async function findStudentInvoices(schoolId, studentId, options = {}, tx 
 
   if (options.status) {
     where.status = options.status;
+  }
+
+  // Deleted fees are stored as Cancelled; parents never see them
+  if (options.excludeCancelled && !options.status) {
+    where.status = { not: 'Cancelled' };
   }
 
   const sortOrder = options.order === 'asc' ? 'asc' : 'desc';
@@ -563,22 +575,43 @@ export async function aggregateMonthlyRevenueReports(schoolId, months = 7, tx = 
  */
 export async function aggregateStudentInvoiceStats(schoolId, studentId, tx = prisma) {
   const rows = await tx.$queryRaw`
+    WITH given AS (
+      SELECT invoice_id, SUM(amount) AS total
+      FROM "fee_concessions"
+      WHERE "school_id" = ${schoolId}::uuid
+        AND "student_id" = ${studentId}::uuid
+        AND "status" = 'Active'
+      GROUP BY invoice_id
+    ),
+    fees AS (
+      SELECT
+        i.status AS status,
+        i.due_date AS due_date,
+        i.amount AS gross,
+        COALESCE(g.total, 0) AS conc,
+        GREATEST(i.amount - COALESCE(g.total, 0), 0) AS net
+      FROM "invoices" i
+      LEFT JOIN given g ON g.invoice_id = i.id
+      WHERE i."school_id" = ${schoolId}::uuid
+        AND i."student_id" = ${studentId}::uuid
+        AND i.status != 'Cancelled'
+    )
     SELECT
-      COALESCE(SUM(CASE WHEN status != 'Cancelled' THEN amount ELSE 0 END), 0)::text AS "totalInvoiced",
-      COALESCE(SUM(CASE WHEN status = 'Paid' THEN amount ELSE 0 END), 0)::text AS "paidAmount",
-      COALESCE(SUM(CASE WHEN status = 'Pending' THEN amount ELSE 0 END), 0)::text AS "outstandingAmount",
-      COALESCE(SUM(CASE WHEN status = 'Pending' AND due_date < TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') THEN amount ELSE 0 END), 0)::text AS "overdueAmount",
-      COUNT(CASE WHEN status = 'Pending' AND due_date < TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') THEN 1 END)::int AS "overdueCount",
-      COUNT(CASE WHEN status = 'Pending' THEN 1 END)::int AS "unpaidCount"
-    FROM "invoices"
-    WHERE "school_id" = ${schoolId}::uuid
-      AND "student_id" = ${studentId}::uuid
+      COALESCE(SUM(gross), 0)::text AS "totalInvoiced",
+      COALESCE(SUM(conc), 0)::text AS "concessionAmount",
+      COALESCE(SUM(CASE WHEN status = 'Paid' THEN net ELSE 0 END), 0)::text AS "paidAmount",
+      COALESCE(SUM(CASE WHEN status = 'Pending' THEN net ELSE 0 END), 0)::text AS "outstandingAmount",
+      COALESCE(SUM(CASE WHEN status = 'Pending' AND due_date < TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') THEN net ELSE 0 END), 0)::text AS "overdueAmount",
+      COUNT(CASE WHEN status = 'Pending' AND net > 0 AND due_date < TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') THEN 1 END)::int AS "overdueCount",
+      COUNT(CASE WHEN status = 'Pending' AND net > 0 THEN 1 END)::int AS "unpaidCount"
+    FROM fees
   `;
 
   const summary = rows[0] || {};
 
   return {
     totalInvoiced: Number(summary.totalInvoiced || 0),
+    concessionAmount: Number(summary.concessionAmount || 0),
     paidAmount: Number(summary.paidAmount || 0),
     outstandingAmount: Number(summary.outstandingAmount || 0),
     overdueAmount: Number(summary.overdueAmount || 0),

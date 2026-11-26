@@ -9,7 +9,7 @@ import {
   ConflictError,
   TenantAccessError
 } from '../../utils/app-error.js';
-
+import { getStudentLedger } from '../fee-reports/fee-report.service.js';
 import { SYSTEM_ROLES } from '../../config/constants.js';
 
 /**
@@ -36,8 +36,6 @@ const toPaise = (v) => Math.round(Number(v || 0) * 100);
 export function formatInvoice(inv, todayStr = new Date().toISOString().slice(0, 10)) {
   if (!inv) return null;
 
-  const isOverdue = inv.status === 'Pending' && typeof inv.dueDate === 'string' && inv.dueDate < todayStr;
-
   // `amount` is always the original (gross) fee. Concessions reduce what is payable: netAmount = amount - concessionAmount.
   const concessions = Array.isArray(inv.concessions)
     ? inv.concessions.map((c) => ({
@@ -50,6 +48,14 @@ export function formatInvoice(inv, todayStr = new Date().toISOString().slice(0, 
     : [];
   const grossPaise = toPaise(inv.amount);
   const concessionPaise = concessions.reduce((sum, c) => sum + toPaise(c.amount), 0);
+  const netPaise = Math.max(grossPaise - concessionPaise, 0);
+  const isPaid = inv.status === 'Paid';
+
+  // A fee with nothing left to pay (fully concessed) is never overdue
+  const isOverdue =
+    inv.status === 'Pending' && typeof inv.dueDate === 'string' && inv.dueDate < todayStr && netPaise > 0;
+
+  const lateFee = Math.max(Number(inv.customData?.lateFee) || 0, 0);
 
   return {
     id: inv.id,
@@ -58,9 +64,13 @@ export function formatInvoice(inv, todayStr = new Date().toISOString().slice(0, 
     feeStructureId: inv.feeStructureId,
     collectionPeriodId: inv.collectionPeriodId || null,
     feeName: inv.feeName,
+    feeCategory: inv.feeStructure?.feeCategory?.name ?? null,
     amount: inv.amount !== null && inv.amount !== undefined ? Number(inv.amount) : 0,
     concessionAmount: concessionPaise / 100,
-    netAmount: Math.max(grossPaise - concessionPaise, 0) / 100,
+    netAmount: netPaise / 100,
+    balance: isPaid ? 0 : netPaise / 100,
+    paidAmount: isPaid ? netPaise / 100 : 0,
+    lateFee,
     concessions,
     dueDate: inv.dueDate,
     status: inv.status,
@@ -127,7 +137,9 @@ export async function listInvoices(schoolId, query = {}, requester = null) {
     classId: query.classId,
     feeStructureId: query.feeStructureId,
     collectionPeriodId: query.collectionPeriodId,
-    status: query.status,
+    // Parents never see deleted (Cancelled) fees
+    status: isParent && query.status === 'Cancelled' ? undefined : query.status,
+    excludeCancelled: isParent,
     overdue: query.overdue,
     search: query.search ? query.search.trim() : undefined,
     order: query.order || 'desc'
@@ -362,10 +374,11 @@ export async function getStudentInvoices(schoolId, studentId, query = {}, reques
   const page = Math.max(1, Number(query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(query.limit) || 50));
 
-  const options = {
+    const options = {
     page,
     limit,
-    status: query.status,
+    status: isParent && query.status === 'Cancelled' ? undefined : query.status,
+    excludeCancelled: isParent,
     order: query.order || 'desc'
   };
 
@@ -675,4 +688,31 @@ export async function payInvoice(schoolId, id, data = {}, actor = null) {
 
   const todayStr = new Date().toISOString().slice(0, 10);
   return formatInvoice(settledInvoice, todayStr);
+}
+
+/**
+ * The same ledger the office prints, for one student.
+ * Staff need the fees permission (checked on the route); parents can only read their own linked children.
+ */
+export async function getStudentFeeLedger(schoolId, studentId, query = {}, requester = null) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required to retrieve the student ledger');
+  }
+
+  const student = await invoiceRepository.findStudentInTenant(schoolId, studentId);
+  if (!student) {
+    throw new NotFoundError('Student');
+  }
+
+  const isParent = requester?.systemRole === SYSTEM_ROLES.PARENT || requester?.role === SYSTEM_ROLES.PARENT;
+  if (isParent) {
+    const userId = requester.userId || requester.id;
+    const authorizedStudentIds = await invoiceRepository.findAuthorizedStudentIdsForParent(schoolId, userId);
+    if (!authorizedStudentIds.includes(studentId)) {
+      // Never disclose another family's student
+      throw new NotFoundError('Student');
+    }
+  }
+
+  return getStudentLedger(schoolId, studentId, { asOn: query.asOn });
 }

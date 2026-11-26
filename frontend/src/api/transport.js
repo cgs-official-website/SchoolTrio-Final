@@ -355,3 +355,17 @@ export async function deleteStudentMapping(studentId) {
 export async function getMyTransport(params = {}) {
   return apiClient(withQuery('/api/v1/transport/my-transport', params, ['studentId']), { method: 'GET' });
 }
+
+// ============================================================
+// FEE REPORTS -> TRANSPORT REPORT (admin, needs fees.read)
+// ============================================================
+
+/** One row per transport student: parents, route/stop and fee totals (Bus Fee Report, Bus Summary). */
+export async function getTransportReportStudents() {
+  return apiClient('/api/v1/transport/reports/students', { method: 'GET' });
+}
+
+/** One row per paid transport fee (Bus Fee Collection, Route Wise Collection). params: { from, to } as yyyy-mm-dd. */
+export async function getTransportReportPayments(params = {}) {
+  return apiClient(withQuery('/api/v1/transport/reports/payments', params, ['from', 'to']), { method: 'GET' });
+}

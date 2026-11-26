@@ -153,4 +153,18 @@ export async function payInvoice(req, res, next) {
   }
 }
 
+/**
+ * Fee ledger of one student (the same data the office ledger PDF uses).
+ * GET /api/v1/students/:studentId/fee-ledger
+ */
+export async function getStudentFeeLedger(req, res, next) {
+  try {
+    const schoolId = req.tenant.schoolId;
+    const requester = req.user || req.auth;
+    const ledger = await invoiceService.getStudentFeeLedger(schoolId, req.params.studentId, req.query, requester);
+    return ApiResponse.success(res, ledger, 'Student fee ledger retrieved successfully');
+  } catch (error) {
+    return next(error);
+  }
+}
 

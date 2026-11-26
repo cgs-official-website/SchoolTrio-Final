@@ -16,12 +16,15 @@ import {
     LuReceipt as Receipt,
     LuHistory as History,
     LuPrinter as Printer,
+    LuDownload as Download,
+    LuFileSpreadsheet as FileSpreadsheet,
     LuIndianRupee as Rupee,
     LuTriangleAlert as AlertTriangle,
     LuLoader as Loader,
     LuMousePointerClick as Pointer
 } from 'react-icons/lu';
 import toast from 'react-hot-toast';
+import { buildLedgerStatement, printLedger, exportLedgerPdf, exportLedgerExcel } from '../../utils/studentLedgerStatement';
 
 /**
  * Payment modes accepted by POST /api/v1/invoices/:id/pay (see invoice.schemas.js).
@@ -166,6 +169,8 @@ export default function FeeCollection() {
     const [invoicesLoading, setInvoicesLoading] = useState(false);
     const [transport, setTransport] = useState(null); // { routeName, stopName } | null
     const [schoolName, setSchoolName] = useState('');
+    const [schoolAddress, setSchoolAddress] = useState('');
+    const [exporting, setExporting] = useState(''); // '' | 'pdf' | 'excel'
 
     // ----- payment form -----
     const [tab, setTab] = useState('ledger'); // 'ledger' | 'history'
@@ -214,7 +219,9 @@ export default function FeeCollection() {
         getSchoolSettings()
             .then((res) => {
                 const d = res?.data || res;
-                if (mountedRef.current) setSchoolName(d?.name || d?.schoolName || '');
+                if (!mountedRef.current) return;
+                setSchoolName(d?.name || d?.schoolName || '');
+                setSchoolAddress(d?.address || d?.location || '');
             })
             .catch(() => { });
     }, []);
@@ -222,7 +229,8 @@ export default function FeeCollection() {
     const selectedClass = useMemo(() => classes.find((c) => c.id === classId) || null, [classes, classId]);
     const sections = useMemo(() => sortSectionsAscending(selectedClass?.sections || []), [selectedClass]);
     const classHasSections = sections.length > 0;
-    const classReady = Boolean(classId) && (!classHasSections || Boolean(sectionId));
+    // A class is enough: with no section picked, the roster is every section of that class
+    const classReady = Boolean(classId);
     // No class chosen -> search the whole school; class chosen -> search inside that class/section
     const globalMode = !classId;
     const canSearchStudents = globalMode || classReady;
@@ -247,7 +255,14 @@ export default function FeeCollection() {
                 order: 'asc'
             });
             if (!mountedRef.current || reqId !== rosterReqRef.current) return;
-            setRoster({ key, students: Array.isArray(res?.data) ? res.data : [] });
+            let list = Array.isArray(res?.data) ? res.data : [];
+            // whole class (no section picked): group by section, then by name
+            if (!sId) {
+                list = [...list].sort((a, b) =>
+                    String(a.section?.name || '').localeCompare(String(b.section?.name || ''), undefined, { numeric: true, sensitivity: 'base' })
+                    || studentFullName(a).localeCompare(studentFullName(b), undefined, { sensitivity: 'base' }));
+            }
+            setRoster({ key, students: list });
         } catch (err) {
             if (mountedRef.current && reqId === rosterReqRef.current) {
                 setRoster({ key, students: [] });
@@ -618,6 +633,33 @@ export default function FeeCollection() {
         target.document.close();
     };
 
+    // ----- overall ledger of this student (all fees + all payments): print / PDF / Excel -----
+    const makeLedgerModel = () => buildLedgerStatement({ schoolName, schoolAddress, student, invoices });
+
+    const printOverallLedger = () => {
+        if (!student || ledger.active.length === 0) {
+            toast.error('No fees have been assigned to this student yet.');
+            return;
+        }
+        if (!printLedger(makeLedgerModel())) toast.error('Allow pop-ups to print the ledger.');
+    };
+
+    const exportOverallLedger = async (type) => {
+        if (!student || ledger.active.length === 0) {
+            toast.error('No fees have been assigned to this student yet.');
+            return;
+        }
+        setExporting(type);
+        try {
+            const model = makeLedgerModel();
+            if (type === 'pdf') await exportLedgerPdf(model); else await exportLedgerExcel(model);
+        } catch (err) {
+            toast.error(err?.message || 'Could not export the ledger.');
+        } finally {
+            if (mountedRef.current) setExporting('');
+        }
+    };
+
     const handlePay = async () => {
         if (paying || !student || selectedInvoices.length === 0 || !amountCheck.ok) return;
         if (!hasEditPermission) {
@@ -774,7 +816,7 @@ export default function FeeCollection() {
                         <label htmlFor="fc-section" className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Section</label>
                         <select id="fc-section" value={sectionId} onChange={(e) => handleSectionChange(e.target.value)} disabled={!classId || !classHasSections} className={selectClass}>
                             <option value="">
-                                {!classId ? 'Select Section' : classHasSections ? 'Select Section' : 'No sections'}
+                                {!classId ? 'Select Section' : classHasSections ? 'All Sections' : 'No sections'}
                             </option>
                             {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
@@ -795,7 +837,7 @@ export default function FeeCollection() {
                                 value={studentInputValue}
                                 readOnly={Boolean(student)}
                                 disabled={!canSearchStudents}
-                                placeholder={!canSearchStudents ? 'Select a section first' : globalMode ? 'Search any student by name / admission no.' : 'Select student or type a name / admission no.'}
+                                placeholder={!canSearchStudents ? 'Select a class first' : globalMode ? 'Search any student by name / admission no.' : 'Select student or type a name / admission no.'}
                                 onFocus={() => { if (!student) setDropdownOpen(true); }}
                                 onChange={(e) => { setQuery(e.target.value); setDropdownOpen(true); }}
                                 onKeyDown={onComboKeyDown}
@@ -809,7 +851,7 @@ export default function FeeCollection() {
                                     <div className="flex items-center gap-2 p-4 text-sm text-slate-500"><Loader size={16} className="animate-spin" /> Loading students…</div>
                                 ) : results.length === 0 ? (
                                     <div className="p-4 text-sm text-slate-500 dark:text-slate-400">
-                                        {globalMode ? (query.trim() ? 'No active student matches that search.' : 'No active students found.') : query.trim() ? 'No student matches that search in this class.' : 'No active students in this class and section.'}
+                                        {globalMode ? (query.trim() ? 'No active student matches that search.' : 'No active students found.') : query.trim() ? 'No student matches that search in this class.' : sectionId || !classHasSections ? 'No active students in this class and section.' : 'No active students in this class.'}
                                     </div>
                                 ) : (
                                     results.map((s, idx) => (
@@ -1091,6 +1133,18 @@ export default function FeeCollection() {
                         </>
                     ) : (
                         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                            <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+                                <span className="text-xs text-slate-500 dark:text-slate-400 mr-auto">Overall ledger: all fees and all payments of this student.</span>
+                                <button type="button" onClick={() => exportOverallLedger('pdf')} disabled={ledger.active.length === 0 || Boolean(exporting)} title="Download the overall ledger as PDF" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed">
+                                    {exporting === 'pdf' ? <Loader size={13} className="animate-spin" /> : <Download size={13} />} Export PDF
+                                </button>
+                                <button type="button" onClick={() => exportOverallLedger('excel')} disabled={ledger.active.length === 0 || Boolean(exporting)} title="Download the overall ledger as Excel" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed">
+                                    {exporting === 'excel' ? <Loader size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />} Export Excel
+                                </button>
+                                <button type="button" onClick={printOverallLedger} disabled={ledger.active.length === 0} title="Print the overall ledger" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-700 hover:bg-slate-800 text-white disabled:opacity-40 disabled:cursor-not-allowed">
+                                    <Printer size={13} /> Print ledger
+                                </button>
+                            </div>
                             {history.length === 0 ? (
                                 <div className="p-10 text-center text-sm text-slate-500 dark:text-slate-400">No payments have been recorded for this student.</div>
                             ) : (
