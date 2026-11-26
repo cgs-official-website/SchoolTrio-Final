@@ -55,6 +55,7 @@ import { platformBrandingRouter } from '../modules/platform-branding/platform-br
 import { emailsRouter } from '../modules/emails/emails.routes.js';
 import { publicContactMessagesRouter, superAdminContactMessagesRouter } from '../modules/contact-messages/contact-messages.routes.js';
 import dashboardRoutes from '../modules/dashboard/dashboard.routes.js';
+import zunaSupportRoutes from '../modules/zuna-support/zuna-support.routes.js';
 
 const router = Router();
 
@@ -346,6 +347,11 @@ router.use('/superadmin/audit', superAdminAuditRouter);
  * Tenant Support Tickets Endpoints mounted under /api/v1/support-tickets
  */
 router.use('/support-tickets', supportTicketsRouter);
+
+/**
+ * Zuna Central Support Desk bridge mounted under /api/v1/zuna-support
+ */
+router.use('/zuna-support', zunaSupportRoutes);
 
 /**
  * SuperAdmin Global Support Tickets Endpoints mounted under /api/v1/superadmin/support-tickets

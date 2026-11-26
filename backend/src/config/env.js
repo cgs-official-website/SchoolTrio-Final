@@ -34,6 +34,11 @@ export const envSchema = z.object({
   ENCRYPTION_MASTER_KEY: z.string().optional(),
   ZUNA_SUPPORT_SERVICE_ACCOUNT: z.string().optional(),
 
+  // Zuna Central Support Desk (external product API). Key is generated in the Zuna admin dashboard
+  // (Products -> School Management System -> Generate API Key). Keep it on the server only.
+  ZUNA_API_URL: z.string().optional().default(''),
+  ZUNA_API_KEY: z.string().optional().default(''),
+
   // Firebase Authentication Bridge (Phase 4B.6)
   FIREBASE_PROJECT_ID: z.string().default('school-management-system-6a2c4'),
   FIREBASE_SERVICE_ACCOUNT_KEY: z.string().optional(),
