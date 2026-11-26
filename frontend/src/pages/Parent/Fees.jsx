@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { getStudentInvoices, getStudentFeeLedger } from '../../api/invoices';
+import { getStudentInvoices, getStudentFeeLedger, getFeeCategories } from '../../api/invoices';
 import { getSchoolSettings } from '../../api/settings';
 import { downloadInvoicePdf } from '../../utils/feeDocuments';
 import { downloadLedgerPdf } from '../../utils/ledgerPdf';
@@ -25,7 +25,6 @@ const money = (v) => `₹${Number(v || 0).toLocaleString('en-IN')}`;
 const dmy = (v) => (v ? new Date(v).toLocaleDateString('en-GB') : 'N/A');
 
 const isPaid = (i) => String(i.status || '').toLowerCase() === 'paid';
-const categoryOf = (inv) => inv.feeCategory || inv.feeName || inv.name || 'School Fee';
 const netOf = (inv) => Number(inv.netAmount ?? inv.amount) || 0;
 
 /** paid | concessed (fully concessed, nothing to pay) | overdue | pending */
@@ -56,6 +55,7 @@ export default function ParentFees() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [feeCategories, setFeeCategories] = useState([]);
 
   const mountedRef = useRef(true);
   const currentStudentRef = useRef(studentId);
@@ -151,6 +151,14 @@ export default function ParentFees() {
       .catch(() => { });
   }, []);
 
+  useEffect(() => {
+    getFeeCategories()
+      .then((res) => {
+        if (mountedRef.current) setFeeCategories(res?.data || []);
+      })
+      .catch(() => { });
+  }, []);
+
   const studentInfo = {
     name: [activeChild?.firstName, activeChild?.lastName].filter(Boolean).join(' ') || activeChild?.name || userProfile?.name || '',
     admissionNumber: activeChild?.admissionNumber || '',
@@ -158,10 +166,17 @@ export default function ParentFees() {
     sectionName: activeChild?.sectionName || activeChild?.section?.name || ''
   };
 
-  const categories = useMemo(
-    () => [...new Set(invoices.map(categoryOf))].sort((a, b) => a.localeCompare(b)),
-    [invoices]
-  );
+  const categoryOptions = useMemo(() => {
+    if (feeCategories.length > 0) return feeCategories;
+
+    const seen = new Map();
+    for (const inv of invoices) {
+      if (inv.feeCategoryId && !seen.has(inv.feeCategoryId)) {
+        seen.set(inv.feeCategoryId, { id: inv.feeCategoryId, name: inv.feeCategory || inv.feeName || 'School Fee' });
+      }
+    }
+    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [feeCategories, invoices]);
 
   const hasConcessedFees = useMemo(() => invoices.some((i) => statusOf(i) === 'concessed'), [invoices]);
 
@@ -169,7 +184,7 @@ export default function ParentFees() {
     () =>
       invoices.filter((inv) => {
         if (statusFilter !== 'all' && statusOf(inv) !== statusFilter) return false;
-        if (categoryFilter && categoryOf(inv) !== categoryFilter) return false;
+        if (categoryFilter && inv.feeCategoryId !== categoryFilter) return false;
         return true;
       }),
     [invoices, statusFilter, categoryFilter]
@@ -345,7 +360,7 @@ export default function ParentFees() {
                   {label}
                 </button>
               ))}
-              {categories.length > 1 && (
+              {categoryOptions.length > 0 && (
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value)}
@@ -353,9 +368,9 @@ export default function ParentFees() {
                   className="px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
                 >
                   <option value="">All categories</option>
-                  {categories.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
+                  {categoryOptions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
                     </option>
                   ))}
                 </select>

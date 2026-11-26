@@ -21,6 +21,7 @@ import { formatMoney, todayKey } from '../shared/reportUtils';
 const PAGE_SIZE = 20;
 const EMPTY_FILTERS = { classId: '', sectionId: '', student: null, feeCategoryId: '', paymentMode: '' };
 const EMPTY_SUMMARY = { count: 0, feeAmount: 0, concessionAmount: 0, netAmount: 0, paymentModes: [] };
+const PAYMENT_MODES = ['Cash', 'Cheque', 'UPI', 'Bank Transfer', 'Card'];
 
 const EXPORT_COLUMNS = [
     { key: 'admissionNumber', label: 'Adm. No', value: (r) => r.admissionNumber },
@@ -174,7 +175,7 @@ export default function DailyCollectionReport() {
                 title="Daily Collection Details"
                 searchValue={list.search}
                 onSearchChange={list.setSearch}
-                searchPlaceholder="Search Student Name, Adm. No., Receipt No."
+                searchPlaceholder="Search Student, Adm. no., Receipt"
                 canAdd={false}
                 onFilter={() => setShowFilters((v) => !v)}
                 filterOpen={showFilters}
@@ -258,7 +259,7 @@ export default function DailyCollectionReport() {
                                 className={inputClass}
                             >
                                 <option value="">All pay modes</option>
-                                {summary.paymentModes.map((mode) => (
+                                {PAYMENT_MODES.map((mode) => (
                                     <option key={mode} value={mode}>
                                         {mode}
                                     </option>

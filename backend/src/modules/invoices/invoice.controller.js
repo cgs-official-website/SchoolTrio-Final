@@ -168,3 +168,15 @@ export async function getStudentFeeLedger(req, res, next) {
   }
 }
 
+/**
+ * Fee categories of the school (for the fee category filter).
+ * GET /api/v1/invoices/categories
+ */
+export async function listFeeCategories(req, res, next) {
+  try {
+    const categories = await invoiceService.listFeeCategories(req.tenant.schoolId);
+    return ApiResponse.success(res, categories, 'Fee categories retrieved successfully');
+  } catch (error) {
+    return next(error);
+  }
+}

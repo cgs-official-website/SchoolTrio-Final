@@ -67,6 +67,20 @@ invoiceRouter.get(
 );
 
 /**
+ * Fee categories (names only) for the category filter
+ * GET /api/v1/invoices/categories
+ * CRITICAL: Must be registered BEFORE /:id to prevent Express route shadowing.
+ * Staff with 'fees.read' or authenticated parents.
+ */
+invoiceRouter.get(
+  '/categories',
+  authenticate,
+  tenantContext({ requireTenant: true }),
+  requireFeesReadOrParent,
+  invoiceController.listFeeCategories
+);
+
+/**
  * Class-Wise Fee Reports
  * GET /api/v1/invoices/reports/class-wise
  * CRITICAL: Must be registered BEFORE /:id to prevent Express route shadowing.

@@ -207,7 +207,7 @@ export default function ConcessionReport() {
                 title="Concession Report"
                 searchValue={list.search}
                 onSearchChange={list.setSearch}
-                searchPlaceholder="Search Student Name, Adm. No., Description"
+                searchPlaceholder="Search Student or Description"
                 canAdd={false}
                 onFilter={() => setShowFilters((v) => !v)}
                 filterOpen={showFilters}

@@ -113,6 +113,12 @@ const DAILY_SORTERS = {
   paidAt: (d) => [{ paidAt: d }]
 };
 
+
+function paymentModeVariants(mode) {
+  const spaced = String(mode).trim().replace(/[\s_-]+/g, ' ');
+  return [...new Set([spaced, spaced.replace(/ /g, '_'), spaced.replace(/ /g, '-'), spaced.replace(/ /g, '')])];
+}
+
 function dailyWhere(schoolId, start, end, options = {}) {
   const and = [{ schoolId, status: { in: PAID_STATUSES }, paidAt: { gte: start, lt: end } }];
 
@@ -123,7 +129,13 @@ function dailyWhere(schoolId, start, end, options = {}) {
 
   if (options.studentId) and.push({ studentId: options.studentId });
   if (options.feeCategoryId) and.push({ feeStructure: { feeCategoryId: options.feeCategoryId } });
-  if (options.paymentMode) and.push({ paymentMode: { equals: options.paymentMode, mode: 'insensitive' } });
+  if (options.paymentMode) {
+    and.push({
+      OR: paymentModeVariants(options.paymentMode).map((m) => ({
+        paymentMode: { equals: m, mode: 'insensitive' }
+      }))
+    });
+  }
 
   if (options.search && typeof options.search === 'string' && options.search.trim()) {
     const term = options.search.trim();

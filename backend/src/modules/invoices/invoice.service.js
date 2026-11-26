@@ -65,6 +65,7 @@ export function formatInvoice(inv, todayStr = new Date().toISOString().slice(0, 
     collectionPeriodId: inv.collectionPeriodId || null,
     feeName: inv.feeName,
     feeCategory: inv.feeStructure?.feeCategory?.name ?? null,
+    feeCategoryId: inv.feeStructure?.feeCategoryId ?? null,
     amount: inv.amount !== null && inv.amount !== undefined ? Number(inv.amount) : 0,
     concessionAmount: concessionPaise / 100,
     netAmount: netPaise / 100,
@@ -715,4 +716,15 @@ export async function getStudentFeeLedger(schoolId, studentId, query = {}, reque
   }
 
   return getStudentLedger(schoolId, studentId, { asOn: query.asOn });
+}
+
+/**
+ * All fee categories created in Fee Master, for the category filter.
+ * Names only, so both staff and parents may read them.
+ */
+export async function listFeeCategories(schoolId) {
+  if (!schoolId) {
+    throw new TenantAccessError('Tenant context required to list fee categories');
+  }
+  return invoiceRepository.findFeeCategories(schoolId);
 }

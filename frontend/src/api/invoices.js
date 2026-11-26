@@ -172,4 +172,9 @@ export async function getStudentFeeLedger(studentId, asOn) {
   );
 }
 
+/** Every fee category created in Fee Master: [{ id, name }], in payment order. */
+export async function getFeeCategories() {
+  return apiClient('/api/v1/invoices/categories', { method: 'GET' });
+}
+
 export default invoicesApi;

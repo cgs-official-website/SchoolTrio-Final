@@ -705,3 +705,18 @@ export async function sumActiveConcessions(schoolId, invoiceId, tx = prisma) {
   });
   return Number(res._sum.amount ?? 0);
 }
+
+/**
+ * Every fee category of the school, in the order set in Fee Master (payment order, then name).
+ *
+ * @param {string} schoolId - Tenant UUID
+ * @param {Object} [tx=prisma]
+ * @returns {Promise<Array<{ id: string, name: string }>>}
+ */
+export async function findFeeCategories(schoolId, tx = prisma) {
+  return tx.feeCategory.findMany({
+    where: { schoolId },
+    orderBy: [{ paymentOrder: 'asc' }, { name: 'asc' }],
+    select: { id: true, name: true }
+  });
+}

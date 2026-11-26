@@ -53,7 +53,7 @@ export default function CancellationReport() {
     return (
         <FilteredReport
             title="Cancellation Report"
-            searchPlaceholder="Search Student Name, Adm. No., Receipt No."
+            searchPlaceholder="Search Student, Adm. No., Receipt No."
             listApi={feeReportsApi.getCategoryCancellationReport}
             summaryApi={feeReportsApi.getCategoryCancellationSummary}
             filters={['student', 'feeCategory', 'payMode', 'dateRange']}
