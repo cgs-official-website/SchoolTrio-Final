@@ -34,6 +34,12 @@ function termList(invoices) {
     return [...m.entries()].sort((a, b) => a[1] - b[1] || byNatural(a[0], b[0])).map(([n]) => n);
 }
 
+/**
+ * Term columns for the term-wise reports. Fees that are not linked to any collection period all fall under
+ * "No Term", which would only repeat the Total column, so no term columns are shown until real terms exist.
+ */
+const termsToShow = (invoices) => (invoices.some((i) => i.collectionPeriod) ? termList(invoices) : []);
+
 const categoryList = (invoices) => [...new Set(invoices.map((i) => i.feeName))].sort(byNatural);
 
 const studentIdentity = (list) => {
@@ -146,7 +152,7 @@ export const REPORTS = [
         label: 'Student Term Report',
         filters: ['class', 'section', 'category', 'term', 'search'],
         build: (rows) => {
-            const terms = termList(rows);
+            const terms = termsToShow(rows);
             const out = [...groupBy(rows, studentKey)].map(([id, list]) => {
                 const row = { id, ...studentIdentity(list), total: sum(list, netAmount), paid: sum(list, paidAmount) };
                 row.balance = row.total - sum(list.filter(isPaid), netAmount);
@@ -223,7 +229,7 @@ export const REPORTS = [
         filters: ['classes', 'category', 'term'],
         defaults: () => ({ classes: [] }),
         build: (rows) => {
-            const terms = termList(rows);
+            const terms = termsToShow(rows);
             const out = [...groupBy(rows, (i) => i.student?.class?.name || 'Unassigned')].map(([cls, list]) => {
                 const row = { id: cls, cls, net: sum(list, netAmount), paid: sum(list, paidAmount) };
                 row.balance = row.net - sum(list.filter(isPaid), netAmount);

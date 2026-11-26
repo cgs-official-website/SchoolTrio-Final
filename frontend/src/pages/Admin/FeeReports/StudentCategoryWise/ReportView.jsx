@@ -46,21 +46,23 @@ const escapeHtml = (v) =>
     String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 /**
- * Printable page: report title and the filters that were applied, then the table (with its total row).
- * The school name goes in the document title, which the browser prints in the centre of the page header
- * (next to the date/time it adds on the left), so it is not repeated in the page body.
+ * Printable page: school name (and address) centred at the top, the report title, the filters that were
+ * applied, then the table (with its total row). The document title is the report name, so the browser's own
+ * page header (when it is switched on) does not repeat the school name.
  */
-function buildPrintHtml({ schoolName, title, summary, headers, rightCols, rows, totalRow }) {
+function buildPrintHtml({ schoolName, schoolAddress, title, summary, headers, rightCols, rows, totalRow }) {
     const cell = (tag, v, i) => `<${tag}${rightCols[i] ? ' class="r"' : ''}>${escapeHtml(v)}</${tag}>`;
     const head = `<tr>${headers.map((h, i) => cell('th', h, i)).join('')}</tr>`;
     const body = rows.map((r) => `<tr>${r.map((v, i) => cell('td', v, i)).join('')}</tr>`).join('');
     const foot = totalRow ? `<tr class="total">${totalRow.map((v, i) => cell('td', v, i)).join('')}</tr>` : '';
-    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(schoolName || title)}</title>
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
 <style>
 @page{size:A4 landscape;margin:12mm}
 body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;font-size:12px}
-.top{border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:10px}
-.title{font-size:18px;font-weight:700;margin:0}
+.top{text-align:center;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:10px}
+.school{font-size:20px;font-weight:700;margin:0}
+.addr{font-size:11px;color:#333;margin:3px 0 0}
+.title{font-size:15px;font-weight:700;margin:8px 0 0}
 .summary{margin:0 0 10px;font-size:11px;color:#333}
 table{width:100%;border-collapse:collapse}
 th,td{border:1px solid #999;padding:5px 7px;text-align:left;vertical-align:top}
@@ -68,7 +70,7 @@ th{background:#eef1f5;font-size:11px}
 thead{display:table-header-group}tr{page-break-inside:avoid}
 .r{text-align:right}.total td{font-weight:700;background:#f6f6f6}
 </style></head><body>
-<div class="top"><p class="title">${escapeHtml(title)}</p></div>
+<div class="top">${schoolName ? `<p class="school">${escapeHtml(schoolName)}</p>` : ''}${schoolAddress ? `<p class="addr">${escapeHtml(schoolAddress)}</p>` : ''}<p class="title">${escapeHtml(title)}</p></div>
 ${summary ? `<p class="summary">${escapeHtml(summary)}</p>` : ''}
 <table><thead>${head}</thead><tbody>${body}${foot}</tbody></table>
 <script>window.onload=function(){window.focus();window.print();}</script>
@@ -107,13 +109,16 @@ export default function ReportView({ def, invoices, loading, classOptions, secti
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
     const [schoolName, setSchoolName] = useState('');
+    const [schoolAddress, setSchoolAddress] = useState('');
 
     useEffect(() => {
         let alive = true;
         getSchoolSettings()
             .then((res) => {
                 const d = res?.data || res;
-                if (alive) setSchoolName(d?.name || d?.schoolName || '');
+                if (!alive) return;
+                setSchoolName(d?.name || d?.schoolName || '');
+                setSchoolAddress(d?.address || d?.location || '');
             })
             .catch(() => { });
         return () => { alive = false; };
@@ -182,6 +187,7 @@ export default function ReportView({ def, invoices, loading, classOptions, secti
         const totals = built?.totals;
         const html = buildPrintHtml({
             schoolName,
+            schoolAddress,
             title: def.label,
             summary: summaryText,
             headers: ['S.No', ...columns.map((c) => c.label)],
