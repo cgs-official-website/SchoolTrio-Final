@@ -470,8 +470,6 @@ export default function TopNavbar({
               <RaiseTicketModal
                 isOpen={showTicketModal}
                 onClose={() => setShowTicketModal(false)}
-                schoolName={schoolName || userProfile?.name || 'School Admin'}
-                schoolEmail={userProfile?.email || ''}
               />
             </>
           )}

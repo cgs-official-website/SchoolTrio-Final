@@ -1,159 +1,86 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { LuX, LuLifeBuoy, LuSend, LuCircleAlert, LuCircleCheck, LuMessageSquare, LuClock, LuPlus, LuChevronRight, LuArrowLeft } from "react-icons/lu";
-import { initializeApp, getApps } from 'firebase/app';
-import { initializeFirestore, getFirestore, collection, addDoc, serverTimestamp, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { zunaSupportApi } from '../api/zunaSupport.js';
 
-const zunaConfig = {
-  apiKey: "AIzaSyAzEP2LTXsGvCsFyxITkgoon_2AL4yGKyo",
-  authDomain: "zuna-landing-page-22564.firebaseapp.com",
-  projectId: "zuna-landing-page-22564",
-  storageBucket: "zuna-landing-page-22564.firebasestorage.app",
-  messagingSenderId: "806137313772",
-  appId: "1:806137313772:web:57cf450537cb9c4fff68c9"
-};
-
-const zunaApp = getApps().find(a => a.name === 'ZunaSharedApp') || initializeApp(zunaConfig, 'ZunaSharedApp');
-let zunaDb;
-try {
-  zunaDb = initializeFirestore(zunaApp, {
-    experimentalAutoDetectLongPolling: true
-  });
-} catch (e) {
-  zunaDb = getFirestore(zunaApp);
-}
-
+const LIST_POLL_MS = 20000;
+const THREAD_POLL_MS = 15000;
 
 function formatTicketDate(val) {
   if (!val) return 'Recently';
-  try {
-    let d;
-    if (typeof val?.toDate === 'function') {
-      d = val.toDate();
-    } else if (val?.seconds !== undefined) {
-      d = new Date(val.seconds * 1000 + (val.nanoseconds || 0) / 1e6);
-    } else if (typeof val === 'number' || typeof val === 'string') {
-      d = new Date(val);
-    } else {
-      d = new Date(val);
-    }
-    if (isNaN(d.getTime())) return 'Recently';
-    return d.toLocaleDateString('en-GB');
-  } catch (e) {
-    return 'Recently';
-  }
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return 'Recently';
+  return d.toLocaleDateString('en-GB');
 }
 
-function getTimeMs(val) {
-  if (!val) return 0;
-  try {
-    if (typeof val?.toMillis === 'function') return val.toMillis();
-    if (typeof val?.toDate === 'function') return val.toDate().getTime();
-    if (val?.seconds !== undefined) return val.seconds * 1000 + (val.nanoseconds || 0) / 1e6;
-    const t = new Date(val).getTime();
-    return isNaN(t) ? 0 : t;
-  } catch (e) {
-    return 0;
-  }
-}
+// Zuna ticket ids are long; show a short, readable reference
+const shortId = (id) => String(id || '').slice(-6).toUpperCase();
 
-// Central Support Desk API base domain (configurable via VITE_ZUNA_CENTRAL_API_URL, defaults to https://zuna-parent-production.up.railway.app)
-const getZunaCentralApiUrl = () => {
-  let customUrl = (import.meta.env.VITE_ZUNA_CENTRAL_API_URL || '').trim();
-  if (!customUrl) {
-    customUrl = 'https://zuna-parent-production.up.railway.app';
-  }
-  customUrl = customUrl.replace(/\/+$/, '');
-  if (!customUrl.startsWith('http://') && !customUrl.startsWith('https://')) {
-    customUrl = `https://${customUrl}`;
-  }
-  return customUrl;
-};
+const errorMessageOf = (err, fallback) =>
+  err?.message || fallback;
 
-export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School Administrator', schoolEmail = '' }) {
+export default function RaiseTicketModal({ isOpen, onClose }) {
   const [activeTab, setActiveTab] = useState('raise'); // 'raise' | 'history'
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('MEDIUM');
-  const [productSystem, setProductSystem] = useState('School Management System');
-  const [productFilter, setProductFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Live ticket history state
+  // Ticket history (live from Zuna through the School backend)
   const [myTickets, setMyTickets] = useState([]);
+  const [listError, setListError] = useState('');
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
+  const [replyError, setReplyError] = useState('');
 
-  useEffect(() => {
-    if (!isOpen) return;
+  const loadTickets = useCallback(async () => {
+    try {
+      const res = await zunaSupportApi.listTickets({ limit: 100 });
+      setMyTickets(Array.isArray(res?.data) ? res.data : []);
+      setListError('');
+    } catch (err) {
+      setListError(errorMessageOf(err, 'Could not load your tickets from Zuna.'));
+    }
+  }, []);
 
-    let mainList = [];
-    let supportList = [];
-
-    const getLocal = () => {
-      try {
-        const saved = localStorage.getItem('zuna_tickets');
-        if (saved) return JSON.parse(saved);
-      } catch (e) {}
-      return [];
-    };
-
-    const mergeAndEmit = () => {
-      const localList = getLocal();
-      const ticketMap = new Map();
-      [...localList, ...mainList, ...supportList].forEach(t => {
-        if (t && t.id) {
-          ticketMap.set(t.id, { ...ticketMap.get(t.id), ...t });
-        }
-      });
-      const combined = Array.from(ticketMap.values()).filter(t => {
-        if (!t || !t.id) return false;
-        if (productFilter !== 'all') {
-          const prod = (t.productName || t.productId || '').toLowerCase();
-          return prod.includes(productFilter.toLowerCase());
-        }
-        return true;
-      });
-      combined.sort((a, b) => getTimeMs(b.createdAt) - getTimeMs(a.createdAt));
-      setMyTickets(combined);
-      
-      // Update selected ticket if viewing thread
-      if (selectedTicket) {
-        const updated = combined.find(x => x.id === selectedTicket.id);
-        if (updated) setSelectedTicket(updated);
+  const loadThread = useCallback(async (ticketId) => {
+    try {
+      const res = await zunaSupportApi.getTicket(ticketId);
+      if (res?.data) {
+        setSelectedTicket((current) => (current && current.id === ticketId ? res.data : current));
       }
-    };
+    } catch (err) {
+      setReplyError(errorMessageOf(err, 'Could not load this conversation.'));
+    }
+  }, []);
 
-    const unsub1 = onSnapshot(collection(zunaDb, 'tickets'), (snapshot) => {
-      mainList = snapshot.docs.map(d => ({
-        firestoreDocId: d.id,
-        id: d.data().id || d.id,
-        sourceCollection: 'tickets',
-        ...d.data()
-      }));
-      mergeAndEmit();
-    }, (err) => { console.warn('Tickets snapshot warn:', err); mergeAndEmit(); });
+  // Keep the ticket list fresh while the modal is open
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    loadTickets();
+    const timer = setInterval(loadTickets, LIST_POLL_MS);
+    return () => clearInterval(timer);
+  }, [isOpen, loadTickets]);
 
-    const unsub2 = onSnapshot(collection(zunaDb, 'support_tickets'), (snapshot) => {
-      supportList = snapshot.docs.map(d => ({
-        firestoreDocId: d.id,
-        id: d.data().id || d.id,
-        sourceCollection: 'support_tickets',
-        ...d.data()
-      }));
-      mergeAndEmit();
-    }, (err) => { console.warn('Support tickets snapshot warn:', err); mergeAndEmit(); });
-
-    return () => {
-      unsub1();
-      unsub2();
-    };
-  }, [isOpen, schoolName, selectedTicket?.id]);
+  // Keep the open conversation fresh (picks up Zuna admin replies and status changes)
+  useEffect(() => {
+    if (!isOpen || !selectedTicket?.id) return undefined;
+    const ticketId = selectedTicket.id;
+    const timer = setInterval(() => loadThread(ticketId), THREAD_POLL_MS);
+    return () => clearInterval(timer);
+  }, [isOpen, selectedTicket?.id, loadThread]);
 
   if (!isOpen) return null;
+
+  const handleSelectTicket = (ticket) => {
+    setReplyError('');
+    setReplyText('');
+    setSelectedTicket({ ...ticket, messages: ticket.messages || [] });
+    loadThread(ticket.id);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -162,94 +89,24 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
     setSuccessMsg('');
 
     try {
-      const formattedPriority = (priority || 'MEDIUM').toUpperCase();
-      const payload = {
-        clientName: (schoolName || 'School Administrator').trim(),
-        clientEmail: (schoolEmail || 'admin@school.com').trim(),
+      const res = await zunaSupportApi.createTicket({
         subject: subject.trim(),
         description: description.trim(),
-        priority: formattedPriority,
-        productNameSnapshot: 'School Management System'
-      };
-
-      const ingestionEndpoint = `${getZunaCentralApiUrl()}/api/public/tickets/from-web-form`;
-
-      const response = await fetch(ingestionEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
+        priority: (priority || 'MEDIUM').toUpperCase()
       });
 
-      const result = await response.json().catch(() => null);
-
-      if (!response.ok || !result?.success) {
-        const errorText = (typeof result?.error === 'string' ? result.error : result?.error?.message) || result?.message || `Failed with HTTP status ${response.status}`;
-        throw new Error(errorText);
-      }
-
-      const ticketId = result?.data?.ticketId || `TK-${Math.floor(1000 + Math.random() * 9000)}`;
-      const newTicket = {
-        id: ticketId,
-        productId: 'school-management',
-        productName: 'School Management System',
-        productNameSnapshot: 'School Management System',
-        clientName: payload.clientName,
-        clientEmail: payload.clientEmail,
-        school: schoolName,
-        subject: payload.subject,
-        description: payload.description,
-        priority: formattedPriority,
-        status: 'open',
-        createdAt: new Date().toISOString(),
-        messages: [
-          {
-            sender: 'Client',
-            author: schoolName,
-            text: description.trim() || subject.trim(),
-            timestamp: new Date().toISOString()
-          }
-        ]
-      };
-
-      try {
-        await addDoc(collection(zunaDb, 'tickets'), {
-          ...newTicket,
-          createdAt: serverTimestamp()
-        });
-      } catch (fErr) {}
-
-      try {
-        await addDoc(collection(zunaDb, 'support_tickets'), {
-          ...newTicket,
-          createdAt: serverTimestamp()
-        });
-      } catch (fErr2) {}
-
-      try {
-        const current = JSON.parse(localStorage.getItem('zuna_tickets') || '[]');
-        localStorage.setItem('zuna_tickets', JSON.stringify([newTicket, ...current]));
-      } catch (e) {}
-
-      if (typeof window !== 'undefined' && window.BroadcastChannel) {
-        try {
-          const bc = new BroadcastChannel('zuna_tickets_channel');
-          bc.postMessage(newTicket);
-          bc.close();
-        } catch (bcErr) {}
-      }
-
-      setSuccessMsg(`✓ Ticket #${ticketId} submitted successfully to Zuna Central Support Desk!`);
+      const ticketId = res?.data?.ticketId;
+      setSuccessMsg(`✓ Ticket #${shortId(ticketId)} submitted successfully to Zuna Central Support Desk!`);
       setSubject('');
       setDescription('');
+      loadTickets();
       setTimeout(() => {
         setSuccessMsg('');
         setActiveTab('history');
       }, 1500);
     } catch (err) {
-      console.error('Error raising ticket to public ingestion endpoint:', err);
-      setErrorMsg(`Failed to submit support ticket: ${err.message || 'Please check that the support desk server is reachable.'}`);
+      console.error('Error raising ticket to Zuna:', err);
+      setErrorMsg(`Failed to submit support ticket: ${errorMessageOf(err, 'Please try again in a moment.')}`);
     } finally {
       setLoading(false);
     }
@@ -259,36 +116,26 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
     e.preventDefault();
     if (!replyText.trim() || !selectedTicket) return;
     setSendingReply(true);
-
-    const newReply = {
-      sender: 'Client',
-      author: schoolName,
-      text: replyText.trim(),
-      timestamp: new Date().toISOString()
-    };
-
-    const targetDocId = selectedTicket.firestoreDocId || selectedTicket.id;
-    const colName = selectedTicket.sourceCollection === 'support_tickets' ? 'support_tickets' : 'tickets';
-    const updatedMessages = [...(selectedTicket.messages || []), newReply];
+    setReplyError('');
 
     try {
-      await updateDoc(doc(zunaDb, colName, targetDocId), {
-        messages: updatedMessages,
-        updatedAt: serverTimestamp()
-      });
+      await zunaSupportApi.addMessage(selectedTicket.id, replyText.trim());
       setReplyText('');
+      await loadThread(selectedTicket.id);
+      loadTickets();
     } catch (err) {
-      console.warn('Reply write error:', err);
+      setReplyError(errorMessageOf(err, 'Could not send your reply.'));
     } finally {
       setSendingReply(false);
     }
   };
 
   const getStatusBadge = (status) => {
-    switch((status || '').toLowerCase()) {
-      case 'resolved': return <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-md text-xs font-bold flex items-center gap-1"><LuCircleCheck size={12}/> Resolved</span>;
-      case 'in-progress': return <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-md text-xs font-bold flex items-center gap-1"><LuClock size={12}/> In Progress</span>;
-      default: return <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-md text-xs font-bold flex items-center gap-1"><LuMessageSquare size={12}/> Open</span>;
+    switch ((status || '').toLowerCase().replace('_', '-')) {
+      case 'resolved': return <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-md text-xs font-bold flex items-center gap-1"><LuCircleCheck size={12} /> Resolved</span>;
+      case 'closed': return <span className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded-md text-xs font-bold flex items-center gap-1"><LuCircleCheck size={12} /> Closed</span>;
+      case 'in-progress': return <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-md text-xs font-bold flex items-center gap-1"><LuClock size={12} /> In Progress</span>;
+      default: return <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-md text-xs font-bold flex items-center gap-1"><LuMessageSquare size={12} /> Open</span>;
     }
   };
 
@@ -306,7 +153,7 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Direct live support desk for School Administrators</p>
             </div>
           </div>
-          <button 
+          <button
             onClick={onClose}
             className="p-2 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-300 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
           >
@@ -318,21 +165,19 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
         <div className="flex border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-5 gap-2">
           <button
             onClick={() => { setActiveTab('raise'); setSelectedTicket(null); }}
-            className={`py-3 px-4 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
-              activeTab === 'raise'
+            className={`py-3 px-4 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'raise'
                 ? 'border-indigo-600 text-indigo-600 bg-white dark:bg-slate-900 rounded-t-xl'
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-            }`}
+              }`}
           >
             <LuPlus size={15} /> Raise New Ticket
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`py-3 px-4 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
-              activeTab === 'history'
+            className={`py-3 px-4 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'history'
                 ? 'border-indigo-600 text-indigo-600 bg-white dark:bg-slate-900 rounded-t-xl'
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-            }`}
+              }`}
           >
             <LuMessageSquare size={15} /> My Tickets ({myTickets.length})
           </button>
@@ -357,7 +202,7 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">
                 Issue Subject
               </label>
-              <input 
+              <input
                 type="text"
                 required
                 className="w-full px-4 py-3 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-900 dark:text-white font-medium"
@@ -387,7 +232,7 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-1">
                   Product System
                 </label>
-                <input 
+                <input
                   type="text"
                   disabled
                   value="School Management"
@@ -432,15 +277,20 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
         {/* TAB 2: MY TICKETS & REPLIES THREAD */}
         {activeTab === 'history' && !selectedTicket && (
           <div className="p-5 flex-1 overflow-y-auto space-y-3">
+            {listError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-bold flex items-center gap-2">
+                <LuCircleAlert size={16} /> {listError}
+              </div>
+            )}
             {myTickets.map(t => (
-              <div 
+              <div
                 key={t.id}
-                onClick={() => setSelectedTicket(t)}
+                onClick={() => handleSelectTicket(t)}
                 className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-slate-700 hover:shadow-md transition-all cursor-pointer bg-white dark:bg-slate-900 flex items-center justify-between gap-3 group"
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-extrabold text-indigo-600">#{t.id}</span>
+                    <span className="text-xs font-extrabold text-indigo-600">#{shortId(t.id)}</span>
                     {getStatusBadge(t.status)}
                     <span className="text-xs text-slate-400 dark:text-slate-300 font-medium ml-auto">
                       {formatTicketDate(t.createdAt)}
@@ -468,14 +318,14 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
           <div className="flex flex-col flex-1 overflow-hidden">
             {/* Thread Navigation Header */}
             <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 flex items-center justify-between">
-              <button 
+              <button
                 onClick={() => setSelectedTicket(null)}
                 className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
               >
                 <LuArrowLeft size={14} /> Back to My Tickets
               </button>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-extrabold text-slate-400 dark:text-slate-300">#{selectedTicket.id}</span>
+                <span className="text-xs font-extrabold text-slate-400 dark:text-slate-300">#{shortId(selectedTicket.id)}</span>
                 {getStatusBadge(selectedTicket.status)}
               </div>
             </div>
@@ -488,17 +338,16 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
               </div>
 
               {(selectedTicket.messages || []).map((msg, i) => {
-                const isSuperAdmin = msg.sender === 'Agent' || msg.sender === 'SuperAdmin' || msg.role === 'superadmin';
+                const isSuperAdmin = msg.sender === 'ADMIN';
                 return (
-                  <div key={i} className={`flex flex-col ${isSuperAdmin ? 'items-start' : 'items-end'}`}>
-                    <div className={`max-w-[85%] p-3.5 rounded-2xl text-xs font-medium ${
-                      isSuperAdmin 
-                        ? 'bg-indigo-600 text-white rounded-tl-none shadow-sm' 
+                  <div key={msg.id || i} className={`flex flex-col ${isSuperAdmin ? 'items-start' : 'items-end'}`}>
+                    <div className={`max-w-[85%] p-3.5 rounded-2xl text-xs font-medium ${isSuperAdmin
+                        ? 'bg-indigo-600 text-white rounded-tl-none shadow-sm'
                         : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-tr-none shadow-sm'
-                    }`}>
+                      }`}>
                       <div className="flex items-center justify-between gap-3 text-[10px] opacity-75 mb-1 font-bold">
-                        <span>{isSuperAdmin ? '⚡ Zuna SuperAdmin Support' : msg.author || 'School Admin'}</span>
-                        <span>{formatTicketDate(msg.timestamp)}</span>
+                        <span>{isSuperAdmin ? '⚡ Zuna SuperAdmin Support' : msg.authorName || 'School Admin'}</span>
+                        <span>{formatTicketDate(msg.createdAt)}</span>
                       </div>
                       <p className="leading-relaxed">{msg.text}</p>
                     </div>
@@ -508,18 +357,24 @@ export default function RaiseTicketModal({ isOpen, onClose, schoolName = 'School
             </div>
 
             {/* Reply Input Box */}
+            {replyError && (
+              <div className="mx-3 mb-2 p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold flex items-center gap-2">
+                <LuCircleAlert size={14} /> {replyError}
+              </div>
+            )}
             <form onSubmit={handleSendReply} className="p-3 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex gap-2">
-              <input 
-                type="text" 
-                placeholder="Write reply to Zuna SuperAdmin..." 
+              <input
+                type="text"
+                placeholder={selectedTicket.status === 'CLOSED' ? 'This ticket is closed. Raise a new ticket.' : 'Write reply to Zuna SuperAdmin...'}
+                disabled={selectedTicket.status === 'CLOSED'}
                 value={replyText}
                 onChange={e => setReplyText(e.target.value)}
                 className="flex-1 px-4 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white font-medium"
                 required
               />
-              <button 
-                type="submit" 
-                disabled={sendingReply}
+              <button
+                type="submit"
+                disabled={sendingReply || selectedTicket.status === 'CLOSED'}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center gap-1 shadow-sm disabled:opacity-50 transition-all"
               >
                 <LuSend size={12} /> {sendingReply ? 'Sending...' : 'Reply'}
